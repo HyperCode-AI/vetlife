@@ -86,7 +86,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-[#0b2240] text-[11px] font-semibold">
               <ShieldCheck className="w-3.5 h-3.5 text-[#1d9496]" />
-              <span>Acesso Protegido por Token</span>
+              <span>Acesso Protegido por Login</span>
             </div>
             <h1 className="text-2xl sm:text-[28px] font-bold tracking-tight text-[#0b2240]">
               {isLab ? 'Área Laboratorial' : 'Portal do Veterinário'}
@@ -177,7 +177,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </button>
         </form>
 
-        <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-[13px]">
+        <div className="pt-4 border-t border-slate-100 flex items-center text-[13px]">
           <button
             type="button"
             onClick={onBackToSite}
@@ -186,8 +186,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             <ArrowLeft className="w-4 h-4" />
             <span>Voltar ao Site</span>
           </button>
-
-          <span className="text-[11px] text-slate-400">Sessão JWT Segura</span>
         </div>
       </div>
     </div>
