@@ -102,8 +102,8 @@ export const App: React.FC = () => {
       };
       const url = new URL(window.location.href);
       url.pathname = pathMap[nextView];
-      if (nextDomain === 'app') {
-        url.searchParams.set('domain', 'app');
+      if (nextDomain === 'app' || nextDomain === 'adm') {
+        url.searchParams.set('domain', nextDomain);
       } else {
         url.searchParams.delete('domain');
       }
@@ -128,18 +128,24 @@ export const App: React.FC = () => {
 
     if (isProductionCustomDomain()) {
       const host = window.location.hostname.toLowerCase();
-      if (!host.startsWith('app.') && (view === 'internal' || view === 'vet')) {
-        window.location.href = buildAppSystemUrl(view, protocolCode);
+      if (view === 'internal' && !host.startsWith('adm.')) {
+        window.location.href = buildAppSystemUrl('internal', protocolCode);
         return;
       }
-      if (host.startsWith('app.') && view === 'landing') {
+      if (view === 'vet' && !host.startsWith('app.')) {
+        window.location.href = buildAppSystemUrl('vet', protocolCode);
+        return;
+      }
+      if (view === 'landing' && (host.startsWith('app.') || host.startsWith('adm.'))) {
         window.location.href = DOMAINS.PUBLIC_URL;
         return;
       }
     }
 
     const nextDomain: VetLifeDomainMode =
-      view === 'internal' || view === 'vet' || view === 'login'
+      view === 'internal' || view === 'login'
+        ? 'adm'
+        : view === 'vet'
         ? 'app'
         : view === 'landing' || view === 'tutor'
         ? 'www'
@@ -152,25 +158,34 @@ export const App: React.FC = () => {
   };
 
   const handleAuthSuccess = (targetView: 'internal' | 'vet') => {
+    const nextDomain: VetLifeDomainMode = targetView === 'internal' ? 'adm' : 'app';
     setAuthRevision((r) => r + 1);
-    setDomainMode('app');
+    setDomainMode(nextDomain);
     setCurrentView(targetView);
-    syncBrowserUrl('app', targetView);
+    syncBrowserUrl(nextDomain, targetView);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleAuthLogout = (scope: 'internal' | 'vet') => {
     api.logout();
     setAuthRevision((r) => r + 1);
+    const nextDomain: VetLifeDomainMode = scope === 'internal' ? 'adm' : 'app';
     const nextView: AppView = scope === 'internal' ? 'login' : 'vet';
-    setDomainMode('app');
+    setDomainMode(nextDomain);
     setCurrentView(nextView);
-    syncBrowserUrl('app', nextView);
+    syncBrowserUrl(nextDomain, nextView);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleScrollToSection = (sectionId: string) => {
     setMobileMenuOpen(false);
+    if (isProductionCustomDomain()) {
+      const host = window.location.hostname.toLowerCase();
+      if (host.startsWith('app.') || host.startsWith('adm.')) {
+        window.location.href = `${DOMAINS.PUBLIC_URL}/#${sectionId}`;
+        return;
+      }
+    }
     if (currentView !== 'landing' || domainMode !== 'www') {
       setDomainMode('www');
       setCurrentView('landing');
