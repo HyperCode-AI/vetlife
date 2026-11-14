@@ -33,19 +33,11 @@ export function createInitialSeedState(): SeedDatabaseState {
   const users: User[] = [
     {
       id: 'usr-admin-001',
-      name: 'Dra. Helena Albuquerque (Diretora Admin)',
+      name: 'Admin',
       email: 'admin@vetlifelab.com.br',
-      password_hash: 'Admin@2026',
+      password_hash: 'VetLifeL@b2026',
       role: 'admin',
       created_at: '2026-01-02T08:00:00.000Z',
-    },
-    {
-      id: 'usr-biomed-001',
-      name: 'Dr. Rafael Nogueira (Biomédico Responsável CRBM-1 29410)',
-      email: 'biomedico@vetlifelab.com.br',
-      password_hash: 'Bio@2026',
-      role: 'biomedical',
-      created_at: '2026-01-02T08:30:00.000Z',
     },
   ];
 

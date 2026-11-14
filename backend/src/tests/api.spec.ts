@@ -131,18 +131,31 @@ async function runIntegrationTests(): Promise<void> {
   assert.strictEqual(health.json.success, true);
   console.log('✅ [1/10] Healthcheck operacional');
 
-  // 2. Auth Interno (Admin & Biomédico)
+  // 2. Auth Interno (Admin & Biomédico criado para teste)
   const adminLogin = await invokeApp('POST', '/auth/login', {
     email: 'admin@vetlifelab.com.br',
-    password: 'admin123',
+    password: 'VetLifeL@b2026',
   });
   assert.strictEqual(adminLogin.status, 200);
   const adminToken: string = adminLogin.json.token;
   assert.ok(adminToken, 'Token Admin deve ser emitido');
 
+  const createBioUser = await invokeApp(
+    'POST',
+    '/users',
+    {
+      name: 'Biomédico Teste',
+      email: 'biomedico.teste@vetlifelab.com.br',
+      password: 'BioTest@2026',
+      role: 'biomedical',
+    },
+    adminToken
+  );
+  assert.strictEqual(createBioUser.status, 201);
+
   const biomedLogin = await invokeApp('POST', '/auth/login', {
-    email: 'biomedico@vetlifelab.com.br',
-    password: 'bio123',
+    email: 'biomedico.teste@vetlifelab.com.br',
+    password: 'BioTest@2026',
   });
   assert.strictEqual(biomedLogin.status, 200);
   const biomedToken: string = biomedLogin.json.token;

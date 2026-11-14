@@ -23,12 +23,10 @@ TRUNCATE TABLE
 RESTART IDENTITY CASCADE;
 
 -- =============================================================================
--- 1. USUÁRIOS INTERNOS (Admin e Biomédico — RN-01)
+-- 1. USUÁRIO PADRÃO ÚNICO (Admin — RN-01)
 -- =============================================================================
 INSERT INTO public.users (id, name, email, password_hash, role, created_at) VALUES
-    ('11111111-1111-4111-8111-111111111101', 'Dr. Ricardo Mendes (Diretor Admin)', 'admin@vetlifelab.com.br', crypt('admin123', gen_salt('bf')), 'admin', NOW() - INTERVAL '90 days'),
-    ('11111111-1111-4111-8111-111111111102', 'Dra. Camila Torres (Biomédica CRBM-14502)', 'biomedico@vetlifelab.com.br', crypt('biomed123', gen_salt('bf')), 'biomedical', NOW() - INTERVAL '60 days'),
-    ('11111111-1111-4111-8111-111111111103', 'Dr. Lucas Andrade (Biomédico Plantonista)', 'biomed@vetlifelab.com.br', crypt('bio123', gen_salt('bf')), 'biomedical', NOW() - INTERVAL '45 days');
+    ('11111111-1111-4111-8111-111111111101', 'Admin', 'admin@vetlifelab.com.br', crypt('VetLifeL@b2026', gen_salt('bf')), 'admin', NOW() - INTERVAL '90 days');
 
 -- =============================================================================
 -- 2. MODELOS DE LAUDOS (HU-05)

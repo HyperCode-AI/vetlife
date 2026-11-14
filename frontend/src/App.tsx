@@ -693,8 +693,8 @@ export const App: React.FC = () => {
                 VetLife Laboratório de Análises Clínicas Veterinárias
               </div>
               <div className="text-[#5b6675] text-[12px]">
-                Praça Comendador José Honório, nº 5 - Centro, São Sebastião do Paraíso - MG,
-                37950-000 • WhatsApp (16) 99621-2898
+                R. La Salles, 424 - Mocoquinha, São Sebastião do Paraíso - MG, 37950-000 •
+                Recepção/Técnico: (35) 98458-1997 • Financeiro: +55 35 98445-1372
               </div>
             </div>
           </div>

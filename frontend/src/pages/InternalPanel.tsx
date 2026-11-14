@@ -636,7 +636,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         setActiveTab('operational');
       }
     } catch (err: any) {
-      setLoginError(err.message || 'Erro ao autenticar.');
+      const msg =
+        err?.message && err.message !== '[object Object]'
+          ? err.message
+          : null;
+      setLoginError(msg || 'Não foi possível autenticar. Verifique seu e-mail e senha.');
     }
   };
 

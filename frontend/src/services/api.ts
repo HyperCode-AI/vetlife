@@ -290,6 +290,59 @@ function isTokenValidAndActive(token: string | null): boolean {
   return true;
 }
 
+function extractErrorMessage(errBody: any, fallback: string, status?: number): string {
+  const clean = (val: unknown): string | null => {
+    if (typeof val !== 'string') return null;
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === '[object Object]') return null;
+    return trimmed;
+  };
+
+  if (errBody && typeof errBody === 'object') {
+    const directMsg = clean(errBody.message);
+    if (directMsg) return directMsg;
+
+    const directErr = clean(errBody.error);
+    if (directErr) return directErr;
+
+    if (errBody.error && typeof errBody.error === 'object') {
+      const nestedMsg = clean(errBody.error.message);
+      const firstDetail = Array.isArray(errBody.error.details) ? errBody.error.details[0] : null;
+      const detailText =
+        firstDetail && typeof firstDetail === 'object' && clean(firstDetail.message)
+          ? firstDetail.field
+            ? `${firstDetail.field}: ${firstDetail.message}`
+            : String(firstDetail.message)
+          : null;
+
+      if (nestedMsg && detailText && !nestedMsg.includes(detailText)) {
+        return `${nestedMsg} (${detailText})`;
+      }
+      if (nestedMsg) return nestedMsg;
+      if (detailText) return detailText;
+    }
+  }
+
+  switch (status) {
+    case 400:
+      return 'Dados inválidos na solicitação. Verifique os campos preenchidos.';
+    case 401:
+      return 'Sessão expirada ou credenciais inválidas. Faça login novamente.';
+    case 403:
+      return 'Acesso negado. Você não tem permissão para realizar esta ação.';
+    case 404:
+      return 'Registro ou recurso não encontrado no servidor.';
+    case 409:
+      return 'Conflito de dados: já existe um registro com estas informações.';
+    case 500:
+    case 502:
+    case 503:
+      return 'Erro interno no servidor. Tente novamente em instantes.';
+    default:
+      return fallback;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
   const headers: Record<string, string> = {
@@ -313,7 +366,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       }
     }
     const errBody = await response.json().catch(() => ({}));
-    throw new Error(errBody.message || errBody.error || `HTTP ${response.status}`);
+    throw new Error(
+      extractErrorMessage(errBody, `Falha na requisição (HTTP ${response.status}).`, response.status)
+    );
   }
 
   const json = await response.json();
@@ -338,7 +393,11 @@ export const api = {
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(
-          errBody.message || errBody.error || 'E-mail ou senha inválidos. Verifique suas credenciais.'
+          extractErrorMessage(
+            errBody,
+            'E-mail ou senha inválidos. Verifique suas credenciais.',
+            res.status
+          )
         );
       }
       const json = await res.json();
@@ -402,7 +461,11 @@ export const api = {
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(
-          errBody.message || errBody.error || 'Médico Veterinário não localizado ou senha incorreta.'
+          extractErrorMessage(
+            errBody,
+            'Médico Veterinário não localizado ou senha incorreta.',
+            res.status
+          )
         );
       }
       const json = await res.json();

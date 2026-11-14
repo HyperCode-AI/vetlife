@@ -139,36 +139,42 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       dotColor: 'bg-[#6b3fa0]',
       title: 'Hematologia e Biologia Molecular.',
       desc: 'Indicado para Hemograma Completo, Reticulócitos, Pesquisa de Hemoparasitas e PCR. Homogeneizar suavemente por inversão (5 a 8 vezes) após a coleta e manter refrigerado entre 2°C e 8°C.',
+      thermalControl: 'Controle térmico: 2°C a 8°C',
     },
     {
       badge: 'Tampa Amarela • Gel Separador',
       dotColor: 'bg-[#d99b16]',
       title: 'Bioquímica Sérica, Hormônios e Sorologia.',
       desc: 'Indicado para ALT, AST, FA, GGT, Ureia, Creatinina, SDMA, Proteínas e Perfis Hormonais. Aguardar retração do coágulo por 15 a 30 minutos antes de refrigerar.',
+      thermalControl: 'Controle térmico: 2°C a 8°C',
     },
     {
       badge: 'Tampa Cinza • Fluoreto',
       dotColor: 'bg-[#7b8694]',
       title: 'Glicemia Plasmática e Lactato.',
       desc: 'Inibe a glicólise in vitro preservando a concentração real de glicose e lactato. Homogeneizar por inversão suave imediatamente após a punção.',
+      thermalControl: 'Controle térmico: 2°C a 8°C',
     },
     {
       badge: 'Tampa Azul • Citrato 3,2%',
       dotColor: 'bg-[#1d9496]',
       title: 'Coagulograma (TP, TTPA e Fibrinogênio).',
       desc: 'Preencher rigorosamente até a marca indicativa do tubo para manter a proporção exata de 9:1 entre sangue e anticoagulante.',
+      thermalControl: 'Controle térmico: 2°C a 8°C',
     },
     {
       badge: 'Frasco Estéril & Coletor',
       dotColor: 'bg-[#0b2240]',
       title: 'Urinálise, UPC, Urocultura e Parasitológico.',
       desc: 'Amostras de urina por cistocentese e fezes frescas devem ser mantidas sob refrigeração imediata para preservação celular e microbiológica.',
+      thermalControl: 'Controle térmico: 2°C a 8°C',
     },
     {
       badge: 'Lâminas & Formol 10%',
       dotColor: 'bg-[#147a7c]',
       title: 'Citologia e Histopatologia.',
       desc: 'Lâminas secas ao ar em porta-lâminas rígido, enviadas separadas de frascos de formol para evitar artefatos de fixação celular.',
+      thermalControl: 'Controle térmico: Temperatura ambiente',
     },
   ];
 
@@ -213,15 +219,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 Precisão e agilidade em diagnósticos veterinários.
               </h1>
               <p className="text-[17px] sm:text-[19px] leading-[1.5] text-[#5b6675] max-w-xl">
-                Suporte diagnóstico completo para clínicas, médicos veterinários e tutores, com
+                Suporte diagnóstico completo para clínicas e médicos veterinários, com
                 valores de referência calibrados por espécie e laudos digitais em PDF.
               </p>
             </div>
 
-            {/* Bloco de Consulta Rápida de Laudo (Tutor) */}
+            {/* Bloco de Consulta Rápida de Laudo */}
             <div className="bg-white rounded-[24px] p-4 sm:p-5 border border-slate-200/80 shadow-sm space-y-3">
               <div className="text-[12px] font-bold uppercase tracking-wider text-[#0b2240]">
-                Consultar Resultado do Exame (Tutor)
+                Consultar Resultado do Exame
               </div>
               <form
                 onSubmit={handleQuickProtocolSubmit}
@@ -291,7 +297,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   Guia de Tubos e Coleta
                 </button>
                 <a
-                  href="https://wa.me/5516996212898"
+                  href="https://wa.me/5535984581997"
                   target="_blank"
                   rel="noreferrer"
                   className="px-4 py-2 rounded-full bg-[#e8f6f5] text-[#147a7c] hover:bg-[#1d9496] hover:text-white text-[13px] font-semibold transition inline-flex items-center gap-1.5"
@@ -368,7 +374,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             <div className="p-6 rounded-[22px] bg-[#f5f5f7]">
               <div className="font-display text-[32px] font-bold text-[#0b2240]">100% PDF</div>
               <div className="text-[13px] text-[#5b6675] mt-1">
-                Laudos digitais completos com acesso rápido para veterinários e tutores
+                Laudos digitais completos com acesso rápido para clínicas e médicos veterinários
               </div>
             </div>
           </div>
@@ -403,7 +409,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   Dra. Kerollyn Isabela Macedo Passos Silva
                 </div>
                 <div className="text-[12px] text-[#7fdbea]">
-                  Responsável Técnica & Fundadora • Biomédica Patologista Clínica
+                  Fundadora & Direção Laboratorial • Biomédica Patologista Clínica
                 </div>
               </div>
             </div>
@@ -437,7 +443,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           <div className="lg:col-span-7 space-y-6">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#e8f6f5] text-[#147a7c] text-[12px] font-bold uppercase tracking-wider">
               <Award className="w-4 h-4" />
-              Responsável Técnica & Fundadora
+              Direção Laboratorial & Fundadora
             </div>
 
             <div className="space-y-2">
@@ -489,6 +495,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Responsável Técnica (RT) — Dra. Maysa Barbosa de Almeida */}
+            <div className="p-5 rounded-2xl bg-[#f5f5f7] border border-slate-200/80 space-y-2">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#e8f6f5] text-[#147a7c] text-[11px] font-bold uppercase tracking-wider">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Responsável Técnica (RT)
+              </div>
+              <div className="text-[17px] font-bold text-[#0b2240]">
+                Dra. Maysa Barbosa de Almeida
+              </div>
+              <div className="text-[13px] font-semibold text-[#1d9496]">
+                Médica Veterinária • Responsável Técnica & Leitura de Citologias
+              </div>
+              <p className="text-[14px] leading-[1.55] text-[#5b6675]">
+                Médica Veterinária e Responsável Técnica do laboratório, a{' '}
+                <strong className="text-[#0b2240] font-semibold">
+                  Dra. Maysa Barbosa de Almeida
+                </strong>{' '}
+                também realiza a leitura e interpretação especializada das citologias, garantindo
+                rigor diagnóstico em cada exame citopatológico.
+              </p>
             </div>
           </div>
         </div>
@@ -583,7 +611,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
               </div>
               <div className="text-[12px] text-[#147a7c] font-semibold flex items-center gap-1.5 pt-2 border-t border-slate-100">
                 <TestTube2 className="w-3.5 h-3.5" />
-                Controle térmico: 2°C a 8°C
+                {item.thermalControl}
               </div>
             </div>
           ))}
@@ -613,9 +641,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
             <div className="space-y-1.5 p-5 rounded-2xl bg-[#f5f5f7] text-[13px] text-[#5b6675]">
               <div className="text-[#0b2240] font-bold">Central de Atendimento VetLife</div>
-              <div>Praça Comendador José Honório, nº 5 - Centro</div>
+              <div>R. La Salles, 424 - Mocoquinha</div>
               <div>São Sebastião do Paraíso - MG, 37950-000</div>
-              <div className="text-[#147a7c] font-semibold pt-1">WhatsApp: (16) 99621-2898</div>
+              <div className="text-[#147a7c] font-semibold pt-1">
+                Recepção & Área Técnica: (35) 98458-1997
+              </div>
+              <div className="text-[#0b2240] font-medium">
+                Financeiro (Orçamentos/Pagamentos): +55 35 98445-1372
+              </div>
             </div>
           </div>
 
@@ -653,7 +686,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                     required
                     value={collectionForm.phone}
                     onChange={(e) => setCollectionForm({ ...collectionForm, phone: e.target.value })}
-                    placeholder="(16) 99621-2898"
+                    placeholder="(35) 98458-1997"
                     className="w-full px-4 py-3 rounded-2xl bg-[#f5f5f7] text-[#0b2240] placeholder:text-[#7b8694] text-[15px] focus:outline-none focus:ring-2 focus:ring-[#1d9496]"
                   />
                 </div>
@@ -745,12 +778,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </h2>
           </div>
           <a
-            href="https://wa.me/5516996212898"
+            href="https://wa.me/5535984581997"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 text-[16px] font-semibold text-[#147a7c] hover:opacity-80 transition"
           >
-            Falar no WhatsApp (16) 99621-2898
+            Falar no WhatsApp (35) 98458-1997
             <ChevronRight className="w-4 h-4" />
           </a>
         </div>
@@ -762,7 +795,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </div>
             <h3 className="font-display text-[20px] font-bold text-[#0b2240]">Endereço.</h3>
             <p className="text-[16px] leading-[1.5] text-[#5b6675]">
-              Praça Comendador José Honório, número 5 — Centro
+              R. La Salles, 424 — Mocoquinha
               <br />
               São Sebastião do Paraíso — MG, 37950-000
             </p>
@@ -775,18 +808,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             <h3 className="font-display text-[20px] font-bold text-[#0b2240]">
               Telefone & WhatsApp.
             </h3>
-            <p className="text-[16px] leading-[1.5] text-[#5b6675]">
-              Atendimento direto a clínicas veterinárias e tutores:
-              <br />
-              <a
-                href="https://wa.me/5516996212898"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[#147a7c] font-semibold"
-              >
-                (16) 99621-2898
-              </a>
-            </p>
+            <div className="text-[15px] leading-[1.6] text-[#5b6675] space-y-2">
+              <div>
+                Recepção e Área Técnica:
+                <br />
+                <a
+                  href="https://wa.me/5535984581997"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#147a7c] font-semibold hover:underline"
+                >
+                  (35) 98458-1997
+                </a>
+              </div>
+              <div>
+                Financeiro (Orçamentos e Pagamentos):
+                <br />
+                <a
+                  href="https://wa.me/5535984451372"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#0b2240] font-semibold hover:underline"
+                >
+                  +55 35 98445-1372
+                </a>
+              </div>
+            </div>
           </div>
 
           <div className="bg-white rounded-[28px] p-7 border border-slate-200/70 space-y-4">
@@ -796,8 +843,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             <h3 className="font-display text-[20px] font-bold text-[#0b2240]">
               Atendimento & Laudos.
             </h3>
-            <p className="text-[16px] leading-[1.5] text-[#5b6675]">
-              Segunda a Sexta das 08h às 18h • Sábados das 08h às 12h.
+            <p className="text-[15px] leading-[1.6] text-[#5b6675]">
+              Segunda a Sexta: <strong className="text-[#0b2240]">09:00 - 17:00 hrs</strong>
+              <br />
+              Sábado: <strong className="text-[#0b2240]">09:00 - 11:00 hrs</strong>
+              <br />
+              <span className="text-[#147a7c] font-semibold">
+                Plantões em qualquer horário que precisar.
+              </span>
               <br />
               Consulta de laudos online 24h.
             </p>

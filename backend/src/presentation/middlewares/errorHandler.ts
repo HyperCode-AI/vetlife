@@ -14,11 +14,18 @@ export function errorHandler(
       message: issue.message,
     }));
 
+    const firstIssue = formattedIssues[0];
+    const detailedMessage = firstIssue
+      ? firstIssue.field
+        ? `Campo "${firstIssue.field}": ${firstIssue.message}`
+        : firstIssue.message
+      : 'Dados de entrada inválidos. Verifique os campos obrigatórios.';
+
     res.status(400).json({
       success: false,
       error: {
         code: 'VALIDATION_ERROR',
-        message: formattedIssues[0]?.message || 'Dados de entrada inválidos.',
+        message: detailedMessage,
         details: formattedIssues,
       },
     });

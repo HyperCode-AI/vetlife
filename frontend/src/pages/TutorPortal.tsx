@@ -216,13 +216,15 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px]">
             <div className="bg-[#f5f5f7] p-3.5 rounded-2xl space-y-0.5">
               <div className="text-[10px] font-bold text-[#86868b] uppercase tracking-wider">
-                Paciente & Tutor
+                Paciente
               </div>
               <div className="font-semibold text-[#1d1d1f]">
                 {order.patient?.name} • {order.patient?.gender === 'F' ? 'Fêmea' : 'Macho'} •{' '}
                 {formatAgeLabel(order.patient?.age_days, order.patient?.birth_date)}
               </div>
-              <div className="text-[#707070]">Tutor(a): {order.patient?.tutor_name}</div>
+              {order.patient?.tutor_name && (
+                <div className="text-[#707070]">Responsável: {order.patient.tutor_name}</div>
+              )}
             </div>
 
             <div className="bg-[#f5f5f7] p-3.5 rounded-2xl space-y-0.5">

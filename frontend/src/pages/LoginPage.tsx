@@ -43,8 +43,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         onSuccess('vet');
       }
     } catch (err: any) {
+      const msg =
+        err?.message && err.message !== '[object Object]'
+          ? err.message
+          : null;
       setError(
-        err?.message ||
+        msg ||
           (isLab
             ? 'Falha na autenticação laboratorial. Verifique seu e-mail e senha.'
             : 'Falha na autenticação. Verifique seu e-mail e senha de acesso.')

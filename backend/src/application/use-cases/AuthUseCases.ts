@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { env } from '../../config/env';
 import { AuthRole, SafeUser, Vet } from '../../domain/entities';
@@ -16,35 +17,36 @@ export interface JwtTokenPayload {
 export class AuthUseCases {
   constructor(private readonly repo: IVetLifeRepository) {}
 
+  private verifyPassword(candidate: string, storedHash?: string | null): boolean {
+    if (!storedHash) return false;
+    if (/^\$2[aby]\$\d{2}\$/.test(storedHash)) {
+      return bcrypt.compareSync(candidate, storedHash);
+    }
+    return storedHash === candidate;
+  }
+
   public async loginInternal(email: string, password: string): Promise<{
     token: string;
     user: SafeUser;
   }> {
     if (!email || !password) {
-      throw new ValidationError('E-mail e senha são obrigatórios.');
+      throw new ValidationError('Informe o e-mail corporativo e a senha para entrar.');
     }
 
     const user = await this.repo.findUserByEmail(email);
     if (!user) {
-      throw new UnauthorizedError('Usuário não encontrado ou credenciais inválidas.');
+      throw new UnauthorizedError(
+        'Nenhuma conta encontrada com este e-mail. Verifique se o endereço foi digitado corretamente.'
+      );
     }
 
-    const isSeededDemoUser =
-      user.id === 'usr-admin-001' || user.id === 'usr-biomed-001';
-    const acceptedAdminPasswords = isSeededDemoUser
-      ? ['admin123', 'Admin@2026', 'VetLife@2026', user.password_hash]
-      : [user.password_hash];
-    const acceptedBioPasswords = isSeededDemoUser
-      ? ['bio123', 'biomed123', 'Bio@2026', 'VetLife@2026', user.password_hash]
-      : [user.password_hash];
-
-    const isValidPassword =
-      user.role === 'admin'
-        ? acceptedAdminPasswords.includes(password.trim())
-        : acceptedBioPasswords.includes(password.trim());
+    const trimmedPassword = password.trim();
+    const isValidPassword = this.verifyPassword(trimmedPassword, user.password_hash);
 
     if (!isValidPassword) {
-      throw new UnauthorizedError('Senha incorreta.');
+      throw new UnauthorizedError(
+        'Senha incorreta para este usuário. Confira maiúsculas, minúsculas e caracteres especiais.'
+      );
     }
 
     const safeUser: SafeUser = {
@@ -85,7 +87,7 @@ export class AuthUseCases {
     if (byEmail) {
       if (byEmail.password_hash) {
         if (
-          byEmail.password_hash === secret ||
+          this.verifyPassword(secret, byEmail.password_hash) ||
           (byEmail.crmv && byEmail.crmv.toLowerCase() === secret.toLowerCase())
         ) {
           vet = byEmail;
@@ -106,7 +108,7 @@ export class AuthUseCases {
 
     if (!vet) {
       throw new UnauthorizedError(
-        'Médico Veterinário não localizado ou senha incorreta.'
+        'Médico Veterinário não encontrado para este e-mail ou senha/CRMV incorretos.'
       );
     }
 
