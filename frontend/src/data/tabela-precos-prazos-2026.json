@@ -1,0 +1,1757 @@
+[
+  {
+    "code": "000",
+    "name": "PAINEL CHECK UP 1 – Hemograma, ALT, fosfatase alcalina, creatinina, ureia, proteína total, albumina e globulina",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 83.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "001",
+    "name": "PAINEL CHECK UP 2 – Hemograma, ALT, fosfatase alcalina, creatinina, ureia, proteína total, albumina, globulina, glicose e urina rotina",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 90.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + tubo roxo com EDTA + tubo cinza com fluoreto + urina em frasco estéril"
+  },
+  {
+    "code": "002",
+    "name": "PAINEL CHECK UP GERAL – Hemograma, ALT, AST, GGT, FA, creatinina, ureia, proteínas, amilase, lipase, glicose, eletrólitos e lipídios",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 149.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + tubo roxo com EDTA + tubo cinza com fluoreto"
+  },
+  {
+    "code": "004",
+    "name": "PAINEL HEPÁTICO – Hemograma, ALT, AST, fosfatase alcalina, bilirrubina total e frações, GGT, proteína total, albumina, globulina, colesterol total e frações",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 149.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "005",
+    "name": "PAINEL RENAL BÁSICO – Hemograma, creatinina, ureia, fósforo e urina rotina",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 61.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + tubo roxo com EDTA + urina em frasco estéril"
+  },
+  {
+    "code": "006",
+    "name": "PAINEL RENAL COMPLETO – Hemograma, creatinina, ureia, fósforo, urina rotina, UPC e SDMA",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 180.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + tubo roxo com EDTA + urina em frasco estéril"
+  },
+  {
+    "code": "008",
+    "name": "PAINEL 4DX PLUS – Hemograma, ALT, fosfatase alcalina, creatinina, ureia, proteína total, albumina, globulina e 4Dx Plus",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 179.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "009",
+    "name": "PAINEL EHRLICHIA – Hemograma, ALT, fosfatase alcalina, creatinina, ureia, proteína total, albumina, globulina e teste rápido de Ehrlichia canis (anticorpo)",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 137.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "010",
+    "name": "PAINEL FIV/FELV – Hemograma, ALT, fosfatase alcalina, creatinina, ureia, proteína total, albumina, globulina e teste rápido de FIV (anticorpo) e FeLV (antígeno)",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 168.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "011",
+    "name": "PAINEL FILHOTE CANINO – Hemograma, teste rápido de cinomose (anticorpo), parvovírus (antígeno) e giárdia (antígeno)",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 158.00,
+    "material": "Sangue em tubo tampa amarela + tubo roxo com EDTA + fezes + secreção ocular ou nasal"
+  },
+  {
+    "code": "012",
+    "name": "PAINEL FILHOTE FELINO – Hemograma, teste rápido FIV (anticorpo) e FELV (antígeno) e Giardia (antígeno)",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 158.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA + fezes"
+  },
+  {
+    "code": "013",
+    "name": "PAINEL GERIÁTRICO – Hemograma, creatinina, ureia, ALT, glicose, urina rotina e T4 livre (quimioluminescência)",
+    "section": "Painéis e Check-ups",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 139.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + tubo roxo com EDTA + tubo cinza com fluoreto"
+  },
+  {
+    "code": "014",
+    "name": "PAINEL ELETROLÍTICO – Sódio, potássio, cloro e cálcio iônico",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 50.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "015",
+    "name": "PAINEL ELETROLÍTICO COMPLETO – Sódio, potássio, cloro, cálcio iônico, fósforo e magnésio",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 65.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "016",
+    "name": "PAINEL COAGULOGRAMA – Tempo de protrombina (TP), tempo de tromboplastina parcial ativada (TTPA) e fibrinogênio",
+    "section": "Hematologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 155.00,
+    "material": "Sangue em tubo de tampa azul com citrato de sódio"
+  },
+  {
+    "code": "017",
+    "name": "PAINEL ALÉRGENOS AMBIENTAIS E ALIMENTARES – Canino ou felino",
+    "section": "Imunologia e Alergia",
+    "delivery_days": 10,
+    "delivery_time_label": "10 dias úteis",
+    "price": 1731.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "018",
+    "name": "PAINEL DIABETES MELLITUS – Hemograma, frutosamina, glicose, glicohemoglobina, urina rotina, colesterol, fosfatase alcalina",
+    "section": "Endocrinologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 130.00,
+    "material": "Sangue em tubo tampa amarela + tubo roxo EDTA + tubo cinza fluoreto + urina em frasco estéril"
+  },
+  {
+    "code": "019",
+    "name": "PAINEL SOROLOGIA LEISHMANIOSE CANINA OU FELINA – Elisa + Rifi diluição total",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 7,
+    "delivery_time_label": "5 dias úteis para cães e 7 dias úteis para gatos",
+    "price": 103.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "020",
+    "name": "PAINEL SOROLOGIA – Cinomose IgG, parvovirose IgG e hepatite infecciosa canina IgG",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 228.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "021",
+    "name": "PAINEL SOROLOGIA DOENÇAS TRANSMITIDAS PELO CARRAPATO – Ehrlichia IgG, Ehrlichia IgM, Babesia IgG e Babesia IgM",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 237.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "022",
+    "name": "PAINEL CORTISOL 2 DOSAGENS (IMUNOFLUORESCÊNCIA) – Basal e pós dexametasona ou ACTH",
+    "section": "Endocrinologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 143.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "023",
+    "name": "PAINEL CORTISOL 3 DOSAGENS (IMUNOFLUORESCÊNCIA) – Basal e duas dosagens pós dexametasona ou ACTH",
+    "section": "Endocrinologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 198.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "024",
+    "name": "PAINEL HIPOADRENOCORTICISMO COMPLETO – Hemograma, cortisol basal, ureia, creatinina, glicose, proteína total e frações, sódio e potássio",
+    "section": "Endocrinologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 154.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "025",
+    "name": "PAINEL HIPOADRENOCORTICISMO BÁSICO – Hemograma, cortisol basal, ureia, sódio e potássio",
+    "section": "Endocrinologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 127.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "026",
+    "name": "PAINEL TIREOIDEANO CANINO BÁSICO – TSH e T4 total (imunofluorescência)",
+    "section": "Endocrinologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 127.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "027",
+    "name": "PAINEL TIREOIDEANO FELINO BÁSICO – TSH (quimioluminescência) e T4 total (imunofluorescência)",
+    "section": "Endocrinologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 127.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "028",
+    "name": "PAINEL TIREOIDEANO COMPLETO – TSH, T4 total e T4 livre",
+    "section": "Endocrinologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "029",
+    "name": "PAINEL PCR DOENÇAS TRANSMITIDAS PELO CARRAPATO – Anaplasma spp, Babesia spp e Ehrlichia spp",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 314.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "030",
+    "name": "PAINEL PCR HEMOPARASITAS CANINO COMPLETO (7 AGENTES) – Anaplasma, Babesia, Ehrlichia spp/canis, Hepatozoon, Leishmania e Mycoplasma haemocanis",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 473.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "031",
+    "name": "PAINEL PCR HEMOPARASITAS CANINO (5 AGENTES) – Anaplasma spp, Babesia spp, Ehrlichia spp, Ehrlichia canis e Leishmania spp",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 352.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "032",
+    "name": "PAINEL PCR NEUROLÓGICO CANINO COMPLETO – Babesia spp, Ehrlichia canis, Cryptococcus spp, Neospora caninum, Toxoplasma gondii e vírus da cinomose",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 525.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA + urina em frasco estéril"
+  },
+  {
+    "code": "033",
+    "name": "PAINEL PCR NEUROLÓGICO CANINO BÁSICO – Cryptococcus spp, Neospora caninum, Toxoplasma gondii e vírus da cinomose",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 422.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA + urina em frasco estéril"
+  },
+  {
+    "code": "034",
+    "name": "PAINEL PCR DIARREIA CANINO 1 – Circovírus canino, Cryptosporidium spp, Giardia spp e Parvovírus canino",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 422.00,
+    "material": "Fezes em frasco coletor universal ou swab simples"
+  },
+  {
+    "code": "035",
+    "name": "PAINEL PCR DIARREIA CANINO 2 – Coronavírus entérico canino, Giardia spp, Parvovírus canino, Vírus da Cinomose",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 423.00,
+    "material": "Fezes em frasco coletor universal ou swab simples"
+  },
+  {
+    "code": "036",
+    "name": "PAINEL PCR DIARREIA FILHOTE – Vírus da cinomose, Parvovírus canino e Adenovírus canino 1",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 383.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA + urina em frasco estéril + Fezes em coletor universal"
+  },
+  {
+    "code": "037",
+    "name": "PAINEL RESPIRATÓRIO CANINO COMPLETO – Adenovírus 2, Bordetella, Coronavírus, Herpesvírus 1, Mycoplasma, Streptococcus, Cinomose, Influenza e Parainfluenza",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 822.00,
+    "material": "Swabs de cavidade nasal e/ou orofaringe e/ou swabs de cartilagem oculonasal"
+  },
+  {
+    "code": "038",
+    "name": "PAINEL PCR RESPIRATÓRIO CANINO BÁSICO – Vírus da cinomose, Adenovírus canino 2 e Bordetella bronchiseptica",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 382.00,
+    "material": "Swab de orofaringe + sangue total em EDTA + urina em frasco estéril"
+  },
+  {
+    "code": "041",
+    "name": "PAINEL PCR RETROVÍRUS FELINO – FIV e FeLV",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 242.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "042",
+    "name": "PAINEL PCR ANEMIA FELINO BÁSICO – FIV, FeLV e Mycoplasma spp (hemotrópico felino/haemofelis)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 279.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "043",
+    "name": "PAINEL PCR ANEMIA FELINO COMPLETO – FIV, FeLV, Mycoplasma spp, Bartonella spp e Coronavírus felino",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 383.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "044",
+    "name": "PAINEL PCR RESPIRATÓRIO FELINO BÁSICO – Bordetella bronchiseptica, Calicivírus felino e Herpesvírus felino 1",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 383.00,
+    "material": "Swab de orofaringe"
+  },
+  {
+    "code": "045",
+    "name": "PAINEL PCR RESPIRATÓRIO FELINO COMPLETO – Bordetella bronchiseptica, Calicivírus felino, Chlamydophila felis, Herpesvírus felino 1 e Mycoplasma spp",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 579.00,
+    "material": "Swab de orofaringe"
+  },
+  {
+    "code": "046",
+    "name": "PAINEL PCR DIARREIA FELINO COMPLETO – Coronavírus felino, Cryptosporidium spp, Giardia spp, Panleucopenia felina, Toxoplasma gondii e Trichomonas spp",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 579.00,
+    "material": "Fezes em frasco coletor universal ou swab simples"
+  },
+  {
+    "code": "047",
+    "name": "PAINEL PCR DIARREIA FELINO BÁSICO – Cryptosporidium spp, Giardia spp e Trichomonas spp",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 383.00,
+    "material": "Fezes em frasco coletor universal ou swab simples"
+  },
+  {
+    "code": "049",
+    "name": "PAINEL PCR NEUROLÓGICO FELINO COMPLETO – Coronavírus felino, Cryptococcus spp, Panleucopenia felina, Toxoplasma gondii, FIV e FeLV (DNA proviral)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 556.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "050",
+    "name": "PAINEL PCR NEUROLÓGICO FELINO BÁSICO – Coronavírus felino, Cryptococcus spp e Toxoplasma gondii",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 383.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "052",
+    "name": "CONTAGEM DE PLAQUETAS",
+    "section": "Hematologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 23.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "053",
+    "name": "CONTAGEM DE RETICULÓCITOS",
+    "section": "Hematologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 29.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "054",
+    "name": "COOMBS DIRETO – Anemia hemolítica imunomediada canina",
+    "section": "Hematologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 412.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "055",
+    "name": "FIBRINOGÊNIO",
+    "section": "Hematologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 40.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "056",
+    "name": "HEMATÓCRITO",
+    "section": "Hematologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 25.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "057",
+    "name": "HEMOGRAMA COMPLETO",
+    "section": "Hematologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 34.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "058",
+    "name": "MIELOGRAMA",
+    "section": "Hematologia",
+    "delivery_days": 7,
+    "delivery_time_label": "7 dias úteis",
+    "price": 151.00,
+    "material": "Punção de medula óssea em EDTA + 5 lâminas de esfregaço ou squash"
+  },
+  {
+    "code": "059",
+    "name": "PESQUISA DE HEMATOZOÁRIOS",
+    "section": "Hematologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 30.00,
+    "material": "Sangue de ponta de orelha ou cauda (2 lâminas)"
+  },
+  {
+    "code": "060",
+    "name": "TESTE DE COMPATIBILIDADE OU REAÇÃO CRUZADA",
+    "section": "Hematologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 66.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA (amostra doador e receptor)"
+  },
+  {
+    "code": "061",
+    "name": "TESTE DE AGLUTINAÇÃO EM SOLUÇÃO SALINA",
+    "section": "Hematologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 31.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "062",
+    "name": "TIPAGEM SANGUÍNEA DE CÃES E GATOS",
+    "section": "Hematologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 354.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "063",
+    "name": "ÁCIDO ÚRICO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 30.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "064",
+    "name": "ALBUMINA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 25.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "065",
+    "name": "ALT/TGP",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "066",
+    "name": "AMILASE",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 30.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "067",
+    "name": "AST/TGO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "068",
+    "name": "BILIRRUBINA TOTAL",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 28.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "069",
+    "name": "BILIRRUBINA TOTAL E FRAÇÕES",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 38.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "070",
+    "name": "CÁLCIO TOTAL",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "071",
+    "name": "CÁLCIO IÔNICO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 35.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "072",
+    "name": "CK/CPK",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "074",
+    "name": "CLORO/CLORETO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 35.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "075",
+    "name": "COLESTEROL TOTAL",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "076",
+    "name": "COLESTEROL TOTAL E FRAÇÕES",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 50.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "077",
+    "name": "COLINESTERASE",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 10,
+    "delivery_time_label": "10 dias úteis",
+    "price": 52.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "078",
+    "name": "CREATININA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "079",
+    "name": "FERRO SÉRICO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 49.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "080",
+    "name": "FOSFATASE ALCALINA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "081",
+    "name": "FOSFATASE ALCALINA E FRAÇÕES CANINA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 18,
+    "delivery_time_label": "18 dias úteis",
+    "price": 392.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "082",
+    "name": "FÓSFORO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 28.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "083",
+    "name": "FRUTOSAMINA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 49.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "084",
+    "name": "GGT/GAMA GT",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "085",
+    "name": "GLICOSE/GLICEMIA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa cinza com fluoreto"
+  },
+  {
+    "code": "086",
+    "name": "GLICOHEMOGLOBINA/HEMOGLOBINA GLICOSADA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 64.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "088",
+    "name": "LIPASE",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 37.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "089",
+    "name": "MAGNÉSIO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 35.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "090",
+    "name": "POTÁSSIO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 35.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "091",
+    "name": "PROTEÍNA TOTAL",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "092",
+    "name": "PROTEÍNA TOTAL E FRAÇÕES",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 37.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "093",
+    "name": "SÓDIO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 35.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "094",
+    "name": "TRIGLICÉRIDES",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "095",
+    "name": "TRIPSINOGÊNIO/TRIPSINA IMUNORREATIVA - CANINO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 6,
+    "delivery_time_label": "6 dias úteis",
+    "price": 250.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "096",
+    "name": "TRIPSINOGÊNIO/TRIPSINA IMUNORREATIVA - FELINO",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 33,
+    "delivery_time_label": "33 dias úteis",
+    "price": 2852.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "097",
+    "name": "URÉIA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 26.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "098",
+    "name": "VITAMINA A/RETINOL",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 11,
+    "delivery_time_label": "11 dias úteis",
+    "price": 392.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "099",
+    "name": "VITAMINA B12/CIANOCOBALAMINA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 54.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "101",
+    "name": "LIPASE IMUNORREATIVA CANINA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 176.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "102",
+    "name": "LIPASE IMUNORREATIVA FELINA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 186.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "103",
+    "name": "SDMA",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 179.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "104",
+    "name": "ANÁLISE DE CÁLCULO URINÁRIO",
+    "section": "Urinálise",
+    "delivery_days": 2,
+    "delivery_time_label": "2 dias úteis",
+    "price": 91.00,
+    "material": "Cálculo urinário (ao menos 1 grama)"
+  },
+  {
+    "code": "105",
+    "name": "RELAÇÃO CORTISOL:CREATININA (UCORT/C)",
+    "section": "Urinálise",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 138.00,
+    "material": "Urina em frasco estéril (ao menos 1 mL)"
+  },
+  {
+    "code": "106",
+    "name": "RELAÇÃO PROTEÍNA:CREATININA UP/C",
+    "section": "Urinálise",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 46.00,
+    "material": "Urina em frasco estéril (ao menos 1 mL)"
+  },
+  {
+    "code": "107",
+    "name": "URINA ROTINA",
+    "section": "Urinálise",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 36.00,
+    "material": "Urina em frasco estéril (ao menos 1 mL)"
+  },
+  {
+    "code": "108",
+    "name": "COPROPARASITOLÓGICO/PARASITOLÓGICO DE FEZES",
+    "section": "Parasitologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 31.00,
+    "material": "Fezes em frasco coletor universal (ao menos 1 grama)"
+  },
+  {
+    "code": "109",
+    "name": "COPROLÓGICO FUNCIONAL",
+    "section": "Parasitologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 122.00,
+    "material": "Fezes em frasco coletor universal (ao menos 10 gramas)"
+  },
+  {
+    "code": "110",
+    "name": "PESQUISA DE SANGUE OCULTO NAS FEZES",
+    "section": "Parasitologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 84.00,
+    "material": "Fezes em frasco coletor universal (ao menos 1 grama)"
+  },
+  {
+    "code": "111",
+    "name": "CINOMOSE – ANTÍGENO - IMUNOCROMATOGRAFIA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 88.00,
+    "material": "Swab de secreção ocular e/ou nasal"
+  },
+  {
+    "code": "113",
+    "name": "EHRLICHIA CANIS – ANTICORPO - IMUNOCROMATOGRAFIA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 88.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "114",
+    "name": "FIV/FELV – ANTICORPO/ANTÍGENO - IMUNOCROMATOGRAFIA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 133.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "115",
+    "name": "GIARDIA LAMBLIA – ANTÍGENO - IMUNOCROMATOGRAFIA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 96.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "116",
+    "name": "LEISHMANIA INFANTUM – ANTICORPO - IMUNOCROMATOGRAFIA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 88.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "117",
+    "name": "PARVOVÍRUS CANINO – ANTÍGENO - IMUNOCROMATOGRAFIA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 90.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "118",
+    "name": "SNAP TEST 4DX PLUS – Ehrlichia, Anaplasma, Lyme e dirofilariose",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 145.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "119",
+    "name": "ANA – FAN – FATOR ANTINUCLEAR/ANTICORPO ANTINUCLEAR",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 7,
+    "delivery_time_label": "7 dias úteis",
+    "price": 214.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "120",
+    "name": "BABESIA IGG - ELISA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 103.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "121",
+    "name": "BABESIA IGM - ELISA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 103.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "122",
+    "name": "BORDETELLA BRONCHISEPTICA – TOSSE DOS CANIS – RIFI",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 57.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "123",
+    "name": "EHRLICHIA IGG - ELISA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 125.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "124",
+    "name": "EHRLICHIA IGM - ELISA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 125.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "125",
+    "name": "ESPOROTRICOSE - ELISA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 388.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "126",
+    "name": "LEISHMANIOSE CANINA - ELISA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 50.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "127",
+    "name": "LEISHMANIOSE CANINA – RIFI DILUIÇÃO TOTAL",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 60.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "128",
+    "name": "LEPTOSPIROSE POR MICROAGLUTINAÇÃO – DILUIÇÃO TOTAL",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 73.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "129",
+    "name": "NEOSPORA CANINUM – RIFI",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 102.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "130",
+    "name": "TESTE ALÉRGICO A SALIVA DE PULGA",
+    "section": "Imunologia e Alergia",
+    "delivery_days": 10,
+    "delivery_time_label": "10 dias úteis",
+    "price": 184.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "131",
+    "name": "TESTE ALÉRGENO PAINEL 24 ALÉRGENOS AMBIENTAIS",
+    "section": "Imunologia e Alergia",
+    "delivery_days": 10,
+    "delivery_time_label": "10 dias úteis",
+    "price": 952.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "132",
+    "name": "TESTE DE REAÇÃO ALIMENTAR CANINA - FOOD REACTION TEST HESKA – CANINO OU FELINO",
+    "section": "Imunologia e Alergia",
+    "delivery_days": 10,
+    "delivery_time_label": "10 dias úteis",
+    "price": 974.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "133",
+    "name": "CHECK UP VACINAL PARA RAIVA",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 10,
+    "delivery_time_label": "10 dias úteis",
+    "price": 409.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "134",
+    "name": "TITULAÇÃO DE ANTICORPOS NEUTRALIZANTES PARA RAIVA – VIAGEM INTERNACIONAL",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 33,
+    "delivery_time_label": "33 dias úteis",
+    "price": 1491.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "135",
+    "name": "SOROLOGIA DE RAIVA – VIAGEM INTERNACIONAL JAPÃO",
+    "section": "Imunologia e Sorologia",
+    "delivery_days": 33,
+    "delivery_time_label": "33 dias úteis",
+    "price": 2192.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "136",
+    "name": "CITOLOGIA PARA PESQUISA DE FUNGOS E BACTÉRIAS (OUVIDO OU PELE)",
+    "section": "Microbiologia e Citologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 30.00,
+    "material": "Lâminas ou swabs com conteúdo dermatológico (2 lâminas ou 2 swabs)"
+  },
+  {
+    "code": "137",
+    "name": "RASPADO PARA PESQUISA DE SARNAS E FUNGOS (RASPADO DE PELE)",
+    "section": "Parasitologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 30.00,
+    "material": "Lâminas com conteúdo dermatológico ou pelos arrancados"
+  },
+  {
+    "code": "138",
+    "name": "COPROCULTURA BACTERIANA COM ANTIBIOGRAMA",
+    "section": "Microbiologia",
+    "delivery_days": 7,
+    "delivery_time_label": "7 dias úteis",
+    "price": 91.00,
+    "material": "Fezes em frasco estéril ou swab com meio Stuart"
+  },
+  {
+    "code": "139",
+    "name": "CULTURA BACTERIANA AERÓBIOS COM ANTIBIOGRAMA",
+    "section": "Microbiologia",
+    "delivery_days": 7,
+    "delivery_time_label": "7 dias úteis",
+    "price": 91.00,
+    "material": "Swab com meio Stuart ou qualquer amostra acondicionada em frasco estéril"
+  },
+  {
+    "code": "140",
+    "name": "CULTURA BACTERIANA AERÓBIOS E ANAERÓBIOS COM ANTIBIOGRAMA",
+    "section": "Microbiologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 205.00,
+    "material": "Swab com meio Stuart para aeróbios e seringa sem ar para anaeróbios"
+  },
+  {
+    "code": "141",
+    "name": "OTOCULTURA BACTERIANA COM ANTIBIOGRAMA",
+    "section": "Microbiologia",
+    "delivery_days": 7,
+    "delivery_time_label": "7 dias úteis",
+    "price": 91.00,
+    "material": "Swab com meio Stuart ou amostra em frasco estéril"
+  },
+  {
+    "code": "143",
+    "name": "UROCULTURA BACTERIANA COM ANTIBIOGRAMA",
+    "section": "Microbiologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 91.00,
+    "material": "Urina em frasco estéril (ao menos 1 mL)"
+  },
+  {
+    "code": "144",
+    "name": "CULTURA COM ANTIBIOGRAMA AUTOMATIZADA QUANTITATIVA – MIC – CONCENTRAÇÃO INIBITÓRIA MÍNIMA",
+    "section": "Microbiologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 207.00,
+    "material": "Swab com meio Stuart ou amostra em frasco estéril"
+  },
+  {
+    "code": "145",
+    "name": "UROCULTURA COM ANTIBIOGRAMA AUTOMATIZADA QUANTITATIVA – MIC – CONCENTRAÇÃO INIBITÓRIA MÍNIMA",
+    "section": "Microbiologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 207.00,
+    "material": "Urina em frasco estéril (ao menos 1 mL)"
+  },
+  {
+    "code": "146",
+    "name": "COLORAÇÃO DE GRAM",
+    "section": "Microbiologia",
+    "delivery_days": 3,
+    "delivery_time_label": "3 dias úteis",
+    "price": 39.00,
+    "material": "Swab simples ou frasco estéril"
+  },
+  {
+    "code": "147",
+    "name": "HEMOCULTURA COM ANTIBIOGRAMA",
+    "section": "Microbiologia",
+    "delivery_days": 10,
+    "delivery_time_label": "10 dias úteis",
+    "price": 148.00,
+    "material": "Sangue em meio específico (Hemocult)"
+  },
+  {
+    "code": "148",
+    "name": "CULTURA FÚNGICA",
+    "section": "Microbiologia",
+    "delivery_days": 20,
+    "delivery_time_label": "20 dias úteis",
+    "price": 79.00,
+    "material": "Conteúdo em swab simples seco ou em frasco estéril"
+  },
+  {
+    "code": "149",
+    "name": "ADENOVÍRUS CANINO 1 (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "150",
+    "name": "ADENOVÍRUS CANINO 2 (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Swab simples nasal, conjuntiva ou de faringe"
+  },
+  {
+    "code": "151",
+    "name": "ANAPLASMA PLATYS (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "152",
+    "name": "BABESIA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "153",
+    "name": "BARTONELLA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "154",
+    "name": "BORDETELLA BRONCHISEPTICA (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Swab simples de orofaringe; lavado traqueal ou sangue total em EDTA"
+  },
+  {
+    "code": "155",
+    "name": "BRUCELLA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Secreção vaginal, sêmen ou sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "156",
+    "name": "CALICIVÍRUS FELINO (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 220.00,
+    "material": "Swab simples nasal, conjuntival ou de orofaringe; sangue total em EDTA"
+  },
+  {
+    "code": "157",
+    "name": "CLOSTRIDIUM PERFRINGENS CÃES OU GATOS (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "158",
+    "name": "CHLAMYDOPHILA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "159",
+    "name": "CORONAVÍRUS ENTÉRICO CANINO (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 221.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "160",
+    "name": "CORONAVÍRUS FELINO - PIF (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 221.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "161",
+    "name": "CORONAVÍRUS RESPIRATÓRIO CANINO (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 221.00,
+    "material": "Swab simples da orofaringe ou nasal, lavados ou aspirados respiratórios"
+  },
+  {
+    "code": "162",
+    "name": "CRYPTOCOCCUS SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Swab simples da orofaringe, nasal ou conjuntival"
+  },
+  {
+    "code": "163",
+    "name": "CRYPTOSPORIDIUM SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Fezes em frasco coletor universal"
+  },
+  {
+    "code": "164",
+    "name": "EHRLICHIA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "165",
+    "name": "GIARDIA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "166",
+    "name": "HEPATOZOON SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "167",
+    "name": "HERPESVÍRUS CANINO 1 (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Swab vaginal, sêmen, urina, sangue total em EDTA ou swab orofaríngeo/conjuntival"
+  },
+  {
+    "code": "168",
+    "name": "HERPESVÍRUS FELINO 1 (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Swab conjuntival, orofaringe, nasal ou sangue total em EDTA"
+  },
+  {
+    "code": "169",
+    "name": "LEISHMANIA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "170",
+    "name": "LEPTOSPIRA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Urina em frasco estéril (ao menos 1 mL)"
+  },
+  {
+    "code": "171",
+    "name": "MYCOPLASMA SPP - HEMOTRÓPICO CANINO OU FELINO (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "172",
+    "name": "MYCOPLASMA SPP - RESPIRATÓRIO (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Swabs simples de cavidade nasal e/ou orofaringe, lavados ou aspirados"
+  },
+  {
+    "code": "173",
+    "name": "NEOSPORA CANINUM (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "174",
+    "name": "PANLEUCOPENIA FELINA – PARVOVÍRUS FELINO (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "175",
+    "name": "PARVOVÍRUS CANINO (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "176",
+    "name": "SALMONELLA SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Fezes em frasco coletor universal ou swab retal"
+  },
+  {
+    "code": "177",
+    "name": "SPOROTHRIX SPP (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Swab de lesões"
+  },
+  {
+    "code": "178",
+    "name": "TOXOPLASMA GONDII (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "179",
+    "name": "VÍRUS DA CINOMOSE (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 230.00,
+    "material": "Urina em frasco estéril (ao menos 1 mL)"
+  },
+  {
+    "code": "180",
+    "name": "VÍRUS DA IMUNODEFICIÊNCIA FELINA – DNA PROVIRAL - FIV (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "181",
+    "name": "VÍRUS DA LEUCEMIA FELINA – DNA PROVIRAL - FELV (PCR)",
+    "section": "Biologia Molecular (PCR)",
+    "delivery_days": 3,
+    "delivery_time_label": "1 a 3 dias úteis",
+    "price": 190.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "182",
+    "name": "CORTISOL - IMUNOFLUORESCÊNCIA",
+    "section": "Endocrinologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 77.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "183",
+    "name": "T4 TOTAL - IMUNOFLUORESCÊNCIA",
+    "section": "Endocrinologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 77.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "184",
+    "name": "TSH - IMUNOFLUORESCÊNCIA",
+    "section": "Endocrinologia",
+    "delivery_days": 1,
+    "delivery_time_label": "1 dia útil",
+    "price": 77.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "185",
+    "name": "INSULINA ENDÓGENA – ELISA",
+    "section": "Endocrinologia",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 147.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "186",
+    "name": "PROGESTERONA – QUIMIOLUMINESCÊNCIA",
+    "section": "Endocrinologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 103.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "187",
+    "name": "TESTOSTERONA - QUIMIOLUMINESCÊNCIA",
+    "section": "Endocrinologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 116.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "188",
+    "name": "T3 TOTAL - QUIMIOLUMINESCÊNCIA",
+    "section": "Endocrinologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 89.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "189",
+    "name": "T4 LIVRE - QUIMIOLUMINESCÊNCIA",
+    "section": "Endocrinologia",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 89.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "190",
+    "name": "T4 LIVRE PÓS DIÁLISE - RADIOIMUNOENSAIO",
+    "section": "Endocrinologia",
+    "delivery_days": 6,
+    "delivery_time_label": "6 dias úteis",
+    "price": 318.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "191",
+    "name": "CITOLOGIA - IMPRINT, PAAF, VAGINAL OU LÍQUIDOS",
+    "section": "Patologia e Citologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 84.00,
+    "material": "Lâminas ou líquidos em tubo de tampa roxa com EDTA + tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "192",
+    "name": "CITOLOGIA LOCAL ADICIONAL - IMPRINT, PAAF, VAGINAL OU LÍQUIDOS",
+    "section": "Patologia e Citologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 40.00,
+    "material": "Lâminas ou líquidos em tubo de tampa roxa com EDTA + tubo de tampa amarela com gel separador"
+  },
+  {
+    "code": "193",
+    "name": "HISTOPATOLÓGICO 1 AMOSTRA",
+    "section": "Patologia e Histopatologia",
+    "delivery_days": 9,
+    "delivery_time_label": "9 dias úteis",
+    "price": 134.00,
+    "material": "Fragmento conservado em formol a 10%"
+  },
+  {
+    "code": "194",
+    "name": "HISTOPATOLÓGICO AMOSTRA ADICIONAL",
+    "section": "Patologia e Histopatologia",
+    "delivery_days": 9,
+    "delivery_time_label": "9 dias úteis",
+    "price": 67.00,
+    "material": "Fragmento conservado em formol a 10%"
+  },
+  {
+    "code": "195",
+    "name": "AVALIAÇÃO DE MARGEM CIRÚRGICA",
+    "section": "Patologia e Histopatologia",
+    "delivery_days": 9,
+    "delivery_time_label": "9 dias úteis",
+    "price": 49.00,
+    "material": "Peça cirúrgica em formol a 10%"
+  },
+  {
+    "code": "196",
+    "name": "HISTOPATOLÓGICO PEÇA CIRÚRGICA (EXCETO MASTECTOMIA BILATERAL)",
+    "section": "Patologia e Histopatologia",
+    "delivery_days": 9,
+    "delivery_time_label": "9 dias úteis",
+    "price": 250.00,
+    "material": "Peça (órgãos, membros, mastectomia unilateral) conservada em formol a 10%"
+  },
+  {
+    "code": "197",
+    "name": "IMUNO-HISTOQUÍMICA / IMUNOISTOQUÍMICA PROGNÓSTICO",
+    "section": "Patologia e Histopatologia",
+    "delivery_days": 9,
+    "delivery_time_label": "9 dias úteis",
+    "price": 819.00,
+    "material": "Bloco de parafina + laudo do histopatológico"
+  },
+  {
+    "code": "200",
+    "name": "HEMOGRAMA ANIMAIS SILVESTRES",
+    "section": "Animais Silvestres",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 83.00,
+    "material": "Sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "201",
+    "name": "KIT SILVESTRES – Hemograma completo, pesquisa de hematozoários/inclusões, AST, ALT, ácido úrico, creatinina e fosfatase alcalina",
+    "section": "Animais Silvestres",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 254.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + sangue em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "202",
+    "name": "SEXAGEM AVIÁRIA",
+    "section": "Animais Silvestres",
+    "delivery_days": 8,
+    "delivery_time_label": "8 dias úteis",
+    "price": 48.00,
+    "material": "Amostras com bulbo de penas ou sangue em papel filtro"
+  },
+  {
+    "code": "203",
+    "name": "VÍRUS DA DOENÇA DE BICO E PENAS DE PSITACÍDEOS (PBFDV) - REAL TIME PCR QUANTITATIVO",
+    "section": "Animais Silvestres",
+    "delivery_days": 4,
+    "delivery_time_label": "4 dias úteis",
+    "price": 257.00,
+    "material": "Penas, fezes, swab oral e/ou cloacal, fragmento de órgãos ou sangue total em EDTA"
+  },
+  {
+    "code": "204",
+    "name": "ANÁLISE DE CÁLCULO BILIAR",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 9,
+    "delivery_time_label": "9 dias úteis",
+    "price": 135.00,
+    "material": "Cálculo biliar em frasco estéril (0,5g)"
+  },
+  {
+    "code": "205",
+    "name": "ANÁLISE DE LÍQUIDOS CAVITÁRIOS (PERITONEAL, PLEURAL OU PERICÁRDICO) E SINOVIAL",
+    "section": "Patologia e Citologia",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 84.00,
+    "material": "Líquido em tubo de tampa amarela com gel separador + líquido em tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "206",
+    "name": "FENOBARBITAL",
+    "section": "Bioquímica Clínica",
+    "delivery_days": 5,
+    "delivery_time_label": "5 dias úteis",
+    "price": 110.00,
+    "material": "Sangue em tubo de tampa amarela com gel separador + tubo de tampa roxo com EDTA"
+  },
+  {
+    "code": "207",
+    "name": "MASTECTOMIA BILATERAL (HISTOPATOLÓGICO)",
+    "section": "Patologia e Histopatologia",
+    "delivery_days": 9,
+    "delivery_time_label": "9 dias úteis",
+    "price": 364.00,
+    "material": "Peça em formol a 10% (uma mastectomia bilateral)"
+  }
+]
