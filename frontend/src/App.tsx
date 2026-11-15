@@ -263,7 +263,7 @@ export const App: React.FC = () => {
       {/* GLOBAL NAVBAR */}
       {showPublicHeader ? (
         <header className="sticky top-0 z-50 w-full bg-[#fafbfc]/95 backdrop-blur-md border-b border-slate-200/70 no-print">
-          <div className="max-w-[1360px] mx-auto px-4 sm:px-6 h-[72px] flex items-center justify-between gap-2 xl:gap-4">
+          <div className="max-w-[1360px] mx-auto px-3.5 sm:px-6 h-[64px] sm:h-[72px] flex items-center justify-between gap-2 xl:gap-4">
             {/* Esquerda: Logo compacto VetLife */}
             <button
               onClick={() => handleNavigate('landing')}
@@ -273,9 +273,9 @@ export const App: React.FC = () => {
               <img
                 src="/images/vetlife-logo.jpg"
                 alt="VetLife"
-                className="w-9 h-9 rounded-xl object-contain bg-white p-0.5 shadow-sm border border-slate-200/70"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-contain bg-white p-0.5 shadow-sm border border-slate-200/70"
               />
-              <span className="font-bold text-lg tracking-tight text-[#0b2240]">VetLife</span>
+              <span className="font-bold text-base sm:text-lg tracking-tight text-[#0b2240]">VetLife</span>
             </button>
 
             {/* Centro: Menu Pílula Flutuante Branco (Estilo Editorial Dayos) */}
@@ -349,24 +349,24 @@ export const App: React.FC = () => {
             </div>
 
             {/* Direita (Tablet & Mobile < lg): Ações rápidas compactas + Menu Hambúrguer */}
-            <div className="flex lg:hidden items-center gap-2 shrink-0">
+            <div className="flex lg:hidden items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 onClick={() => handleNavigate('tutor')}
-                className="hidden sm:inline-flex px-3 py-1.5 rounded-full bg-white text-[#0b2240] border border-slate-300 text-[12px] font-semibold whitespace-nowrap"
+                className="px-2.5 sm:px-3 py-1.5 rounded-full bg-white text-[#0b2240] border border-slate-300 text-[11px] sm:text-[12px] font-semibold whitespace-nowrap"
               >
                 Laudos
               </button>
               <button
                 onClick={() => handleNavigate('vet')}
-                className="px-3 py-1.5 rounded-full bg-[#0b2240] text-white text-[12px] font-semibold whitespace-nowrap inline-flex items-center gap-1"
+                className="px-2.5 sm:px-3 py-1.5 rounded-full bg-[#0b2240] text-white text-[11px] sm:text-[12px] font-semibold whitespace-nowrap inline-flex items-center gap-1"
               >
-                <Stethoscope className="w-3.5 h-3.5" />
+                <Stethoscope className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                 <span>Portal Vet</span>
               </button>
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen((prev) => !prev)}
-                className="p-2 rounded-full bg-white border border-slate-200 text-[#0b2240]"
+                className="p-2 rounded-full bg-white border border-slate-200 text-[#0b2240] shrink-0"
                 aria-label="Abrir menu"
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -376,47 +376,47 @@ export const App: React.FC = () => {
 
           {/* Menu Mobile */}
           {mobileMenuOpen && (
-            <div className="lg:hidden bg-white border-t border-slate-200 px-4 py-4 space-y-3 shadow-lg">
-              <div className="grid grid-cols-2 gap-2 text-[13px] font-medium">
+            <div className="lg:hidden bg-white border-t border-slate-200 px-4 py-4 space-y-3 shadow-lg max-h-[calc(100vh-64px)] overflow-y-auto">
+              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 gap-2 text-[13px] font-medium">
                 <button
                   onClick={() => handleNavigate('landing')}
-                  className="text-left px-3 py-2 rounded-xl bg-slate-50 text-[#0b2240]"
+                  className="text-left px-3.5 py-2.5 rounded-xl bg-slate-50 text-[#0b2240]"
                 >
                   Início
                 </button>
                 <button
                   onClick={() => handleScrollToSection('sobre')}
-                  className="text-left px-3 py-2 rounded-xl bg-slate-50 text-[#0b2240]"
+                  className="text-left px-3.5 py-2.5 rounded-xl bg-slate-50 text-[#0b2240]"
                 >
                   Sobre o Laboratório
                 </button>
                 <button
                   onClick={() => handleScrollToSection('fundadora')}
-                  className="text-left px-3 py-2 rounded-xl bg-slate-50 text-[#0b2240]"
+                  className="text-left px-3.5 py-2.5 rounded-xl bg-slate-50 text-[#0b2240]"
                 >
                   Quem Somos
                 </button>
                 <button
                   onClick={() => handleScrollToSection('servicos')}
-                  className="text-left px-3 py-2 rounded-xl bg-slate-50 text-[#0b2240]"
+                  className="text-left px-3.5 py-2.5 rounded-xl bg-slate-50 text-[#0b2240]"
                 >
                   Serviços e Exames
                 </button>
                 <button
                   onClick={() => handleScrollToSection('guia-coleta')}
-                  className="text-left px-3 py-2 rounded-xl bg-slate-50 text-[#0b2240]"
+                  className="text-left px-3.5 py-2.5 rounded-xl bg-slate-50 text-[#0b2240]"
                 >
                   Guia de Coleta
                 </button>
                 <button
                   onClick={() => handleScrollToSection('solicitar-coleta')}
-                  className="text-left px-3 py-2 rounded-xl bg-slate-50 text-[#0b2240]"
+                  className="text-left px-3.5 py-2.5 rounded-xl bg-slate-50 text-[#0b2240]"
                 >
                   Solicitar Coleta
                 </button>
                 <button
                   onClick={() => handleScrollToSection('contato')}
-                  className="text-left px-3 py-2 rounded-xl bg-slate-50 text-[#0b2240]"
+                  className="text-left px-3.5 py-2.5 rounded-xl bg-slate-50 text-[#0b2240]"
                 >
                   Contato
                 </button>
@@ -440,59 +440,62 @@ export const App: React.FC = () => {
         </header>
       ) : showInternalHeader ? (
         <header className="sticky top-0 z-50 w-full h-[60px] bg-[#0b2240] text-white shadow-sm no-print">
-          <div className="max-w-[1320px] mx-auto px-4 sm:px-6 h-full flex items-center justify-between gap-4">
+          <div className="max-w-[1320px] mx-auto px-3 sm:px-6 h-full flex items-center justify-between gap-2 sm:gap-4">
             <button
               onClick={() => handleNavigate(isLabAuthenticated ? 'internal' : 'vet')}
-              className="flex items-center gap-2.5 text-white hover:opacity-90 transition"
+              className="flex items-center gap-2 text-white hover:opacity-90 transition shrink-0"
               aria-label="VetLife Sistema"
             >
               <img
                 src="/images/vetlife-logo.jpg"
                 alt="VetLife"
-                className="w-8 h-8 rounded-lg object-contain bg-white p-0.5"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5"
               />
-              <span className="text-[15px] font-bold tracking-tight text-white">VetLife</span>
+              <span className="text-[14px] sm:text-[15px] font-bold tracking-tight text-white">VetLife</span>
             </button>
 
-            <nav className="flex items-center gap-3 sm:gap-6 text-[13px] font-medium text-white">
+            <nav className="flex items-center gap-2 sm:gap-6 text-[11.5px] sm:text-[13px] font-medium text-white min-w-0">
               {isLabAuthenticated && !isVetAuthenticated && (
                 <button
                   onClick={() => handleNavigate('internal')}
-                  className={`inline-flex items-center gap-1.5 transition ${
+                  className={`inline-flex items-center gap-1 sm:gap-1.5 transition whitespace-nowrap ${
                     currentView === 'internal' || currentView === 'login'
                       ? 'text-[#7fdbea] font-semibold'
                       : 'text-white/80 hover:text-white'
                   }`}
                 >
-                  <LayoutDashboard className="w-4 h-4" />
-                  <span>Painel Laboratorial</span>
+                  <LayoutDashboard className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span className="sm:hidden">Painel</span>
+                  <span className="hidden sm:inline">Painel Laboratorial</span>
                 </button>
               )}
 
               {isVetAuthenticated && !isLabAuthenticated && (
                 <button
                   onClick={() => handleNavigate('vet')}
-                  className={`inline-flex items-center gap-1.5 transition ${
+                  className={`inline-flex items-center gap-1 sm:gap-1.5 transition whitespace-nowrap ${
                     currentView === 'vet'
                       ? 'text-[#7fdbea] font-semibold'
                       : 'text-white/80 hover:text-white'
                   }`}
                 >
-                  <Stethoscope className="w-4 h-4" />
-                  <span>Portal do Veterinário</span>
+                  <Stethoscope className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span className="sm:hidden">Portal Vet</span>
+                  <span className="hidden sm:inline">Portal do Veterinário</span>
                 </button>
               )}
 
               <button
                 onClick={() => handleNavigate('tutor')}
-                className="inline-flex items-center gap-1.5 transition text-white/80 hover:text-white"
+                className="inline-flex items-center gap-1 sm:gap-1.5 transition text-white/80 hover:text-white whitespace-nowrap"
               >
-                <Search className="w-4 h-4" />
-                <span>Consulta de Protocolo</span>
+                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="sm:hidden">Protocolo</span>
+                <span className="hidden sm:inline">Consulta de Protocolo</span>
               </button>
             </nav>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 onClick={() => handleNavigate('landing')}
                 className="hidden sm:inline-flex px-3.5 py-1.5 rounded-full bg-white/10 text-white hover:bg-white/20 text-[12px] font-medium transition items-center gap-1.5"
@@ -506,7 +509,7 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setUserMenuOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-2 pl-1.5 pr-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white transition"
+                  className="inline-flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2.5 sm:pr-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white transition"
                   aria-expanded={userMenuOpen}
                   aria-haspopup="menu"
                 >
@@ -526,7 +529,7 @@ export const App: React.FC = () => {
                 {userMenuOpen && (
                   <div
                     role="menu"
-                    className="absolute right-0 mt-2.5 w-72 rounded-2xl bg-white text-[#0b2240] shadow-xl shadow-slate-900/15 border border-slate-200/90 p-4 z-50 space-y-3"
+                    className="absolute right-0 mt-2.5 w-72 max-w-[calc(100vw-1.5rem)] rounded-2xl bg-white text-[#0b2240] shadow-xl shadow-slate-900/15 border border-slate-200/90 p-4 z-50 space-y-3"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-full bg-[#0b2240] text-white text-[13px] font-bold flex items-center justify-center shrink-0">
@@ -680,26 +683,26 @@ export const App: React.FC = () => {
       </main>
 
       {/* RODAPÉ */}
-      <footer className="relative z-10 w-full bg-transparent border-t border-slate-200/70 text-[#7b8694] py-12 text-[13px] no-print">
-        <div className="max-w-[1280px] mx-auto px-5 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3.5">
+      <footer className="relative z-10 w-full bg-transparent border-t border-slate-200/70 text-[#7b8694] py-10 sm:py-12 text-[13px] no-print">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="flex items-start sm:items-center gap-3.5">
             <img
               src="/images/vetlife-logo.jpg"
               alt="VetLife Laboratório Veterinário"
-              className="w-11 h-11 rounded-xl object-contain bg-white p-1 border border-slate-200/70"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl object-contain bg-white p-1 border border-slate-200/70 shrink-0"
             />
-            <div>
-              <div className="text-[#0b2240] font-semibold">
+            <div className="min-w-0">
+              <div className="text-[#0b2240] font-semibold leading-snug">
                 VetLife Laboratório de Análises Clínicas Veterinárias
               </div>
-              <div className="text-[#5b6675] text-[12px]">
+              <div className="text-[#5b6675] text-[12px] leading-relaxed mt-0.5 break-words">
                 R. La Salles, 424 - Mocoquinha, São Sebastião do Paraíso - MG, 37950-000 •
                 Recepção/Técnico: (35) 98458-1997 • Financeiro: +55 35 98445-1372
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col md:items-end gap-2">
+          <div className="flex flex-col md:items-end gap-2 w-full md:w-auto">
             <div className="flex flex-wrap items-center gap-4 text-[#0b2240] font-medium text-[12px]">
               <button onClick={() => handleNavigate('landing')} className="hover:text-[#1d9496]">
                 Início

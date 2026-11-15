@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import {
   CollectionRequest,
   Exam,
@@ -870,18 +871,57 @@ export function createInitialSeedState(): SeedDatabaseState {
     },
   ];
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const toUuid = (raw: string): string => {
+    if (UUID_RE.test(raw)) return raw;
+    const hex = createHash('sha256').update(`vetlife-seed:${raw}`).digest('hex');
+    const variant = ((parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
+      .toString(16)
+      .padStart(2, '0');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(18, 20)}-${hex.slice(20, 32)}`;
+  };
+
   return {
-    users,
-    reportTemplates,
-    exams,
-    examInputFields,
-    priceTables,
-    examPrices,
-    examReferences,
-    patients,
-    vets,
-    orders,
-    examResults,
-    collectionRequests,
+    users: users.map((u) => ({ ...u, id: toUuid(u.id) })),
+    reportTemplates: reportTemplates.map((t) => ({ ...t, id: toUuid(t.id) })),
+    exams: exams.map((e) => ({
+      ...e,
+      id: toUuid(e.id),
+      reference_template_id: e.reference_template_id ? toUuid(e.reference_template_id) : null,
+    })),
+    examInputFields: examInputFields.map((f) => ({
+      ...f,
+      id: toUuid(f.id),
+      exam_id: toUuid(f.exam_id),
+    })),
+    priceTables: priceTables.map((pt) => ({ ...pt, id: toUuid(pt.id) })),
+    examPrices: examPrices.map((ep) => ({
+      ...ep,
+      id: toUuid(ep.id),
+      price_table_id: toUuid(ep.price_table_id),
+      exam_id: toUuid(ep.exam_id),
+    })),
+    examReferences: examReferences.map((r) => ({
+      ...r,
+      id: toUuid(r.id),
+      exam_id: toUuid(r.exam_id),
+    })),
+    patients: patients.map((p) => ({ ...p, id: toUuid(p.id) })),
+    vets: vets.map((v) => ({ ...v, id: toUuid(v.id) })),
+    orders: orders.map((o) => ({
+      ...o,
+      id: toUuid(o.id),
+      patient_id: toUuid(o.patient_id),
+      vet_id: toUuid(o.vet_id),
+      price_table_id: o.price_table_id ? toUuid(o.price_table_id) : null,
+    })),
+    examResults: examResults.map((r) => ({
+      ...r,
+      id: toUuid(r.id),
+      order_id: toUuid(r.order_id),
+      exam_id: toUuid(r.exam_id),
+      released_by: r.released_by ? toUuid(r.released_by) : null,
+    })),
+    collectionRequests: collectionRequests.map((c) => ({ ...c, id: toUuid(c.id) })),
   };
 }

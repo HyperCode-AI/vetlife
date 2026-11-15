@@ -99,7 +99,7 @@ export function SearchableSelectField<T>({
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full min-w-0">
       {label && (
         <label className="block text-[12px] text-[#707070] mb-1">{label}</label>
       )}
@@ -107,10 +107,10 @@ export function SearchableSelectField<T>({
         type="button"
         disabled={disabled}
         onClick={() => setOpen(true)}
-        className={`w-full text-left flex items-center justify-between gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+        className={`w-full min-w-0 text-left flex items-center justify-between gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
           compact
-            ? 'px-4 py-2.5 rounded-[980px] bg-[#f5f5f7] hover:bg-[#ebebf0] text-[12px] font-semibold text-[#1d1d1f]'
-            : 'px-4 py-2.5 rounded-[18px] bg-[#f5f5f7] hover:bg-[#ebebf0] text-[15px] text-[#1d1d1f]'
+            ? 'px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-[980px] bg-[#f5f5f7] hover:bg-[#ebebf0] text-[12px] font-semibold text-[#1d1d1f]'
+            : 'px-3.5 sm:px-4 py-2.5 rounded-[18px] bg-[#f5f5f7] hover:bg-[#ebebf0] text-[13px] sm:text-[15px] text-[#1d1d1f]'
         } ${triggerClassName}`}
       >
         <div className="min-w-0 flex-1 flex items-center gap-2">
@@ -142,17 +142,17 @@ export function SearchableSelectField<T>({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-start sm:items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-start sm:items-center justify-center p-3 sm:p-4"
           onClick={() => setOpen(false)}
         >
           <div
-            className="bg-white w-full max-w-2xl rounded-[28px] shadow-2xl border border-black/5 overflow-hidden flex flex-col max-h-[85vh]"
+            className="bg-white w-full max-w-2xl rounded-[24px] sm:rounded-[28px] shadow-2xl border border-black/5 overflow-hidden flex flex-col max-h-[85vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="px-6 pt-5 pb-4 border-b border-black/5 flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+            <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3.5 sm:pb-4 border-b border-black/5 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                   {modalTitle}
                 </h3>
                 {modalSubtitle && (
@@ -162,7 +162,7 @@ export function SearchableSelectField<T>({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] transition"
+                className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] transition shrink-0"
                 aria-label="Fechar pesquisa"
               >
                 <X className="w-4 h-4" />
@@ -170,7 +170,7 @@ export function SearchableSelectField<T>({
             </div>
 
             {/* Search Input & Filter Chips */}
-            <div className="px-6 py-4 bg-[#f9f9fb] border-b border-black/5 space-y-3">
+            <div className="px-4 sm:px-6 py-3.5 sm:py-4 bg-[#f9f9fb] border-b border-black/5 space-y-3">
               <div className="relative">
                 <Search className="w-4 h-4 text-[#0071e3] absolute left-4 top-1/2 -translate-y-1/2" />
                 <input
@@ -233,7 +233,7 @@ export function SearchableSelectField<T>({
             </div>
 
             {/* Results List */}
-            <div className="p-4 overflow-y-auto flex-1 space-y-1.5">
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1 space-y-1.5">
               {visibleItems.length === 0 ? (
                 <div className="py-12 text-center text-[13px] text-[#86868b]">
                   {emptyMessage}
@@ -250,30 +250,30 @@ export function SearchableSelectField<T>({
                       key={id}
                       type="button"
                       onClick={() => handleSelect(item)}
-                      className={`w-full text-left px-4 py-3 rounded-[18px] flex items-center justify-between gap-3 transition ${
+                      className={`w-full min-w-0 text-left px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-[18px] flex items-center justify-between gap-2.5 sm:gap-3 transition ${
                         isSelected
                           ? 'bg-[#0071e3]/10 border border-[#0071e3] text-[#1d1d1f]'
                           : 'bg-[#f5f5f7]/70 hover:bg-[#ebebf0] border border-transparent text-[#1d1d1f]'
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-[14px] text-[#1d1d1f] truncate">
+                        <div className="font-semibold text-[13px] sm:text-[14px] text-[#1d1d1f] break-words sm:truncate">
                           {getPrimaryLabel(item)}
                         </div>
                         {secondary && (
-                          <div className="text-[12px] text-[#707070] truncate mt-0.5">
+                          <div className="text-[11px] sm:text-[12px] text-[#707070] break-words sm:truncate mt-0.5">
                             {secondary}
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                         {badge && (
-                          <span className="px-2.5 py-1 rounded-full bg-white text-[11px] font-semibold text-[#1d1d1f] border border-black/5">
+                          <span className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-white text-[10px] sm:text-[11px] font-semibold text-[#1d1d1f] border border-black/5 max-w-[110px] truncate">
                             {badge}
                           </span>
                         )}
                         {isSelected && (
-                          <span className="w-6 h-6 rounded-full bg-[#0071e3] text-white flex items-center justify-center">
+                          <span className="w-6 h-6 rounded-full bg-[#0071e3] text-white flex items-center justify-center shrink-0">
                             <Check className="w-3.5 h-3.5" />
                           </span>
                         )}
@@ -291,9 +291,9 @@ export function SearchableSelectField<T>({
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-3 bg-[#f9f9fb] border-t border-black/5 flex items-center justify-between text-[11px] text-[#86868b]">
+            <div className="px-4 sm:px-6 py-3 bg-[#f9f9fb] border-t border-black/5 flex items-center justify-between text-[11px] text-[#86868b]">
               <span>{filteredItems.length} resultado(s) encontrado(s)</span>
-              <span>Enter seleciona o primeiro • Esc fecha</span>
+              <span className="hidden sm:inline">Enter seleciona o primeiro • Esc fecha</span>
             </div>
           </div>
         </div>

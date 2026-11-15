@@ -187,6 +187,33 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
 
   // Estados do CRUD de Pacientes (com pedido opcional de exames)
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
+  const calculateAgeMonthsFromBirthDate = (birthDateStr: string): number | '' => {
+    if (!birthDateStr) return '';
+    const parts = birthDateStr.split('-').map(Number);
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return '';
+    const [year, month, day] = parts;
+    const birth = new Date(year, month - 1, day);
+    if (Number.isNaN(birth.getTime())) return '';
+    const today = new Date();
+    if (birth > today) return 0;
+    let months =
+      (today.getFullYear() - birth.getFullYear()) * 12 + (today.getMonth() - birth.getMonth());
+    if (today.getDate() < birth.getDate()) {
+      months -= 1;
+    }
+    return Math.max(0, months);
+  };
+
+  const calculateBirthDateFromAgeMonths = (months: number): string => {
+    if (Number.isNaN(months) || months < 0) return '';
+    const date = new Date();
+    date.setMonth(date.getMonth() - Math.floor(months));
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const [patientSearchQuery, setPatientSearchQuery] = useState('');
   const [patientSpeciesFilter, setPatientSpeciesFilter] = useState('todos');
   const [patientCrudForm, setPatientCrudForm] = useState({
@@ -194,8 +221,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
     species: 'Canino',
     breed: '',
     gender: 'M' as 'M' | 'F',
-    birth_date: '2023-05-10',
-    age_months: 35,
+    birth_date: '',
+    age_months: '' as number | '',
     tutor_name: '',
     tutor_phone: '',
     tutor_email: '',
@@ -326,7 +353,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
     const isReleased = Boolean(r.released_at);
     const hasDraft = Boolean(
       (r.dynamic_content && Object.keys(r.dynamic_content).length > 0) ||
-        (r.notes && r.notes.trim())
+      (r.notes && r.notes.trim())
     );
     return { code, name, isReleased, hasDraft };
   };
@@ -340,13 +367,13 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
       prev.map((o) =>
         o.id === ord.id
           ? {
-              ...o,
-              pdf_url: pdfLink,
-              results: (o.results || []).map((r) => {
-                const found = published.exam_pdfs.find((ep) => ep.result_id === r.id);
-                return found ? { ...r, pdf_url: found.pdf_url } : r;
-              }),
-            }
+            ...o,
+            pdf_url: pdfLink,
+            results: (o.results || []).map((r) => {
+              const found = published.exam_pdfs.find((ep) => ep.result_id === r.id);
+              return found ? { ...r, pdf_url: found.pdf_url } : r;
+            }),
+          }
           : o
       )
     );
@@ -444,18 +471,17 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         {meta.isReleased
                           ? 'Laudo concluído • Editar'
                           : meta.hasDraft
-                          ? 'Em análise • Editar rascunho'
-                          : 'Pendente • Lançar laudo'}
+                            ? 'Em análise • Editar rascunho'
+                            : 'Pendente • Lançar laudo'}
                       </div>
                     </div>
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[9px] font-semibold shrink-0 ${
-                        meta.isReleased
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : meta.hasDraft
+                      className={`px-2 py-0.5 rounded-full text-[9px] font-semibold shrink-0 ${meta.isReleased
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : meta.hasDraft
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-slate-200 text-slate-700'
-                      }`}
+                        }`}
                     >
                       {meta.isReleased ? 'Concluído' : meta.hasDraft ? 'Editar' : 'Lançar'}
                     </span>
@@ -685,19 +711,24 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
 
   const handleSavePatientCrud = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (patientCrudForm.age_months === '' || Number(patientCrudForm.age_months) < 0) {
+      showToast('Informe a idade em meses (ou a data de nascimento para cálculo automático).');
+      return;
+    }
     if (patientIncludeExamOrder && validPatientSelectedExamIds.length === 0) {
       showToast('Selecione pelo menos 1 exame ou desmarque a opção de pedido de exames.');
       return;
     }
 
+    const numericMonths = Number(patientCrudForm.age_months);
     const savedPatient = await api.savePatient({
       ...(editingPatientId ? { id: editingPatientId } : {}),
       name: patientCrudForm.name,
       species: patientCrudForm.species,
       breed: patientCrudForm.breed || 'SRD',
       gender: patientCrudForm.gender,
-      birth_date: patientCrudForm.birth_date,
-      age_days: Math.max(1, Number(patientCrudForm.age_months) * 30),
+      birth_date: patientCrudForm.birth_date || calculateBirthDateFromAgeMonths(numericMonths),
+      age_days: Math.max(1, numericMonths * 30),
       tutor_name: patientCrudForm.tutor_name,
       tutor_phone: patientCrudForm.tutor_phone,
       tutor_email: patientCrudForm.tutor_email,
@@ -735,8 +766,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
       species: 'Canino',
       breed: '',
       gender: 'M',
-      birth_date: '2023-05-10',
-      age_months: 35,
+      birth_date: '',
+      age_months: '',
       tutor_name: '',
       tutor_phone: '',
       tutor_email: '',
@@ -767,16 +798,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         patient: existingPatient
           ? existingPatient
           : {
-              name: patientForm.name || 'Rex',
-              species: patientForm.species,
-              breed: patientForm.breed || 'SRD',
-              gender: patientForm.gender,
-              birth_date: patientForm.birth_date,
-              age_days: Math.max(1, Number(patientForm.age_months) * 30),
-              tutor_name: patientForm.tutor_name || 'Tutor Responsável',
-              tutor_phone: patientForm.tutor_phone || '(11) 99999-0000',
-              tutor_email: patientForm.tutor_email || 'tutor@email.com',
-            },
+            name: patientForm.name || 'Rex',
+            species: patientForm.species,
+            breed: patientForm.breed || 'SRD',
+            gender: patientForm.gender,
+            birth_date: patientForm.birth_date,
+            age_days: Math.max(1, Number(patientForm.age_months) * 30),
+            tutor_name: patientForm.tutor_name || 'Tutor Responsável',
+            tutor_phone: patientForm.tutor_phone || '(11) 99999-0000',
+            tutor_email: patientForm.tutor_email || 'tutor@email.com',
+          },
         vet_id: selectedVetId,
         price_table_id: activePriceTable.id,
         exam_ids: validSelectedExamIds,
@@ -795,16 +826,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
       patient: existingPatient
         ? existingPatient
         : {
-            name: patientForm.name || 'Rex',
-            species: patientForm.species,
-            breed: patientForm.breed || 'SRD',
-            gender: patientForm.gender,
-            birth_date: patientForm.birth_date,
-            age_days: Math.max(1, Number(patientForm.age_months) * 30),
-            tutor_name: patientForm.tutor_name || 'Tutor Responsável',
-            tutor_phone: patientForm.tutor_phone || '(11) 99999-0000',
-            tutor_email: patientForm.tutor_email || 'tutor@email.com',
-          },
+          name: patientForm.name || 'Rex',
+          species: patientForm.species,
+          breed: patientForm.breed || 'SRD',
+          gender: patientForm.gender,
+          birth_date: patientForm.birth_date,
+          age_days: Math.max(1, Number(patientForm.age_months) * 30),
+          tutor_name: patientForm.tutor_name || 'Tutor Responsável',
+          tutor_phone: patientForm.tutor_phone || '(11) 99999-0000',
+          tutor_email: patientForm.tutor_email || 'tutor@email.com',
+        },
       vet_id: selectedVetId,
       price_table_id: activePriceTable.id,
       exam_ids: validSelectedExamIds,
@@ -1137,48 +1168,48 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
   };
 
   return (
-    <div className="space-y-8 py-10 pb-24">
+    <div className="space-y-6 sm:space-y-8 py-6 sm:py-10 pb-20 sm:pb-24">
       {/* NOTIFICAÇÃO TOAST */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-[#1d1d1f] text-[#f5f5f7] px-5 py-3.5 rounded-[980px] flex items-center gap-3 text-[12px] font-semibold">
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:bottom-6 sm:right-6 z-50 max-w-md bg-[#1d1d1f] text-[#f5f5f7] px-4 sm:px-5 py-3.5 rounded-[20px] sm:rounded-[980px] flex items-center gap-3 text-[12px] font-semibold shadow-lg">
           <CheckCircle2 className="w-4 h-4 text-[#0071e3] shrink-0" />
-          <span>{toast}</span>
+          <span className="break-words">{toast}</span>
         </div>
       )}
 
-      {/* NAVEGAÇÃO DE ABAS DO PAINEL INTERNO — Pill Navigation (980px) */}
-      <div className="flex flex-wrap gap-2 bg-white p-2 rounded-[980px]">
+      {/* NAVEGAÇÃO DE ABAS DO PAINEL INTERNO — Pill Navigation */}
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2 bg-white p-2 rounded-[24px] lg:rounded-[980px]">
         <button
           onClick={() => setActiveTab('operational')}
-          className={`px-5 py-2.5 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-2 transition ${activeTab === 'operational'
+          className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'operational'
             ? 'bg-[#0071e3] text-white'
             : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
             }`}
         >
-          <LayoutDashboard className="w-3.5 h-3.5" />
-          Dashboard Operacional
+          <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Dashboard Operacional</span>
         </button>
 
         <button
           onClick={() => setActiveTab('patients')}
-          className={`px-5 py-2.5 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-2 transition ${activeTab === 'patients'
+          className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'patients'
             ? 'bg-[#0071e3] text-white'
             : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
             }`}
         >
-          <Users className="w-3.5 h-3.5" />
-          Pacientes
+          <Users className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Pacientes</span>
         </button>
 
         <button
           onClick={() => setActiveTab('routine')}
-          className={`px-5 py-2.5 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-2 transition ${activeTab === 'routine'
+          className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'routine'
             ? 'bg-[#0071e3] text-white'
             : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
             }`}
         >
-          <ClipboardPlus className="w-3.5 h-3.5" />
-          Atendimentos / Rotina
+          <ClipboardPlus className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Atendimentos / Rotina</span>
         </button>
 
         <button
@@ -1186,42 +1217,42 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
             setLaunchSubView('list');
             setActiveTab('launch');
           }}
-          className={`px-5 py-2.5 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-2 transition ${activeTab === 'launch'
+          className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'launch'
             ? 'bg-[#0071e3] text-white'
             : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
             }`}
         >
-          <FlaskConical className="w-3.5 h-3.5" />
-          Lançamento de Laudos
+          <FlaskConical className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Lançamento de Laudos</span>
         </button>
 
         {user.role === 'admin' ? (
           <>
             <button
               onClick={() => setActiveTab('settings')}
-              className={`px-5 py-2.5 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-2 transition ${activeTab === 'settings'
+              className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'settings'
                 ? 'bg-[#0071e3] text-white'
                 : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
                 }`}
             >
-              <Settings className="w-3.5 h-3.5" />
-              Configurações
+              <Settings className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Configurações</span>
             </button>
             <button
               onClick={() => setActiveTab('financial')}
-              className={`px-5 py-2.5 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-2 transition ${activeTab === 'financial'
+              className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'financial'
                 ? 'bg-[#0071e3] text-white'
                 : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
                 }`}
             >
-              <DollarSign className="w-3.5 h-3.5" />
-              Dashboard Financeiro
+              <DollarSign className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Dashboard Financeiro</span>
             </button>
           </>
         ) : (
-          <div className="ml-auto flex items-center gap-2 px-4 py-2 rounded-[999px] bg-[#f5f5f7] text-[#707070] text-[12px]">
-            <ShieldAlert className="w-3.5 h-3.5 text-[#1d1d1f]" />
-            Configurações e Financeiro exclusivos para Administração
+          <div className="col-span-2 sm:ml-auto flex items-center gap-2 px-3.5 py-2 rounded-[16px] sm:rounded-[999px] bg-[#f5f5f7] text-[#707070] text-[11.5px] sm:text-[12px]">
+            <ShieldAlert className="w-3.5 h-3.5 text-[#1d1d1f] shrink-0" />
+            <span>Configurações e Financeiro exclusivos para Administração</span>
           </div>
         )}
       </div>
@@ -1230,45 +1261,45 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           ABA 1: DASHBOARD OPERACIONAL
          ===================================================================== */}
       {activeTab === 'operational' && opStats && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-[28px] rounded-[28px]">
-              <div className="text-[12px] uppercase text-[#86868b]">Total de Atendimentos</div>
-              <div className="font-display text-[44px] font-semibold text-[#1d1d1f] mt-1">
+        <div className="space-y-5 sm:space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
+              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Total de Atendimentos</div>
+              <div className="font-display text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] mt-1 leading-none">
                 {opStats.total_orders}
               </div>
-              <div className="text-[12px] text-[#707070] mt-1">Rotina ativa no laboratório</div>
+              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1.5">Rotina ativa no laboratório</div>
             </div>
 
-            <div className="bg-white p-[28px] rounded-[28px]">
-              <div className="text-[12px] uppercase text-[#86868b]">Pendentes / Triagem</div>
-              <div className="font-display text-[44px] font-semibold text-[#1d1d1f] mt-1">
+            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
+              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Pendentes / Triagem</div>
+              <div className="font-display text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] mt-1 leading-none">
                 {opStats.pending_orders}
               </div>
-              <div className="text-[12px] text-[#707070] mt-1">Aguardando entrada em bancada</div>
+              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1.5">Aguardando entrada em bancada</div>
             </div>
 
-            <div className="bg-white p-[28px] rounded-[28px]">
-              <div className="text-[12px] uppercase text-[#86868b]">Em Análise Técnica</div>
-              <div className="font-display text-[44px] font-semibold text-[#1d1d1f] mt-1">
+            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
+              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Em Análise Técnica</div>
+              <div className="font-display text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] mt-1 leading-none">
                 {opStats.in_analysis_orders}
               </div>
-              <div className="text-[12px] text-[#707070] mt-1">Processamento em bancada</div>
+              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1.5">Processamento em bancada</div>
             </div>
 
-            <div className="bg-white p-[28px] rounded-[28px]">
-              <div className="text-[12px] uppercase text-[#86868b]">Laudos Concluídos (PDF)</div>
-              <div className="font-display text-[44px] font-semibold text-[#1d1d1f] mt-1">
+            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
+              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Laudos Concluídos (PDF)</div>
+              <div className="font-display text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] mt-1 leading-none">
                 {opStats.completed_orders}
               </div>
-              <div className="text-[12px] text-[#0066cc] mt-1">Disponíveis para Tutor e Vet</div>
+              <div className="text-[11px] sm:text-[12px] text-[#0066cc] mt-1.5">Disponíveis para Tutor e Vet</div>
             </div>
           </div>
 
-          <div className="bg-white rounded-[28px] p-[28px] space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-5 sm:space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="font-display text-[24px] font-semibold text-[#1d1d1f]">
+                <h2 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f]">
                   Fila de Rotina Laboratorial Recente
                 </h2>
                 <p className="text-[12px] text-[#707070]">
@@ -1282,14 +1313,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   setActiveTab('routine');
                   setOrderModalOpen(true);
                 }}
-                className="px-5 py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-normal inline-flex items-center gap-1.5 cursor-pointer"
+                className="w-full sm:w-auto justify-center px-5 py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold sm:font-normal inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Novo Atendimento
               </button>
             </div>
 
-            <div className="overflow-x-auto md:overflow-visible">
+            <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-[12px]">
                 <thead>
                   <tr className="text-[#86868b] uppercase border-b border-[#e8e8ed]">
@@ -1328,13 +1359,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       </td>
                       <td className="py-3.5 px-4">
                         <span
-                          className={`px-[10px] py-[4px] rounded-[999px] font-semibold whitespace-nowrap ${
-                            ord.status === 'concluido'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : ord.status === 'em_analise'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-[#f5f5f7] text-[#1d1d1f]'
-                          }`}
+                          className={`px-[10px] py-[4px] rounded-[999px] font-semibold whitespace-nowrap ${ord.status === 'concluido'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : ord.status === 'em_analise'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-[#f5f5f7] text-[#1d1d1f]'
+                            }`}
                         >
                           {ord.status === 'concluido'
                             ? 'Concluído'
@@ -1368,14 +1398,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         <div className="space-y-6">
           {/* MODAL DE CADASTRO / EDIÇÃO DE PACIENTE */}
           {patientModalOpen && (
-            <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
               <form
                 onSubmit={handleSavePatientCrud}
-                className="bg-white rounded-[28px] max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl border border-black/10"
+                className="bg-white rounded-[24px] sm:rounded-[28px] max-w-2xl w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
               >
-                <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                  <div>
-                    <h2 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+                <div className="flex items-start justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
+                  <div className="min-w-0">
+                    <h2 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                       {editingPatientId ? 'Editar Paciente' : 'Cadastrar Paciente'}
                     </h2>
                     <p className="text-[12px] text-[#707070]">
@@ -1395,437 +1425,463 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         species: 'Canino',
                         breed: '',
                         gender: 'M',
-                        birth_date: '2023-05-10',
-                        age_months: 35,
+                        birth_date: '',
+                        age_months: '',
                         tutor_name: '',
                         tutor_phone: '',
                         tutor_email: '',
                       });
                     }}
-                    className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer"
+                    className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
                   >
                     Fechar
                   </button>
                 </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">
-                    Nome do Animal *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={patientCrudForm.name}
-                    onChange={(e) =>
-                      setPatientCrudForm({ ...patientCrudForm, name: e.target.value })
-                    }
-                    placeholder="Ex: Thor"
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">Espécie *</label>
-                  <select
-                    value={patientCrudForm.species}
-                    onChange={(e) =>
-                      setPatientCrudForm({ ...patientCrudForm, species: e.target.value })
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  >
-                    <option value="Canino">Canino</option>
-                    <option value="Felino">Felino</option>
-                    <option value="Equino">Equino</option>
-                    <option value="Silvestre">Silvestre / Exótico</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">Raça</label>
-                  <input
-                    type="text"
-                    value={patientCrudForm.breed}
-                    onChange={(e) =>
-                      setPatientCrudForm({ ...patientCrudForm, breed: e.target.value })
-                    }
-                    placeholder="SRD"
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">Sexo *</label>
-                  <select
-                    value={patientCrudForm.gender}
-                    onChange={(e) =>
-                      setPatientCrudForm({
-                        ...patientCrudForm,
-                        gender: e.target.value as 'M' | 'F',
-                      })
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  >
-                    <option value="M">Macho (M)</option>
-                    <option value="F">Fêmea (F)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">Idade (Meses)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={patientCrudForm.age_months}
-                    onChange={(e) =>
-                      setPatientCrudForm({
-                        ...patientCrudForm,
-                        age_months: Number(e.target.value),
-                      })
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">
-                    Data de Nascimento
-                  </label>
-                  <input
-                    type="date"
-                    value={patientCrudForm.birth_date}
-                    onChange={(e) =>
-                      setPatientCrudForm({ ...patientCrudForm, birth_date: e.target.value })
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">
-                    Nome do Tutor (Proprietário) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={patientCrudForm.tutor_name}
-                    onChange={(e) =>
-                      setPatientCrudForm({ ...patientCrudForm, tutor_name: e.target.value })
-                    }
-                    placeholder="Nome do tutor"
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">
-                    Telefone / WhatsApp
-                  </label>
-                  <input
-                    type="text"
-                    value={patientCrudForm.tutor_phone}
-                    onChange={(e) =>
-                      setPatientCrudForm({ ...patientCrudForm, tutor_phone: e.target.value })
-                    }
-                    placeholder="(16) 99999-0000"
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] text-[#707070] mb-1">E-mail do Tutor</label>
-                  <input
-                    type="email"
-                    value={patientCrudForm.tutor_email}
-                    onChange={(e) =>
-                      setPatientCrudForm({ ...patientCrudForm, tutor_email: e.target.value })
-                    }
-                    placeholder="tutor@email.com"
-                    className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                  />
-                </div>
-              </div>
-
-              {/* Opção de já inserir pedido de exames no cadastro do paciente */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                <label className="flex items-center gap-2.5 cursor-pointer text-[13px] font-semibold text-[#0b2240]">
-                  <input
-                    type="checkbox"
-                    checked={patientIncludeExamOrder}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setPatientIncludeExamOrder(checked);
-                      if (!checked) setPatientSelectedExamIds([]);
-                    }}
-                    className="w-4 h-4 accent-[#0071e3] rounded"
-                  />
-                  <span>Já inserir pedidos de exames neste cadastro (gerar atendimento)</span>
-                </label>
-
-                {patientIncludeExamOrder && (
-                  <div className="space-y-3 pt-2 border-t border-slate-200">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <SearchableSelectField
-                        label="Veterinário Solicitante *"
-                        modalTitle="Selecionar Veterinário Solicitante"
-                        modalSubtitle="Pesquise por nome, CRMV ou clínica parceira"
-                        searchPlaceholder="Buscar por nome, CRMV ou clínica..."
-                        items={vets}
-                        value={selectedVetId}
-                        getId={(v) => v.id}
-                        getPrimaryLabel={(v) => v.name}
-                        getSecondaryLabel={(v) => `${v.crmv}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`}
-                        getSearchText={(v) => `${v.name} ${v.crmv} ${v.clinic_name || ''}`}
-                        onChange={(id) => setSelectedVetId(id)}
-                        triggerClassName="bg-white border border-slate-200"
-                      />
-                      <SearchableSelectField
-                        label="Tabela de Preços"
-                        modalTitle="Selecionar Tabela de Preços / Convênio"
-                        searchPlaceholder="Buscar tabela por nome ou vigência..."
-                        items={priceTables}
-                        value={activePriceTable?.id || ''}
-                        getId={(pt) => pt.id}
-                        getPrimaryLabel={(pt) => pt.name}
-                        getSecondaryLabel={(pt) => `Vigência: ${pt.start_date} a ${pt.end_date}`}
-                        getSearchText={(pt) => `${pt.name} ${pt.start_date} ${pt.end_date}`}
-                        onChange={(id) => setSelectedTableId(id)}
-                        triggerClassName="bg-white border border-slate-200"
-                      />
-                    </div>
-
-                    <ExamMultiPicker
-                      exams={exams}
-                      selectedExamIds={patientSelectedExamIds}
-                      onChange={setPatientSelectedExamIds}
-                      activePriceTable={activePriceTable}
-                      title="Exames do Atendimento"
-                      compact
-                    />
-
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">
+                      Nome do Animal *
+                    </label>
                     <input
                       type="text"
-                      value={patientOrderNotes}
-                      onChange={(e) => setPatientOrderNotes(e.target.value)}
-                      placeholder="Observações clínicas do atendimento (opcional)"
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-[12px]"
+                      required
+                      value={patientCrudForm.name}
+                      onChange={(e) =>
+                        setPatientCrudForm({ ...patientCrudForm, name: e.target.value })
+                      }
+                      placeholder="Ex: Thor"
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
                     />
                   </div>
-                )}
-              </div>
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">Espécie *</label>
+                    <select
+                      value={patientCrudForm.species}
+                      onChange={(e) =>
+                        setPatientCrudForm({ ...patientCrudForm, species: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    >
+                      <option value="Canino">Canino</option>
+                      <option value="Felino">Felino</option>
+                      <option value="Equino">Equino</option>
+                      <option value="Silvestre">Silvestre / Exótico</option>
+                    </select>
+                  </div>
+                </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 rounded-full bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition"
-              >
-                {editingPatientId
-                  ? patientIncludeExamOrder
-                    ? 'Atualizar Paciente + Gerar Atendimento'
-                    : 'Salvar Alterações do Paciente'
-                  : patientIncludeExamOrder
-                  ? 'Cadastrar Paciente + Gerar Atendimento'
-                  : 'Cadastrar Paciente'}
-              </button>
-            </form>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">Raça</label>
+                    <input
+                      type="text"
+                      value={patientCrudForm.breed}
+                      onChange={(e) =>
+                        setPatientCrudForm({ ...patientCrudForm, breed: e.target.value })
+                      }
+                      placeholder="SRD"
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">Sexo *</label>
+                    <select
+                      value={patientCrudForm.gender}
+                      onChange={(e) =>
+                        setPatientCrudForm({
+                          ...patientCrudForm,
+                          gender: e.target.value as 'M' | 'F',
+                        })
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    >
+                      <option value="M">Macho (M)</option>
+                      <option value="F">Fêmea (F)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">
+                      Idade (Meses) *
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      required
+                      placeholder="Ex: 12"
+                      value={patientCrudForm.age_months}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setPatientCrudForm({
+                            ...patientCrudForm,
+                            age_months: '',
+                            birth_date: '',
+                          });
+                          return;
+                        }
+                        const parsed = Math.max(0, Math.floor(Number(raw)));
+                        if (Number.isNaN(parsed)) return;
+                        setPatientCrudForm({
+                          ...patientCrudForm,
+                          age_months: parsed,
+                          birth_date: calculateBirthDateFromAgeMonths(parsed),
+                        });
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">
+                      Data de Nascimento
+                    </label>
+                    <input
+                      type="date"
+                      value={patientCrudForm.birth_date}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const computedMonths = calculateAgeMonthsFromBirthDate(val);
+                        setPatientCrudForm({
+                          ...patientCrudForm,
+                          birth_date: val,
+                          age_months:
+                            computedMonths !== '' ? computedMonths : patientCrudForm.age_months,
+                        });
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">
+                      Nome do Tutor (Proprietário) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={patientCrudForm.tutor_name}
+                      onChange={(e) =>
+                        setPatientCrudForm({ ...patientCrudForm, tutor_name: e.target.value })
+                      }
+                      placeholder="Nome do tutor"
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">
+                      Telefone / WhatsApp
+                    </label>
+                    <input
+                      type="text"
+                      value={patientCrudForm.tutor_phone}
+                      onChange={(e) =>
+                        setPatientCrudForm({ ...patientCrudForm, tutor_phone: e.target.value })
+                      }
+                      placeholder="(16) 99999-0000"
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-[#707070] mb-1">E-mail do Tutor</label>
+                    <input
+                      type="email"
+                      value={patientCrudForm.tutor_email}
+                      onChange={(e) =>
+                        setPatientCrudForm({ ...patientCrudForm, tutor_email: e.target.value })
+                      }
+                      placeholder="tutor@email.com"
+                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Opção de já inserir pedido de exames no cadastro do paciente */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-[13px] font-semibold text-[#0b2240]">
+                    <input
+                      type="checkbox"
+                      checked={patientIncludeExamOrder}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setPatientIncludeExamOrder(checked);
+                        if (!checked) setPatientSelectedExamIds([]);
+                      }}
+                      className="w-4 h-4 accent-[#0071e3] rounded"
+                    />
+                    <span>Já inserir pedidos de exames neste cadastro (gerar atendimento)</span>
+                  </label>
+
+                  {patientIncludeExamOrder && (
+                    <div className="space-y-3 pt-2 border-t border-slate-200">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <SearchableSelectField
+                          label="Veterinário Solicitante *"
+                          modalTitle="Selecionar Veterinário Solicitante"
+                          modalSubtitle="Pesquise por nome, CRMV ou clínica parceira"
+                          searchPlaceholder="Buscar por nome, CRMV ou clínica..."
+                          items={vets}
+                          value={selectedVetId}
+                          getId={(v) => v.id}
+                          getPrimaryLabel={(v) => v.name}
+                          getSecondaryLabel={(v) => `${v.crmv}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`}
+                          getSearchText={(v) => `${v.name} ${v.crmv} ${v.clinic_name || ''}`}
+                          onChange={(id) => setSelectedVetId(id)}
+                          triggerClassName="bg-white border border-slate-200"
+                        />
+                        <SearchableSelectField
+                          label="Tabela de Preços"
+                          modalTitle="Selecionar Tabela de Preços / Convênio"
+                          searchPlaceholder="Buscar tabela por nome ou vigência..."
+                          items={priceTables}
+                          value={activePriceTable?.id || ''}
+                          getId={(pt) => pt.id}
+                          getPrimaryLabel={(pt) => pt.name}
+                          getSecondaryLabel={(pt) => `Vigência: ${pt.start_date} a ${pt.end_date}`}
+                          getSearchText={(pt) => `${pt.name} ${pt.start_date} ${pt.end_date}`}
+                          onChange={(id) => setSelectedTableId(id)}
+                          triggerClassName="bg-white border border-slate-200"
+                        />
+                      </div>
+
+                      <ExamMultiPicker
+                        exams={exams}
+                        selectedExamIds={patientSelectedExamIds}
+                        onChange={setPatientSelectedExamIds}
+                        activePriceTable={activePriceTable}
+                        title="Exames do Atendimento"
+                        compact
+                      />
+
+                      <input
+                        type="text"
+                        value={patientOrderNotes}
+                        onChange={(e) => setPatientOrderNotes(e.target.value)}
+                        placeholder="Observações clínicas do atendimento (opcional)"
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-[12px]"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-full bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition"
+                >
+                  {editingPatientId
+                    ? patientIncludeExamOrder
+                      ? 'Atualizar Paciente + Gerar Atendimento'
+                      : 'Salvar Alterações do Paciente'
+                    : patientIncludeExamOrder
+                      ? 'Cadastrar Paciente + Gerar Atendimento'
+                      : 'Cadastrar Paciente'}
+                </button>
+              </form>
             </div>
           )}
 
-            {/* Listagem Completa de Pacientes (CRUD) */}
-            <div className="bg-white rounded-[28px] p-[28px] space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-display text-[22px] font-semibold text-[#1d1d1f]">
-                    Listagem de Pacientes ({patients.length})
-                  </h2>
-                  <p className="text-[12px] text-[#707070]">
-                    Gerencie todos os pacientes cadastrados e inicie novos atendimentos com 1 clique.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingPatientId(null);
-                      setPatientIncludeExamOrder(false);
-                      setPatientSelectedExamIds([]);
-                      setPatientOrderNotes('');
-                      setPatientCrudForm({
-                        name: '',
-                        species: 'Canino',
-                        breed: '',
-                        gender: 'M',
-                        birth_date: '2023-05-10',
-                        age_months: 35,
-                        tutor_name: '',
-                        tutor_phone: '',
-                        tutor_email: '',
-                      });
-                      setPatientModalOpen(true);
-                    }}
-                    className="px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
-                  >
-                    + Novo Paciente
-                  </button>
-                  <input
-                    type="text"
-                    value={patientSearchQuery}
-                    onChange={(e) => setPatientSearchQuery(e.target.value)}
-                    placeholder="Buscar animal ou tutor..."
-                    className="px-3.5 py-2 rounded-full bg-[#f5f5f7] text-[12px] w-48"
-                  />
-                  <select
-                    value={patientSpeciesFilter}
-                    onChange={(e) => setPatientSpeciesFilter(e.target.value)}
-                    className="px-3 py-2 rounded-full bg-[#f5f5f7] text-[12px]"
-                  >
-                    <option value="todos">Todas Espécies</option>
-                    <option value="Canino">Canino</option>
-                    <option value="Felino">Felino</option>
-                    <option value="Equino">Equino</option>
-                    <option value="Silvestre">Silvestre</option>
-                  </select>
-                </div>
+          {/* Listagem Completa de Pacientes (CRUD) */}
+          <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display text-[20px] sm:text-[22px] font-semibold text-[#1d1d1f]">
+                  Listagem de Pacientes ({patients.length})
+                </h2>
+                <p className="text-[12px] text-[#707070]">
+                  Gerencie todos os pacientes cadastrados e inicie novos atendimentos com 1 clique.
+                </p>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-[12px]">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-[#86868b] uppercase text-[11px]">
-                      <th className="py-3 px-3">Animal</th>
-                      <th className="py-3 px-3">Espécie / Raça</th>
-                      <th className="py-3 px-3">Tutor</th>
-                      <th className="py-3 px-3">Atendimentos</th>
-                      <th className="py-3 px-3 text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {patients
-                      .filter((p) => {
-                        const q = patientSearchQuery.trim().toLowerCase();
-                        const matchesSpecies =
-                          patientSpeciesFilter === 'todos' ||
-                          p.species.toLowerCase() === patientSpeciesFilter.toLowerCase();
-                        const matchesQuery =
-                          !q ||
-                          p.name.toLowerCase().includes(q) ||
-                          p.tutor_name.toLowerCase().includes(q) ||
-                          (p.breed || '').toLowerCase().includes(q);
-                        return matchesSpecies && matchesQuery;
-                      })
-                      .slice((patientsPage - 1) * 10, patientsPage * 10)
-                      .map((p) => {
-                        const patientOrdersCount = orders.filter(
-                          (o) => o.patient_id === p.id || o.patient?.id === p.id
-                        ).length;
-                        return (
-                          <tr key={p.id} className="hover:bg-slate-50/70">
-                            <td className="py-3 px-3">
-                              <div className="font-semibold text-[#0b2240]">{p.name}</div>
-                              <div className="text-[11px] text-[#707070]">
-                                {p.gender === 'F' ? 'Fêmea' : 'Macho'} •{' '}
-                                {formatAgeLabel(p.age_days, p.birth_date)}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3">
-                              <div className="text-[#0b2240] font-medium">{p.species}</div>
-                              <div className="text-[11px] text-[#707070]">{p.breed || 'SRD'}</div>
-                            </td>
-                            <td className="py-3 px-3">
-                              <div className="text-[#0b2240] font-medium">{p.tutor_name}</div>
-                              <div className="text-[11px] text-[#707070]">
-                                {p.tutor_phone || p.tutor_email || '—'}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className="px-2.5 py-1 rounded-full bg-slate-100 text-[#0b2240] font-semibold whitespace-nowrap inline-block">
-                                {patientOrdersCount} atendimento(s)
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-right space-x-1 whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingOrderId(null);
-                                  setRoutinePatientMode('existing');
-                                  setRoutineSelectedPatientId(p.id);
-                                  setRoutineSubTab('list');
-                                  setActiveTab('routine');
-                                  setOrderModalOpen(true);
-                                }}
-                                className="px-2.5 py-1.5 rounded-full bg-[#1d9496] text-white text-[11px] font-semibold hover:opacity-90 transition inline-flex items-center gap-1"
-                              >
-                                <ClipboardPlus className="w-3 h-3" />
-                                Atendimento
-                              </button>
-                              <button
-                                type="button"
-                                title="Editar paciente"
-                                onClick={() => {
-                                  setEditingPatientId(p.id);
-                                  setPatientCrudForm({
-                                    name: p.name,
-                                    species: p.species,
-                                    breed: p.breed || '',
-                                    gender: p.gender,
-                                    birth_date: p.birth_date || '2023-05-10',
-                                    age_months: Math.max(
-                                      1,
-                                      Math.round((p.age_days || 365) / 30)
-                                    ),
-                                    tutor_name: p.tutor_name,
-                                    tutor_phone: p.tutor_phone || '',
-                                    tutor_email: p.tutor_email || '',
-                                  });
-                                  setPatientModalOpen(true);
-                                }}
-                                className="p-1.5 text-[#0b2240] hover:bg-slate-100 rounded-full inline-flex items-center"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Excluir paciente"
-                                onClick={async () => {
-                                  await api.deletePatient(p.id);
-                                  if (editingPatientId === p.id) setEditingPatientId(null);
-                                  await loadAllData();
-                                  showToast(`Paciente "${p.name}" removido.`);
-                                }}
-                                className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-full inline-flex items-center"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPatientId(null);
+                    setPatientIncludeExamOrder(false);
+                    setPatientSelectedExamIds([]);
+                    setPatientOrderNotes('');
+                    setPatientCrudForm({
+                      name: '',
+                      species: 'Canino',
+                      breed: '',
+                      gender: 'M',
+                      birth_date: '',
+                      age_months: '',
+                      tutor_name: '',
+                      tutor_phone: '',
+                      tutor_email: '',
+                    });
+                    setPatientModalOpen(true);
+                  }}
+                  className="w-full sm:w-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
+                >
+                  + Novo Paciente
+                </button>
+                <input
+                  type="text"
+                  value={patientSearchQuery}
+                  onChange={(e) => setPatientSearchQuery(e.target.value)}
+                  placeholder="Buscar animal ou tutor..."
+                  className="px-3.5 py-2 rounded-full bg-[#f5f5f7] text-[12px] flex-1 sm:w-48 min-w-[140px]"
+                />
+                <select
+                  value={patientSpeciesFilter}
+                  onChange={(e) => setPatientSpeciesFilter(e.target.value)}
+                  className="px-3 py-2 rounded-full bg-[#f5f5f7] text-[12px]"
+                >
+                  <option value="todos">Todas Espécies</option>
+                  <option value="Canino">Canino</option>
+                  <option value="Felino">Felino</option>
+                  <option value="Equino">Equino</option>
+                  <option value="Silvestre">Silvestre</option>
+                </select>
               </div>
-              {(() => {
-                const totalFilteredPatients = patients.filter((p) => {
-                  const matchesSpecies =
-                    patientSpeciesFilter === 'todos' || p.species === patientSpeciesFilter;
-                  const q = patientSearchQuery.trim().toLowerCase();
-                  const matchesQuery =
-                    !q ||
-                    p.name.toLowerCase().includes(q) ||
-                    p.tutor_name.toLowerCase().includes(q) ||
-                    (p.breed || '').toLowerCase().includes(q);
-                  return matchesSpecies && matchesQuery;
-                }).length;
-                return (
-                  <PaginationBar
-                    page={patientsPage}
-                    pageSize={10}
-                    totalItems={totalFilteredPatients}
-                    onPageChange={setPatientsPage}
-                  />
-                );
-              })()}
             </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-[12px]">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[#86868b] uppercase text-[11px]">
+                    <th className="py-3 px-3">Animal</th>
+                    <th className="py-3 px-3">Espécie / Raça</th>
+                    <th className="py-3 px-3">Tutor</th>
+                    <th className="py-3 px-3">Atendimentos</th>
+                    <th className="py-3 px-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {patients
+                    .filter((p) => {
+                      const q = patientSearchQuery.trim().toLowerCase();
+                      const matchesSpecies =
+                        patientSpeciesFilter === 'todos' ||
+                        p.species.toLowerCase() === patientSpeciesFilter.toLowerCase();
+                      const matchesQuery =
+                        !q ||
+                        p.name.toLowerCase().includes(q) ||
+                        p.tutor_name.toLowerCase().includes(q) ||
+                        (p.breed || '').toLowerCase().includes(q);
+                      return matchesSpecies && matchesQuery;
+                    })
+                    .slice((patientsPage - 1) * 10, patientsPage * 10)
+                    .map((p) => {
+                      const patientOrdersCount = orders.filter(
+                        (o) => o.patient_id === p.id || o.patient?.id === p.id
+                      ).length;
+                      return (
+                        <tr key={p.id} className="hover:bg-slate-50/70">
+                          <td className="py-3 px-3">
+                            <div className="font-semibold text-[#0b2240]">{p.name}</div>
+                            <div className="text-[11px] text-[#707070]">
+                              {p.gender === 'F' ? 'Fêmea' : 'Macho'} •{' '}
+                              {formatAgeLabel(p.age_days, p.birth_date)}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="text-[#0b2240] font-medium">{p.species}</div>
+                            <div className="text-[11px] text-[#707070]">{p.breed || 'SRD'}</div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="text-[#0b2240] font-medium">{p.tutor_name}</div>
+                            <div className="text-[11px] text-[#707070]">
+                              {p.tutor_phone || p.tutor_email || '—'}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-[#0b2240] font-semibold whitespace-nowrap inline-block">
+                              {patientOrdersCount} atendimento(s)
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right space-x-1 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingOrderId(null);
+                                setRoutinePatientMode('existing');
+                                setRoutineSelectedPatientId(p.id);
+                                setRoutineSubTab('list');
+                                setActiveTab('routine');
+                                setOrderModalOpen(true);
+                              }}
+                              className="px-2.5 py-1.5 rounded-full bg-[#1d9496] text-white text-[11px] font-semibold hover:opacity-90 transition inline-flex items-center gap-1"
+                            >
+                              <ClipboardPlus className="w-3 h-3" />
+                              Atendimento
+                            </button>
+                            <button
+                              type="button"
+                              title="Editar paciente"
+                              onClick={() => {
+                                setEditingPatientId(p.id);
+                                const editBirthDate = p.birth_date || '';
+                                const editAgeMonths = editBirthDate
+                                  ? calculateAgeMonthsFromBirthDate(editBirthDate)
+                                  : p.age_days
+                                    ? Math.max(0, Math.round(p.age_days / 30))
+                                    : '';
+                                setPatientCrudForm({
+                                  name: p.name,
+                                  species: p.species,
+                                  breed: p.breed || '',
+                                  gender: p.gender,
+                                  birth_date: editBirthDate,
+                                  age_months: editAgeMonths,
+                                  tutor_name: p.tutor_name,
+                                  tutor_phone: p.tutor_phone || '',
+                                  tutor_email: p.tutor_email || '',
+                                });
+                                setPatientModalOpen(true);
+                              }}
+                              className="p-1.5 text-[#0b2240] hover:bg-slate-100 rounded-full inline-flex items-center"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Excluir paciente"
+                              onClick={async () => {
+                                await api.deletePatient(p.id);
+                                if (editingPatientId === p.id) setEditingPatientId(null);
+                                await loadAllData();
+                                showToast(`Paciente "${p.name}" removido.`);
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-full inline-flex items-center"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+            {(() => {
+              const totalFilteredPatients = patients.filter((p) => {
+                const matchesSpecies =
+                  patientSpeciesFilter === 'todos' || p.species === patientSpeciesFilter;
+                const q = patientSearchQuery.trim().toLowerCase();
+                const matchesQuery =
+                  !q ||
+                  p.name.toLowerCase().includes(q) ||
+                  p.tutor_name.toLowerCase().includes(q) ||
+                  (p.breed || '').toLowerCase().includes(q);
+                return matchesSpecies && matchesQuery;
+              }).length;
+              return (
+                <PaginationBar
+                  page={patientsPage}
+                  pageSize={10}
+                  totalItems={totalFilteredPatients}
+                  onPageChange={setPatientsPage}
+                />
+              );
+            })()}
+          </div>
         </div>
       )}
 
@@ -1833,18 +1889,17 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           ABA 2: ATENDIMENTOS / ROTINA (LISTA + CADASTRO DE ATENDIMENTOS)
          ===================================================================== */}
       {activeTab === 'routine' && (
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
           {/* Sub-navegação Atendimentos: Lista vs Novo Atendimento */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-5 py-3.5 rounded-[24px]">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:px-5 sm:py-3.5 rounded-[24px]">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => setRoutineSubTab('list')}
-                className={`px-4 py-2 rounded-full text-[12px] font-semibold transition ${
-                  routineSubTab === 'list'
-                    ? 'bg-[#1d1d1f] text-white'
-                    : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
-                }`}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-[11.5px] sm:text-[12px] font-semibold transition ${routineSubTab === 'list'
+                  ? 'bg-[#1d1d1f] text-white'
+                  : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
+                  }`}
               >
                 Lista de Atendimentos ({orders.length})
               </button>
@@ -1854,7 +1909,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   setEditingOrderId(null);
                   setOrderModalOpen(true);
                 }}
-                className="px-4 py-2 rounded-full text-[12px] font-semibold transition bg-[#0071e3] text-white hover:opacity-95 cursor-pointer"
+                className="px-3.5 sm:px-4 py-2 rounded-full text-[11.5px] sm:text-[12px] font-semibold transition bg-[#0071e3] text-white hover:opacity-95 cursor-pointer"
               >
                 + Novo Atendimento
               </button>
@@ -1869,11 +1924,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     // ignore
                   }
                 }}
-                className={`px-4 py-2 rounded-full text-[12px] font-semibold transition inline-flex items-center gap-1.5 ${
-                  routineSubTab === 'collections'
-                    ? 'bg-[#0b2240] text-white'
-                    : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
-                }`}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-[11.5px] sm:text-[12px] font-semibold transition inline-flex items-center gap-1.5 ${routineSubTab === 'collections'
+                  ? 'bg-[#0b2240] text-white'
+                  : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
+                  }`}
               >
                 <span>Solicitações de Coleta</span>
                 {collectionRequests.filter((c) => (c.status || 'pendente') === 'pendente').length > 0 && (
@@ -1889,7 +1943,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           </div>
 
           {routineSubTab === 'list' && (
-            <div className="bg-white rounded-[28px] p-[28px] space-y-4">
+            <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
                 <input
                   type="text"
@@ -2013,19 +2067,18 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           </td>
                           <td className="py-3 px-3">
                             <span
-                              className={`px-2.5 py-1 rounded-full font-semibold whitespace-nowrap ${
-                                ord.status === 'concluido'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : ord.status === 'em_analise'
+                              className={`px-2.5 py-1 rounded-full font-semibold whitespace-nowrap ${ord.status === 'concluido'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : ord.status === 'em_analise'
                                   ? 'bg-amber-100 text-amber-800'
                                   : 'bg-slate-100 text-[#0b2240]'
-                              }`}
+                                }`}
                             >
                               {ord.status === 'concluido'
                                 ? 'Concluído'
                                 : ord.status === 'em_analise'
-                                ? 'Em Análise'
-                                : 'Pendente'}
+                                  ? 'Em Análise'
+                                  : 'Pendente'}
                             </span>
                           </td>
                           <td className="py-3 px-3 text-right whitespace-nowrap">
@@ -2078,17 +2131,17 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           )}
 
           {routineSubTab === 'collections' && (
-            <div className="bg-white rounded-[28px] p-6 space-y-4">
+            <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-6 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-[22px] font-semibold text-[#1d1d1f]">
+                  <h2 className="font-display text-[20px] sm:text-[22px] font-semibold text-[#1d1d1f]">
                     Solicitações de Coleta Recebidas pelo Site
                   </h2>
                   <p className="text-[12px] text-[#707070]">
                     Acompanhe os pedidos de retirada programada e converta diretamente em um Atendimento / Ordem de Serviço.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={async () => {
@@ -2106,12 +2159,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     value={collectionSearch}
                     onChange={(e) => setCollectionSearch(e.target.value)}
                     placeholder="Buscar clínica, telefone, endereço..."
-                    className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[12px] w-60"
+                    className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[12px] flex-1 sm:w-60 min-w-[150px]"
                   />
                   <select
                     value={collectionStatusFilter}
                     onChange={(e) => setCollectionStatusFilter(e.target.value)}
-                    className="px-3.5 py-2 rounded-full bg-[#f5f5f7] text-[12px]"
+                    className="px-3.5 py-2 rounded-full bg-[#f5f5f7] text-[12px] w-full sm:w-auto"
                   >
                     <option value="todos">Todos os status</option>
                     <option value="pendente">Pendentes</option>
@@ -2147,10 +2200,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         st === 'concluida'
                           ? 'bg-emerald-100 text-emerald-800'
                           : st === 'agendada'
-                          ? 'bg-sky-100 text-sky-800'
-                          : st === 'cancelada'
-                          ? 'bg-slate-200 text-slate-600'
-                          : 'bg-amber-100 text-amber-800';
+                            ? 'bg-sky-100 text-sky-800'
+                            : st === 'cancelada'
+                              ? 'bg-slate-200 text-slate-600'
+                              : 'bg-amber-100 text-amber-800';
 
                       return (
                         <div
@@ -2188,12 +2241,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                                   <span>
                                     Agendado para:{' '}
                                     {col.scheduled_date
-                                      ? `${col.scheduled_date.split('-').reverse().join('/')}${
-                                          col.scheduled_time ? ` às ${col.scheduled_time}` : ''
-                                        }`
+                                      ? `${col.scheduled_date.split('-').reverse().join('/')}${col.scheduled_time ? ` às ${col.scheduled_time}` : ''
+                                      }`
                                       : col.preferred_date
-                                      ? `${col.preferred_date.split('-').reverse().join('/')} (horário não definido)`
-                                      : 'Data/horário não informado'}
+                                        ? `${col.preferred_date.split('-').reverse().join('/')} (horário não definido)`
+                                        : 'Data/horário não informado'}
                                   </span>
                                 </div>
                               )}
@@ -2348,38 +2400,46 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               })()}
             </div>
           )}
+        </div>
+      )}
 
-          {orderModalOpen && (
-            <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-[#f5f5f7] rounded-[28px] max-w-6xl w-full max-h-[92vh] overflow-y-auto p-6 space-y-4 shadow-2xl border border-black/10">
-                <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                  <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
-                    {editingOrderId ? 'Editar Atendimento / Ordem de Serviço' : 'Novo Atendimento / Ordem de Serviço'}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOrderModalOpen(false);
-                      setEditingOrderId(null);
-                    }}
-                    className="px-3 py-1 rounded-full bg-white text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer"
-                  >
-                    Fechar
-                  </button>
-                </div>
-                <form onSubmit={handleCreateOrder} className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      {orderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4">
+          <div className="bg-[#f5f5f7] rounded-[24px] sm:rounded-[28px] max-w-6xl w-full min-w-0 max-h-[92vh] overflow-y-auto p-3.5 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-black/10">
+            <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
+              <div className="min-w-0">
+                <h3 className="font-display text-[17px] sm:text-[20px] font-semibold text-[#1d1d1f] leading-snug">
+                  {editingOrderId
+                    ? `Editar Atendimento ${orders.find((o) => o.id === editingOrderId)?.protocol_code || ''}`
+                    : 'Novo Atendimento / Ordem de Serviço'}
+                </h3>
+                <p className="text-[11px] sm:text-[12px] text-[#707070]">
+                  Selecione paciente, veterinário, tabela e exames sem sair da tela.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderModalOpen(false);
+                  setEditingOrderId(null);
+                }}
+                className="px-3 py-1.5 rounded-full bg-white text-[12px] font-medium text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
+              >
+                Fechar
+              </button>
+            </div>
+            <form onSubmit={handleCreateOrder} className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-4 items-start min-w-0">
               {/* COLUNA PRINCIPAL (ESQUERDA) */}
-              <div className="lg:col-span-8 bg-white rounded-[24px] p-5 space-y-3.5 border border-black/5">
+              <div className="lg:col-span-8 min-w-0 bg-white rounded-[20px] sm:rounded-[24px] p-3.5 sm:p-5 space-y-3.5 border border-black/5">
                 {convertingCollection && (
                   <div
-                    className={`px-4 py-2.5 rounded-2xl border flex flex-wrap items-center justify-between gap-2 text-[12px] ${
-                      convertingVetMatched
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
-                        : 'bg-amber-50 border-amber-200 text-amber-950'
-                    }`}
+                    className={`px-3.5 py-2.5 rounded-2xl border flex flex-wrap items-center justify-between gap-2 text-[12px] ${convertingVetMatched
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                      : 'bg-amber-50 border-amber-200 text-amber-950'
+                      }`}
                   >
-                    <div className="space-y-0.5">
-                      <div>
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="break-words">
                         <strong>Convertendo Solicitação de Coleta:</strong>{' '}
                         {convertingCollection.clinic_or_tutor_name} ({convertingCollection.phone})
                       </div>
@@ -2395,7 +2455,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {!convertingVetMatched && (
                         <button
                           type="button"
@@ -2427,53 +2487,43 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     </div>
                   </div>
                 )}
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="font-display text-[20px] font-semibold text-[#1d1d1f] leading-tight">
-                        {editingOrderId
-                          ? `Editar Atendimento ${
-                              orders.find((o) => o.id === editingOrderId)?.protocol_code || ''
-                            }`
-                          : 'Novo Atendimento / Ordem de Serviço'}
-                      </h2>
-                      {editingOrderId && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingOrderId(null);
-                            setRoutineSubTab('list');
-                          }}
-                          className="px-2.5 py-0.5 rounded-full bg-red-50 text-red-600 text-[11px] font-semibold hover:bg-red-100 transition"
-                        >
-                          Cancelar Edição
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-[#707070]">
-                      Selecione paciente, veterinário, tabela e exames sem sair da tela.
-                    </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[12px] font-semibold uppercase tracking-wider text-[#86868b]">
+                      Dados do Paciente & Solicitação
+                    </span>
+                    {editingOrderId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingOrderId(null);
+                          setOrderModalOpen(false);
+                          setRoutineSubTab('list');
+                        }}
+                        className="px-2.5 py-0.5 rounded-full bg-red-50 text-red-600 text-[11px] font-semibold hover:bg-red-100 transition"
+                      >
+                        Cancelar Edição
+                      </button>
+                    )}
                   </div>
-                  <div className="inline-flex rounded-full bg-[#f5f5f7] p-0.5 text-[11px] font-semibold">
+                  <div className="grid grid-cols-2 sm:inline-flex rounded-full bg-[#f5f5f7] p-0.5 text-[11px] font-semibold w-full sm:w-auto">
                     <button
                       type="button"
                       onClick={() => setRoutinePatientMode('existing')}
-                      className={`px-3 py-1 rounded-full transition ${
-                        routinePatientMode === 'existing'
-                          ? 'bg-[#0b2240] text-white'
-                          : 'text-[#5b6675]'
-                      }`}
+                      className={`px-3 py-1.5 sm:py-1 rounded-full transition text-center ${routinePatientMode === 'existing'
+                        ? 'bg-[#0b2240] text-white'
+                        : 'text-[#5b6675]'
+                        }`}
                     >
                       Paciente Cadastrado
                     </button>
                     <button
                       type="button"
                       onClick={() => setRoutinePatientMode('new')}
-                      className={`px-3 py-1 rounded-full transition ${
-                        routinePatientMode === 'new'
-                          ? 'bg-[#0b2240] text-white'
-                          : 'text-[#5b6675]'
-                      }`}
+                      className={`px-3 py-1.5 sm:py-1 rounded-full transition text-center ${routinePatientMode === 'new'
+                        ? 'bg-[#0b2240] text-white'
+                        : 'text-[#5b6675]'
+                        }`}
                     >
                       + Novo Paciente
                     </button>
@@ -2481,8 +2531,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 </div>
 
                 {routinePatientMode === 'existing' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 p-3 rounded-2xl bg-[#f5f5f7]">
-                    <div className="md:col-span-4">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 p-3 rounded-2xl bg-[#f5f5f7] min-w-0">
+                    <div className="md:col-span-4 min-w-0">
                       <SearchableSelectField
                         label="Paciente *"
                         modalTitle="Pesquisar Paciente Cadastrado"
@@ -2507,7 +2557,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         triggerClassName="bg-white border border-black/5 py-2 text-[13px]"
                       />
                     </div>
-                    <div className="md:col-span-4">
+                    <div className="md:col-span-4 min-w-0">
                       <SearchableSelectField
                         label="Veterinário Solicitante *"
                         modalTitle="Pesquisar Veterinário Solicitante"
@@ -2526,16 +2576,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         triggerClassName="bg-white border border-black/5 py-2 text-[13px]"
                       />
                     </div>
-                    <div className="md:col-span-2">
+                    <div className="md:col-span-2 min-w-0">
                       <label className="block text-[12px] text-[#707070] mb-1">Data</label>
                       <input
                         type="date"
                         value={orderDate}
                         onChange={(e) => setOrderDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-[18px] bg-white border border-black/5 text-[13px]"
+                        className="w-full min-w-0 px-3 py-2 rounded-[18px] bg-white border border-black/5 text-[13px]"
                       />
                     </div>
-                    <div className="md:col-span-2">
+                    <div className="md:col-span-2 min-w-0">
                       <SearchableSelectField
                         label="Tabela"
                         modalTitle="Selecionar Tabela de Preços / Convênio"
@@ -2552,9 +2602,9 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="p-3.5 rounded-2xl bg-[#f5f5f7] space-y-2.5">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      <div>
+                  <div className="p-3 sm:p-3.5 rounded-2xl bg-[#f5f5f7] space-y-2.5 min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                      <div className="min-w-0">
                         <label className="block text-[11px] text-[#707070] mb-0.5">Animal *</label>
                         <input
                           type="text"
@@ -2562,25 +2612,40 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           value={patientForm.name}
                           onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })}
                           placeholder="Ex: Apollo"
-                          className="w-full px-3 py-1.5 rounded-xl bg-white text-[13px]"
+                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
                         />
                       </div>
-                      <div>
-                        <label className="block text-[11px] text-[#707070] mb-0.5">Espécie *</label>
-                        <select
-                          value={patientForm.species}
-                          onChange={(e) =>
-                            setPatientForm({ ...patientForm, species: e.target.value })
-                          }
-                          className="w-full px-3 py-1.5 rounded-xl bg-white text-[13px]"
-                        >
-                          <option value="Canino">Canino</option>
-                          <option value="Felino">Felino</option>
-                          <option value="Equino">Equino</option>
-                          <option value="Silvestre">Silvestre / Exótico</option>
-                        </select>
+                      <div className="grid grid-cols-2 sm:contents gap-2.5">
+                        <div className="min-w-0">
+                          <label className="block text-[11px] text-[#707070] mb-0.5">Espécie *</label>
+                          <select
+                            value={patientForm.species}
+                            onChange={(e) =>
+                              setPatientForm({ ...patientForm, species: e.target.value })
+                            }
+                            className="w-full px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
+                          >
+                            <option value="Canino">Canino</option>
+                            <option value="Felino">Felino</option>
+                            <option value="Equino">Equino</option>
+                            <option value="Silvestre">Silvestre / Exótico</option>
+                          </select>
+                        </div>
+                        <div className="min-w-0">
+                          <label className="block text-[11px] text-[#707070] mb-0.5">Sexo *</label>
+                          <select
+                            value={patientForm.gender}
+                            onChange={(e) =>
+                              setPatientForm({ ...patientForm, gender: e.target.value as 'M' | 'F' })
+                            }
+                            className="w-full px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
+                          >
+                            <option value="M">Macho (M)</option>
+                            <option value="F">Fêmea (F)</option>
+                          </select>
+                        </div>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-[11px] text-[#707070] mb-0.5">Raça *</label>
                         <input
                           type="text"
@@ -2588,23 +2653,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           value={patientForm.breed}
                           onChange={(e) => setPatientForm({ ...patientForm, breed: e.target.value })}
                           placeholder="SRD / Pastor"
-                          className="w-full px-3 py-1.5 rounded-xl bg-white text-[13px]"
+                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
                         />
                       </div>
-                      <div>
-                        <label className="block text-[11px] text-[#707070] mb-0.5">Sexo *</label>
-                        <select
-                          value={patientForm.gender}
-                          onChange={(e) =>
-                            setPatientForm({ ...patientForm, gender: e.target.value as 'M' | 'F' })
-                          }
-                          className="w-full px-3 py-1.5 rounded-xl bg-white text-[13px]"
-                        >
-                          <option value="M">Macho (M)</option>
-                          <option value="F">Fêmea (F)</option>
-                        </select>
-                      </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-[11px] text-[#707070] mb-0.5">Tutor *</label>
                         <input
                           type="text"
@@ -2614,10 +2666,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                             setPatientForm({ ...patientForm, tutor_name: e.target.value })
                           }
                           placeholder="Nome do tutor"
-                          className="w-full px-3 py-1.5 rounded-xl bg-white text-[13px]"
+                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
                         />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-[11px] text-[#707070] mb-0.5">Telefone *</label>
                         <input
                           type="text"
@@ -2627,10 +2679,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                             setPatientForm({ ...patientForm, tutor_phone: e.target.value })
                           }
                           placeholder="(11) 99999-0000"
-                          className="w-full px-3 py-1.5 rounded-xl bg-white text-[13px]"
+                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
                         />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-[11px] text-[#707070] mb-0.5">Idade (Meses)</label>
                         <input
                           type="number"
@@ -2639,20 +2691,20 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           onChange={(e) =>
                             setPatientForm({ ...patientForm, age_months: Number(e.target.value) })
                           }
-                          className="w-full px-3 py-1.5 rounded-xl bg-white text-[13px]"
+                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
                         />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-[11px] text-[#707070] mb-0.5">Data</label>
                         <input
                           type="date"
                           value={orderDate}
                           onChange={(e) => setOrderDate(e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-xl bg-white text-[13px]"
+                          className="w-full min-w-0 px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 min-w-0">
                       <SearchableSelectField
                         label="Médico Veterinário Solicitante *"
                         modalTitle="Pesquisar Veterinário Solicitante"
@@ -2698,20 +2750,20 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               </div>
 
               {/* COLUNA DIREITA FIXA (RESUMO + AÇÃO + TUBOS) */}
-              <div className="lg:col-span-4 space-y-3 lg:sticky lg:top-[76px]">
-                <div className="bg-white rounded-[24px] p-5 space-y-3 border border-black/5 shadow-sm">
-                  <div className="flex items-center justify-between">
+              <div className="lg:col-span-4 min-w-0 space-y-3 lg:sticky lg:top-[76px]">
+                <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 sm:p-5 space-y-3 border border-black/5 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-[#86868b]">
                       Resumo do Atendimento
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#e8f2fd] text-[#0071e3] text-[11px] font-semibold">
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#e8f2fd] text-[#0071e3] text-[11px] font-semibold shrink-0">
                       {validSelectedExamIds.length} exame(s)
                     </span>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-[#f5f5f7] space-y-1 text-[12px]">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#707070]">Paciente:</span>
+                      <span className="text-[#707070] shrink-0">Paciente:</span>
                       <span className="font-semibold text-[#1d1d1f] truncate">
                         {routinePatientMode === 'existing'
                           ? patients.find((p) => p.id === routineSelectedPatientId)?.name || 'Selecione'
@@ -2719,44 +2771,46 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#707070]">Veterinário:</span>
+                      <span className="text-[#707070] shrink-0">Veterinário:</span>
                       <span className="font-semibold text-[#1d1d1f] truncate">
                         {vets.find((v) => v.id === selectedVetId)?.name || 'Selecione'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#707070]">Tabela:</span>
+                      <span className="text-[#707070] shrink-0">Tabela:</span>
                       <span className="font-medium text-[#1d1d1f] truncate">
                         {activePriceTable?.name || 'Padrão'}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex items-baseline justify-between pt-1">
+                  <div className="flex items-baseline justify-between gap-2 pt-1">
                     <span className="text-[12px] text-[#707070]">Total Calculado:</span>
-                    <span className="font-display text-[28px] font-bold text-[#1d1d1f] font-mono leading-none">
+                    <span className="font-display text-[22px] sm:text-[28px] font-bold text-[#1d1d1f] font-mono leading-none">
                       R$ {calculatedOrderTotal.toFixed(2)}
                     </span>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-full bg-[#0071e3] text-white text-[14px] font-semibold inline-flex items-center justify-center gap-2 hover:opacity-95 transition shadow-sm"
+                    className="w-full py-3 px-4 rounded-full bg-[#0071e3] text-white text-[13px] sm:text-[14px] font-semibold inline-flex items-center justify-center gap-2 hover:opacity-95 transition shadow-sm text-center"
                   >
-                    <Barcode className="w-4 h-4" />
-                    {editingOrderId
-                      ? 'Salvar Alterações do Atendimento'
-                      : 'Registrar Atendimento e Etiquetas'}
+                    <Barcode className="w-4 h-4 shrink-0" />
+                    <span>
+                      {editingOrderId
+                        ? 'Salvar Alterações do Atendimento'
+                        : 'Registrar Atendimento e Etiquetas'}
+                    </span>
                   </button>
                 </div>
 
-                <div className="bg-white rounded-[24px] p-4 space-y-2.5 border border-black/5">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-display text-[15px] font-semibold text-[#1d1d1f] flex items-center gap-1.5">
-                      <Barcode className="w-4 h-4 text-[#0071e3]" />
-                      Tubos & Etiquetas da Coleta
+                <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 space-y-2.5 border border-black/5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-display text-[14px] sm:text-[15px] font-semibold text-[#1d1d1f] flex items-center gap-1.5">
+                      <Barcode className="w-4 h-4 text-[#0071e3] shrink-0" />
+                      <span>Tubos & Etiquetas da Coleta</span>
                     </h3>
-                    <span className="text-[11px] font-mono text-[#707070]">
+                    <span className="text-[11px] font-mono text-[#707070] shrink-0">
                       {validSelectedExamIds.reduce((s, id) => {
                         const ex = exams.find((e) => e.id === id);
                         return s + (ex?.label_qty || 0);
@@ -2767,7 +2821,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
 
                   {validSelectedExamIds.length === 0 ? (
                     <p className="text-[12px] text-[#86868b] py-3 text-center">
-                      Marque os exames à esquerda para visualizar os tubos e etiquetas necessários.
+                      Marque os exames para visualizar os tubos e etiquetas necessários.
                     </p>
                   ) : (
                     <div className="space-y-1.5 max-h-[210px] overflow-y-auto pr-1 text-[11px]">
@@ -2796,14 +2850,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 </div>
               </div>
             </form>
-              </div>
-            </div>
-          )}
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE CADASTRO RÁPIDO DE VETERINÁRIO / CLÍNICA NA CONVERSÃO DE COLETA */}
       {quickVetModal && (
         <div
-          className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
           onClick={() => setQuickVetModal(null)}
         >
           <form
@@ -2828,10 +2882,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 showToast(err?.message || 'Erro ao cadastrar veterinário.');
               }
             }}
-            className="bg-white rounded-[28px] max-w-lg w-full p-6 space-y-4 shadow-2xl"
+            className="bg-white rounded-[24px] sm:rounded-[28px] max-w-lg w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl"
           >
             <div>
-              <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+              <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                 Cadastrar Veterinário / Clínica Parceira
               </h3>
               <p className="text-[12px] text-[#707070] mt-0.5">
@@ -2916,17 +2970,17 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setQuickVetModal(null)}
-                className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-semibold"
+                className="px-4 py-2.5 sm:py-2 rounded-full bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-semibold"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition"
+                className="px-5 py-2.5 sm:py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition"
               >
                 Cadastrar e Vincular
               </button>
@@ -2938,7 +2992,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
       {/* MODAL DE AGENDAMENTO DE COLETA (DATA E HORA) */}
       {scheduleModal && (
         <div
-          className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
           onClick={() => setScheduleModal(null)}
         >
           <form
@@ -2960,18 +3014,18 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               );
               setScheduleModal(null);
             }}
-            className="bg-white rounded-[28px] max-w-md w-full p-6 space-y-4 shadow-2xl"
+            className="bg-white rounded-[24px] sm:rounded-[28px] max-w-md w-full min-w-0 p-4 sm:p-6 space-y-4 shadow-2xl"
           >
             <div>
-              <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+              <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                 Agendar Retirada de Coleta
               </h3>
-              <p className="text-[12px] text-[#707070] mt-0.5">
+              <p className="text-[12px] text-[#707070] mt-0.5 break-words">
                 {scheduleModal.collection.clinic_or_tutor_name} • {scheduleModal.collection.phone}
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] text-[#707070] mb-1">Data da Coleta *</label>
                 <input
@@ -2981,7 +3035,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   onChange={(e) =>
                     setScheduleModal((prev) => (prev ? { ...prev, date: e.target.value } : null))
                   }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#f5f5f7] text-[13px]"
+                  className="w-full min-w-0 px-3.5 py-2.5 rounded-xl bg-[#f5f5f7] text-[13px]"
                 />
               </div>
               <div>
@@ -2993,104 +3047,22 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   onChange={(e) =>
                     setScheduleModal((prev) => (prev ? { ...prev, time: e.target.value } : null))
                   }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#f5f5f7] text-[13px]"
+                  className="w-full min-w-0 px-3.5 py-2.5 rounded-xl bg-[#f5f5f7] text-[13px]"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setScheduleModal(null)}
-                className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-semibold"
+                className="px-4 py-2.5 sm:py-2 rounded-full bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-semibold"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition"
-              >
-                Confirmar Agendamento
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* MODAL DE AGENDAMENTO DE COLETA (DATA E HORA) */}
-      {scheduleModal && (
-        <div
-          className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setScheduleModal(null)}
-        >
-          <form
-            onClick={(e) => e.stopPropagation()}
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!scheduleModal.collection.id) return;
-              const updated = await api.updateCollectionRequestStatus(
-                scheduleModal.collection.id,
-                'agendada',
-                scheduleModal.date,
-                scheduleModal.time
-              );
-              setCollectionRequests((prev) =>
-                prev.map((item) => (item.id === updated.id ? updated : item))
-              );
-              showToast(
-                `Coleta agendada para ${scheduleModal.date.split('-').reverse().join('/')} às ${scheduleModal.time}!`
-              );
-              setScheduleModal(null);
-            }}
-            className="bg-white rounded-[28px] max-w-md w-full p-6 space-y-4 shadow-2xl"
-          >
-            <div>
-              <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
-                Agendar Retirada de Coleta
-              </h3>
-              <p className="text-[12px] text-[#707070] mt-0.5">
-                {scheduleModal.collection.clinic_or_tutor_name} • {scheduleModal.collection.phone}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] text-[#707070] mb-1">Data da Coleta *</label>
-                <input
-                  type="date"
-                  required
-                  value={scheduleModal.date}
-                  onChange={(e) =>
-                    setScheduleModal((prev) => (prev ? { ...prev, date: e.target.value } : null))
-                  }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#f5f5f7] text-[13px]"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] text-[#707070] mb-1">Horário *</label>
-                <input
-                  type="time"
-                  required
-                  value={scheduleModal.time}
-                  onChange={(e) =>
-                    setScheduleModal((prev) => (prev ? { ...prev, time: e.target.value } : null))
-                  }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#f5f5f7] text-[13px]"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setScheduleModal(null)}
-                className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-semibold"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition"
+                className="px-5 py-2.5 sm:py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition"
               >
                 Confirmar Agendamento
               </button>
@@ -3101,28 +3073,28 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
 
       {/* MODAL DE IMPRESSÃO DE ETIQUETAS DE COLETA */}
       {labelsModal && (
-        <div className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-[28px] max-w-3xl w-full max-h-[88vh] overflow-y-auto p-[28px] sm:p-10 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[12px] font-mono text-[#86868b]">
+        <div className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-[24px] sm:rounded-[28px] max-w-3xl w-full min-w-0 max-h-[88vh] overflow-y-auto p-4 sm:p-8 space-y-4 sm:space-y-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-[11px] sm:text-[12px] font-mono text-[#86868b] block truncate">
                   PROTOCOLO GERADO: {labelsModal.order.protocol_code}
                 </span>
-                <h3 className="font-display text-[24px] font-semibold text-[#1d1d1f]">
+                <h3 className="font-display text-[18px] sm:text-[24px] font-semibold text-[#1d1d1f] leading-snug">
                   Etiquetas de Amostra Biológica ({labelsModal.labels.length} unidades)
                 </h3>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => printCollectionLabelsWindow(labelsModal.labels)}
-                  className="px-5 py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] inline-flex items-center gap-1.5"
+                  className="flex-1 sm:flex-initial justify-center px-5 py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5"
                 >
-                  <Printer className="w-4 h-4" />
-                  Imprimir Etiquetas
+                  <Printer className="w-4 h-4 shrink-0" />
+                  <span>Imprimir Etiquetas</span>
                 </button>
                 <button
                   onClick={() => setLabelsModal(null)}
-                  className="px-4 py-2 rounded-[980px] bg-[#f5f5f7] text-[12px] text-[#1d1d1f]"
+                  className="px-4 py-2 rounded-[980px] bg-[#f5f5f7] text-[12px] font-semibold text-[#1d1d1f]"
                 >
                   Fechar
                 </button>
@@ -3133,35 +3105,33 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               {labelsModal.labels.map((lbl) => (
                 <div
                   key={lbl.label_id}
-                  className="p-5 rounded-[25px] bg-[#f5f5f7] space-y-1.5 text-[12px]"
+                  className="p-4 sm:p-5 rounded-[20px] sm:rounded-[25px] bg-[#f5f5f7] space-y-1.5 text-[12px] min-w-0"
                 >
-                  <div className="flex justify-between font-mono font-semibold text-[#707070]">
-                    <span>VETLIFE • {lbl.protocol_code}</span>
-                    <span>
+                  <div className="flex justify-between gap-2 font-mono font-semibold text-[#707070] text-[11px]">
+                    <span className="truncate">VETLIFE • {lbl.protocol_code}</span>
+                    <span className="shrink-0">
                       Etiq. {lbl.label_index}/{lbl.total_labels_for_exam}
                     </span>
                   </div>
-                  <div className="font-display text-[19px] font-semibold text-[#1d1d1f]">
+                  <div className="font-display text-[16px] sm:text-[19px] font-semibold text-[#1d1d1f] break-words">
                     {lbl.patient_name} ({lbl.species}) — Tutor: {lbl.tutor_name}
                   </div>
-                  <div className="text-[#1d1d1f] font-semibold">
+                  <div className="text-[#1d1d1f] font-semibold break-words">
                     [{lbl.exam_code}] {lbl.exam_name}
                   </div>
-                  <div className="px-3 py-1 rounded-[999px] bg-white text-[#707070] inline-block">
+                  <div className="px-3 py-1 rounded-[999px] bg-white text-[#707070] inline-block max-w-full truncate">
                     Tubo: {lbl.tube_type} | Setor: {lbl.section}
                   </div>
-                  <div className="pt-2 text-center font-mono text-lg tracking-widest font-black text-[#1d1d1f]">
+                  <div className="pt-2 text-center font-mono text-sm sm:text-lg tracking-wider sm:tracking-widest font-black text-[#1d1d1f] overflow-hidden">
                     ||| || |||| | ||| |||| || |
                   </div>
-                  <div className="text-center font-mono text-[10px] text-[#86868b]">
+                  <div className="text-center font-mono text-[10px] text-[#86868b] truncate">
                     {lbl.barcode}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-          )}
         </div>
       )}
 
@@ -3176,8 +3146,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               meta.isReleased || ord.status === 'concluido'
                 ? 'concluido'
                 : meta.hasDraft || ord.status === 'em_analise'
-                ? 'em_analise'
-                : 'pendente';
+                  ? 'em_analise'
+                  : 'pendente';
             return { ord, res, meta, rowStatus };
           })
         );
@@ -3195,9 +3165,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
             return false;
           }
           if (!q) return true;
-          return `${ord.protocol_code} ${meta.code} ${meta.name} ${ord.patient?.name || ''} ${
-            ord.patient?.tutor_name || ''
-          } ${ord.vet?.name || ''} ${ord.vet?.clinic_name || ''}`
+          return `${ord.protocol_code} ${meta.code} ${meta.name} ${ord.patient?.name || ''} ${ord.patient?.tutor_name || ''
+            } ${ord.vet?.name || ''} ${ord.vet?.clinic_name || ''}`
             .toLowerCase()
             .includes(q);
         });
@@ -3205,11 +3174,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         const pagedRows = filteredRows.slice((launchPage - 1) * 10, launchPage * 10);
 
         return (
-          <div className="bg-white rounded-[28px] p-[28px] space-y-5">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4 sm:space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
               <div>
                 <span className="text-[12px] uppercase text-[#86868b]">Bancada Biomédica</span>
-                <h2 className="font-display text-[24px] font-semibold text-[#1d1d1f]">
+                <h2 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f]">
                   Exames para Lançamento de Laudos
                 </h2>
                 <p className="text-[12px] text-[#707070]">
@@ -3236,19 +3205,17 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setLaunchStatusFilter(tab.id)}
-                  className={`px-4 py-2 rounded-full text-[12px] font-semibold inline-flex items-center gap-2 transition cursor-pointer ${
-                    launchStatusFilter === tab.id
-                      ? 'bg-[#0b2240] text-white'
-                      : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea]'
-                  }`}
+                  className={`px-4 py-2 rounded-full text-[12px] font-semibold inline-flex items-center gap-2 transition cursor-pointer ${launchStatusFilter === tab.id
+                    ? 'bg-[#0b2240] text-white'
+                    : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea]'
+                    }`}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      launchStatusFilter === tab.id
-                        ? 'bg-white/20 text-white'
-                        : 'bg-white text-[#1d1d1f]'
-                    }`}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${launchStatusFilter === tab.id
+                      ? 'bg-white/20 text-white'
+                      : 'bg-white text-[#1d1d1f]'
+                      }`}
                   >
                     {tab.count}
                   </span>
@@ -3301,19 +3268,18 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         </td>
                         <td className="py-3.5 px-4">
                           <span
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                              rowStatus === 'concluido'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : rowStatus === 'em_analise'
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${rowStatus === 'concluido'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : rowStatus === 'em_analise'
                                 ? 'bg-amber-100 text-amber-800'
                                 : 'bg-[#f5f5f7] text-[#1d1d1f]'
-                            }`}
+                              }`}
                           >
                             {rowStatus === 'concluido'
                               ? 'Concluído'
                               : rowStatus === 'em_analise'
-                              ? 'Em Análise'
-                              : 'Pendente'}
+                                ? 'Em Análise'
+                                : 'Pendente'}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
@@ -3394,8 +3360,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
       })()}
 
       {activeTab === 'launch' && launchSubView === 'editor' && currentOrder && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          <div className="lg:col-span-6 bg-white rounded-[24px] p-5 space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
+          <div className="lg:col-span-6 bg-white rounded-[24px] p-4 sm:p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <button
@@ -3406,7 +3372,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   ← Voltar para Fila de Lançamento
                 </button>
                 <span className="block text-[12px] uppercase text-[#86868b]">Bancada Biomédica</span>
-                <h2 className="font-display text-[24px] font-semibold text-[#1d1d1f]">
+                <h2 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f]">
                   Lançamento Dinâmico de Resultados
                 </h2>
               </div>
@@ -3426,8 +3392,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   }
                   getBadge={(o) => o.status}
                   getSearchText={(o) =>
-                    `${o.protocol_code} ${o.patient?.name || ''} ${o.patient?.species || ''} ${
-                      o.patient?.tutor_name || ''
+                    `${o.protocol_code} ${o.patient?.name || ''} ${o.patient?.species || ''} ${o.patient?.tutor_name || ''
                     } ${o.vet?.name || ''} ${o.status}`
                   }
                   filterChips={[
@@ -3451,11 +3416,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     key={r.id}
                     type="button"
                     onClick={() => handleSelectResultItem(r.id)}
-                    className={`px-4 py-2 rounded-[980px] text-[12px] font-semibold transition ${
-                      currentResultItem?.id === r.id
-                        ? 'bg-[#0071e3] text-white'
-                        : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
-                    }`}
+                    className={`px-3.5 sm:px-4 py-2 rounded-[980px] text-[12px] font-semibold transition text-left ${currentResultItem?.id === r.id
+                      ? 'bg-[#0071e3] text-white'
+                      : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
+                      }`}
                   >
                     [{examCode}] {examName}
                   </button>
@@ -3464,13 +3428,15 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
             </div>
 
             <div className="p-3.5 rounded-2xl bg-[#f5f5f7] space-y-1 text-[11px]">
-              <div className="font-semibold text-[#1d1d1f] flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-[#0071e3] shrink-0" />
-                Valor de Referência Cruzado Automaticamente ({currentOrder.patient?.species}, Sexo{' '}
-                {currentOrder.patient?.gender}, Idade:{' '}
-                {formatAgeLabel(currentOrder.patient?.age_days, currentOrder.patient?.birth_date)}):
+              <div className="font-semibold text-[#1d1d1f] flex items-start sm:items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#0071e3] shrink-0 mt-0.5 sm:mt-0" />
+                <span>
+                  Valor de Referência Cruzado Automaticamente ({currentOrder.patient?.species}, Sexo{' '}
+                  {currentOrder.patient?.gender}, Idade:{' '}
+                  {formatAgeLabel(currentOrder.patient?.age_days, currentOrder.patient?.birth_date)}):
+                </span>
               </div>
-              <div className="text-[#707070] leading-snug">
+              <div className="text-[#707070] leading-snug break-words">
                 {matchedRefForCurrentResult?.reference_text_content ||
                   currentResultItem?.reference_snapshot ||
                   'Referência clínica padrão para a espécie e faixa etária.'}
@@ -3478,7 +3444,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
             </div>
 
             <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#86868b]">
                   Parâmetros de Entrada de [
                   {currentResultItem?.exam_code ||
@@ -3487,18 +3453,18 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     'Exame'}
                   ]:
                 </h3>
-                <span className="text-[11px] text-[#86868b]">
+                <span className="text-[11px] text-[#86868b] shrink-0">
                   {dynamicFieldsToRender.length} parâmetro(s)
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2.5">
                 {dynamicFieldsToRender.map((fld) => {
                   const val = dynamicValues[fld.field_name] ?? '';
                   return (
                     <div
                       key={fld.id || fld.field_name}
-                      className={fld.field_type === 'text' ? 'col-span-2 sm:col-span-3' : ''}
+                      className={fld.field_type === 'text' ? 'col-span-1 xs:col-span-2 sm:col-span-3' : ''}
                     >
                       <label className="block text-[11px] font-semibold text-[#5b6675] mb-1 truncate" title={fld.field_label || fld.field_name}>
                         {fld.field_label || fld.field_name}{' '}
@@ -3638,46 +3604,46 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               <button
                 type="button"
                 onClick={handleSaveResultDraft}
-                className="px-4 py-2 rounded-[980px] border border-[#1d1d1f] text-[#1d1d1f] text-[12px] font-semibold hover:bg-[#1d1d1f] hover:text-white transition inline-flex items-center gap-1.5 cursor-pointer"
+                className="w-full sm:w-auto justify-center px-4 py-2.5 sm:py-2 rounded-[980px] border border-[#1d1d1f] text-[#1d1d1f] text-[12px] font-semibold hover:bg-[#1d1d1f] hover:text-white transition inline-flex items-center gap-1.5 cursor-pointer"
               >
-                <Clock className="w-3.5 h-3.5" />
-                Salvar Parâmetros (Em Análise)
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span>Salvar Parâmetros (Em Análise)</span>
               </button>
               <button
                 type="button"
                 onClick={handleReleaseReport}
-                className="px-4 py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
+                className="w-full sm:w-auto justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
               >
-                <Send className="w-3.5 h-3.5" />
-                Finalizar e Liberar Laudo Oficial
+                <Send className="w-3.5 h-3.5 shrink-0" />
+                <span>Finalizar e Liberar Laudo Oficial</span>
               </button>
               {currentOrder.status === 'concluido' && (
                 <>
                   <button
                     type="button"
                     onClick={() => downloadOrderPdf(currentOrder)}
-                    className="px-4 py-2 rounded-[980px] bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                    className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                   >
-                    <FileDown className="w-3.5 h-3.5" />
-                    Baixar PDF
+                    <FileDown className="w-3.5 h-3.5 shrink-0" />
+                    <span>Baixar PDF</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSendOrderWhatsApp(currentOrder)}
-                    className="px-4 py-2 rounded-[980px] bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                    className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                   >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    Enviar por Whats
+                    <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Enviar por Whats</span>
                   </button>
                 </>
               )}
             </div>
           </div>
 
-          <div className="lg:col-span-6 bg-white rounded-[24px] p-5 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="lg:col-span-6 min-w-0 bg-white rounded-[24px] p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+                <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                   Preview ao Vivo do Laudo
                 </h3>
                 <p className="text-[12px] text-[#707070]">
@@ -3699,9 +3665,9 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               </div>
             </div>
 
-            <div className="bg-[#f8fafc] border border-slate-200 p-5 rounded-[22px] overflow-x-auto max-h-[540px] overflow-y-auto">
+            <div className="bg-[#f8fafc] border border-slate-200 p-3 sm:p-5 rounded-[20px] sm:rounded-[22px] overflow-x-auto max-h-[540px] overflow-y-auto">
               <div
-                className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 text-[13px]"
+                className="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-slate-100 text-[12px] sm:text-[13px] min-w-[260px]"
                 dangerouslySetInnerHTML={{
                   __html: renderReportHtmlWithDynamicTags(
                     templates.find((t) => t.id === selectedTemplateId) || templates[0],
@@ -3725,85 +3691,85 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           ABA 4: CONFIGURAÇÕES (EXCLUSIVO ADMIN)
          ===================================================================== */}
       {activeTab === 'settings' && user.role === 'admin' && (
-        <div className="space-y-6">
-          <div className="flex flex-wrap gap-2 bg-white p-2 rounded-[980px]">
+        <div className="space-y-5 sm:space-y-6">
+          <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2 bg-white p-2 rounded-[24px] xl:rounded-[980px]">
             <button
               onClick={() => setSettingsTab('exams')}
-              className={`px-4 py-2 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'exams'
+              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'exams'
                 ? 'bg-[#1d1d1f] text-white'
                 : 'text-[#707070] hover:text-[#1d1d1f]'
                 }`}
             >
-              <FlaskConical className="w-3.5 h-3.5" />
-              1. Catálogo de Exames
+              <FlaskConical className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">1. Catálogo de Exames</span>
             </button>
             <button
               onClick={() => setSettingsTab('fields')}
-              className={`px-4 py-2 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'fields'
+              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'fields'
                 ? 'bg-[#1d1d1f] text-white'
                 : 'text-[#707070] hover:text-[#1d1d1f]'
                 }`}
             >
-              <Sliders className="w-3.5 h-3.5" />
-              2. Campos Dinâmicos por Exame
+              <Sliders className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">2. Campos Dinâmicos por Exame</span>
             </button>
             <button
               onClick={() => setSettingsTab('prices')}
-              className={`px-4 py-2 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'prices'
+              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'prices'
                 ? 'bg-[#1d1d1f] text-white'
                 : 'text-[#707070] hover:text-[#1d1d1f]'
                 }`}
             >
-              <Tag className="w-3.5 h-3.5" />
-              3. Tabelas de Preços & Vigência
+              <Tag className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">3. Tabelas de Preços & Vigência</span>
             </button>
             <button
               onClick={() => setSettingsTab('references')}
-              className={`px-4 py-2 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'references'
+              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'references'
                 ? 'bg-[#1d1d1f] text-white'
                 : 'text-[#707070] hover:text-[#1d1d1f]'
                 }`}
             >
-              <BookOpen className="w-3.5 h-3.5" />
-              4. Valores de Referência
+              <BookOpen className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">4. Valores de Referência</span>
             </button>
             <button
               onClick={() => setSettingsTab('templates')}
-              className={`px-4 py-2 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'templates'
+              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'templates'
                 ? 'bg-[#1d1d1f] text-white'
                 : 'text-[#707070] hover:text-[#1d1d1f]'
                 }`}
             >
-              <FileText className="w-3.5 h-3.5" />
-              5. Modelos de Laudos & Tags
+              <FileText className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">5. Modelos de Laudos & Tags</span>
             </button>
             <button
               onClick={() => setSettingsTab('users')}
-              className={`px-4 py-2 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'users'
+              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'users'
                 ? 'bg-[#1d1d1f] text-white'
                 : 'text-[#707070] hover:text-[#1d1d1f]'
                 }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              6. Usuários do Laboratório
+              <Users className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">6. Usuários do Laboratório</span>
             </button>
             <button
               onClick={() => setSettingsTab('vets')}
-              className={`px-4 py-2 rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'vets'
+              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'vets'
                 ? 'bg-[#1d1d1f] text-white'
                 : 'text-[#707070] hover:text-[#1d1d1f]'
                 }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              7. Veterinários & Clínicas
+              <Users className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">7. Veterinários & Clínicas</span>
             </button>
           </div>
 
           {settingsTab === 'exams' && (
-            <div className="bg-white rounded-[28px] p-6 sm:p-[28px] space-y-5">
+            <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-5">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
-                  <h3 className="font-display text-[22px] font-semibold text-[#1d1d1f]">
+                  <h3 className="font-display text-[20px] sm:text-[22px] font-semibold text-[#1d1d1f]">
                     Catálogo Oficial de Exames ({pagedExamsTotal})
                   </h3>
                   <p className="text-[12px] text-[#707070]">
@@ -3811,7 +3777,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="text"
                     value={examSearchQuery}
@@ -3822,7 +3788,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   <select
                     value={examSectionFilter}
                     onChange={(e) => setExamSectionFilter(e.target.value)}
-                    className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[12px] text-[#1d1d1f] font-medium"
+                    className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[12px] text-[#1d1d1f] font-medium flex-1 sm:flex-initial"
                   >
                     <option value="todos">Todas as Seções</option>
                     {Array.from(new Set(exams.map((ex) => ex.section)))
@@ -3836,7 +3802,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   <button
                     type="button"
                     onClick={handleOpenNewExamModal}
-                    className="px-4 py-2 rounded-full bg-[#0071e3] hover:bg-[#0062c4] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
+                    className="w-full sm:w-auto justify-center px-4 py-2 rounded-full bg-[#0071e3] hover:bg-[#0062c4] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     Novo Exame
@@ -3940,13 +3906,13 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
 
               {/* MODAL DE INCLUIR / EDITAR EXAME */}
               {examModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
                   <form
                     onSubmit={handleAddExam}
-                    className="bg-white rounded-[28px] max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl border border-black/10"
+                    className="bg-white rounded-[24px] sm:rounded-[28px] max-w-2xl w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
                   >
-                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                      <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+                    <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
+                      <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                         {editingExamId
                           ? `Editar Exame [${newExamForm.code}]`
                           : 'Cadastrar Novo Exame no Catálogo'}
@@ -3954,7 +3920,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       <button
                         type="button"
                         onClick={handleCancelEditExam}
-                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer"
+                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
                       >
                         Fechar
                       </button>
@@ -4159,7 +4125,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 pt-2">
+                    <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2">
                       <button
                         type="button"
                         onClick={handleCancelEditExam}
@@ -4183,134 +4149,134 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'fields' && (
             <div className="space-y-6">
               {fieldModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
                   <form
                     onSubmit={handleAddDynamicField}
-                    className="bg-white rounded-[28px] max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl border border-black/10"
+                    className="bg-white rounded-[24px] sm:rounded-[28px] max-w-xl w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
                   >
-                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                      <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+                    <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
+                      <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                         Configurar Campo Personalizado de Exame
                       </h3>
                       <button
                         type="button"
                         onClick={() => setFieldModalOpen(false)}
-                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer"
+                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
                       >
                         Fechar
                       </button>
                     </div>
-                <SearchableSelectField
-                  label="Selecionar Exame Alvo *"
-                  modalTitle="Selecionar Exame Alvo"
-                  modalSubtitle="Pesquise por código, nome ou seção técnica"
-                  searchPlaceholder="Ex: 000, Hemograma, Bioquímica..."
-                  items={exams}
-                  value={configExamIdForFields}
-                  getId={(ex) => ex.id}
-                  getPrimaryLabel={(ex) => `[${ex.code}] ${ex.name}`}
-                  getSecondaryLabel={(ex) => `${ex.section} • ${ex.tube_type}`}
-                  getBadge={(ex) => ex.section}
-                  getSearchText={(ex) => `${ex.code} ${ex.name} ${ex.section}`}
-                  onChange={(id) => setConfigExamIdForFields(id)}
-                />
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Identificador Técnico *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={newFieldForm.field_name}
-                      onChange={(e) =>
-                        setNewFieldForm({ ...newFieldForm, field_name: e.target.value })
-                      }
-                      placeholder="Ex: reticulocitos"
-                      className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] font-mono text-[12px]"
+                    <SearchableSelectField
+                      label="Selecionar Exame Alvo *"
+                      modalTitle="Selecionar Exame Alvo"
+                      modalSubtitle="Pesquise por código, nome ou seção técnica"
+                      searchPlaceholder="Ex: 000, Hemograma, Bioquímica..."
+                      items={exams}
+                      value={configExamIdForFields}
+                      getId={(ex) => ex.id}
+                      getPrimaryLabel={(ex) => `[${ex.code}] ${ex.name}`}
+                      getSecondaryLabel={(ex) => `${ex.section} • ${ex.tube_type}`}
+                      getBadge={(ex) => ex.section}
+                      getSearchText={(ex) => `${ex.code} ${ex.name} ${ex.section}`}
+                      onChange={(id) => setConfigExamIdForFields(id)}
                     />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">Tipo de Input *</label>
-                    <select
-                      value={newFieldForm.field_type}
-                      onChange={(e) =>
-                        setNewFieldForm({
-                          ...newFieldForm,
-                          field_type: e.target.value as FieldType,
-                        })
-                      }
-                      className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[12px] text-[#707070] mb-1">
+                          Identificador Técnico *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newFieldForm.field_name}
+                          onChange={(e) =>
+                            setNewFieldForm({ ...newFieldForm, field_name: e.target.value })
+                          }
+                          placeholder="Ex: reticulocitos"
+                          className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] font-mono text-[12px]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] text-[#707070] mb-1">Tipo de Input *</label>
+                        <select
+                          value={newFieldForm.field_type}
+                          onChange={(e) =>
+                            setNewFieldForm({
+                              ...newFieldForm,
+                              field_type: e.target.value as FieldType,
+                            })
+                          }
+                          className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                        >
+                          <option value="number">Numérico (number)</option>
+                          <option value="text">Texto Livre (text)</option>
+                          <option value="select">Lista de Opções (select)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[12px] text-[#707070] mb-1">
+                          Rótulo no Laudo *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newFieldForm.field_label}
+                          onChange={(e) =>
+                            setNewFieldForm({ ...newFieldForm, field_label: e.target.value })
+                          }
+                          placeholder="Ex: Contagem de Reticulócitos"
+                          className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] text-[#707070] mb-1">
+                          Unidade de Medida
+                        </label>
+                        <input
+                          type="text"
+                          value={newFieldForm.unit}
+                          onChange={(e) => setNewFieldForm({ ...newFieldForm, unit: e.target.value })}
+                          placeholder="Ex: % ou mg/dL"
+                          className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                        />
+                      </div>
+                    </div>
+
+                    {newFieldForm.field_type === 'select' && (
+                      <div>
+                        <label className="block text-[12px] text-[#707070] mb-1">
+                          Opções do Select (separadas por vírgula) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newFieldForm.options_csv}
+                          onChange={(e) =>
+                            setNewFieldForm({ ...newFieldForm, options_csv: e.target.value })
+                          }
+                          placeholder="Negativo, Positivo (+), Positivo (++)"
+                          className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                        />
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold cursor-pointer"
                     >
-                      <option value="number">Numérico (number)</option>
-                      <option value="text">Texto Livre (text)</option>
-                      <option value="select">Lista de Opções (select)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Rótulo no Laudo *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={newFieldForm.field_label}
-                      onChange={(e) =>
-                        setNewFieldForm({ ...newFieldForm, field_label: e.target.value })
-                      }
-                      placeholder="Ex: Contagem de Reticulócitos"
-                      className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Unidade de Medida
-                    </label>
-                    <input
-                      type="text"
-                      value={newFieldForm.unit}
-                      onChange={(e) => setNewFieldForm({ ...newFieldForm, unit: e.target.value })}
-                      placeholder="Ex: % ou mg/dL"
-                      className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                    />
-                  </div>
-                </div>
-
-                {newFieldForm.field_type === 'select' && (
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Opções do Select (separadas por vírgula) *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={newFieldForm.options_csv}
-                      onChange={(e) =>
-                        setNewFieldForm({ ...newFieldForm, options_csv: e.target.value })
-                      }
-                      placeholder="Negativo, Positivo (+), Positivo (++)"
-                      className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                    />
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold cursor-pointer"
-                >
-                  + Adicionar Campo Dinâmico ao Exame
-                </button>
-              </form>
+                      + Adicionar Campo Dinâmico ao Exame
+                    </button>
+                  </form>
                 </div>
               )}
 
-              <div className="bg-white rounded-[28px] p-[28px] space-y-4">
+              <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4">
                 <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div className="min-w-[260px] flex-1 max-w-md">
+                  <div className="w-full sm:min-w-[260px] flex-1 max-w-md">
                     <SearchableSelectField
                       label="Exame Selecionado"
                       modalTitle="Selecionar Exame Alvo"
@@ -4332,12 +4298,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   <button
                     type="button"
                     onClick={() => setFieldModalOpen(true)}
-                    className="px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer shrink-0"
+                    className="w-full sm:w-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer shrink-0"
                   >
                     + Novo Campo Dinâmico
                   </button>
                 </div>
-                <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+                <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                   Campos de Entrada Configurados para o Exame Selecionado (
                   {(exams.find((ex) => ex.id === configExamIdForFields)?.input_fields || []).length})
                 </h3>
@@ -4347,34 +4313,34 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   )
                     .slice((fieldsPage - 1) * 10, fieldsPage * 10)
                     .map((fld) => (
-                    <div
-                      key={fld.id || fld.field_name}
-                      className="py-3 flex items-center justify-between text-[12px]"
-                    >
-                      <div>
-                        <span className="font-semibold text-[#1d1d1f]">
-                          {fld.field_label || fld.field_name}
-                        </span>{' '}
-                        <span className="font-mono text-[#86868b]">({fld.field_name})</span>
-                        <div className="text-[#707070]">
-                          Tipo: <strong className="uppercase">{fld.field_type}</strong>
-                          {fld.unit ? ` • Unidade: ${fld.unit}` : ''}
-                          {fld.options && fld.options.length > 0
-                            ? ` • Opções: [${fld.options.join(', ')}]`
-                            : ''}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleRemoveDynamicField(configExamIdForFields, fld.id)
-                        }
-                        className="p-1.5 text-[#707070] hover:text-[#1d1d1f] rounded-[999px]"
+                      <div
+                        key={fld.id || fld.field_name}
+                        className="py-3 flex items-center justify-between text-[12px]"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                        <div>
+                          <span className="font-semibold text-[#1d1d1f]">
+                            {fld.field_label || fld.field_name}
+                          </span>{' '}
+                          <span className="font-mono text-[#86868b]">({fld.field_name})</span>
+                          <div className="text-[#707070]">
+                            Tipo: <strong className="uppercase">{fld.field_type}</strong>
+                            {fld.unit ? ` • Unidade: ${fld.unit}` : ''}
+                            {fld.options && fld.options.length > 0
+                              ? ` • Opções: [${fld.options.join(', ')}]`
+                              : ''}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleRemoveDynamicField(configExamIdForFields, fld.id)
+                          }
+                          className="p-1.5 text-[#707070] hover:text-[#1d1d1f] rounded-[999px]"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
                 </div>
                 <PaginationBar
                   page={fieldsPage}
@@ -4391,19 +4357,19 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'prices' && (
             <div className="space-y-6">
               {priceTableModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
                   <form
                     onSubmit={handleCreatePriceTable}
-                    className="bg-white rounded-[28px] max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl border border-black/10"
+                    className="bg-white rounded-[24px] sm:rounded-[28px] max-w-lg w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
                   >
-                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                      <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+                    <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
+                      <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                         Nova Tabela de Preços com Vigência
                       </h3>
                       <button
                         type="button"
                         onClick={() => setPriceTableModalOpen(false)}
-                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer"
+                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
                       >
                         Fechar
                       </button>
@@ -4440,7 +4406,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[12px] text-[#707070] mb-1">
                           Início da Vigência *
@@ -4455,7 +4421,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                               start_date: e.target.value,
                             })
                           }
-                          className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                          className="w-full min-w-0 px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
                         />
                       </div>
                       <div>
@@ -4469,7 +4435,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           onChange={(e) =>
                             setNewPriceTableForm({ ...newPriceTableForm, end_date: e.target.value })
                           }
-                          className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                          className="w-full min-w-0 px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
                         />
                       </div>
                     </div>
@@ -4483,10 +4449,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 </div>
               )}
 
-              <div className="bg-white rounded-[28px] p-[28px] space-y-4">
+              <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+                    <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                       Gerenciar Vigência e Reajuste Percentual
                     </h3>
                     <p className="text-[12px] text-[#707070]">
@@ -4510,12 +4476,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   </div>
                 </div>
 
-                <div className="p-4 rounded-[25px] bg-[#f5f5f7] flex flex-wrap items-center justify-between gap-3">
+                <div className="p-3.5 sm:p-4 rounded-[20px] sm:rounded-[25px] bg-[#f5f5f7] flex flex-wrap items-center justify-between gap-3">
                   <div className="text-[12px] font-semibold text-[#1d1d1f] flex items-center gap-2">
-                    <Percent className="w-4 h-4 text-[#0071e3]" />
-                    Aplicar Reajuste Percentual (%) na Tabela Selecionada:
+                    <Percent className="w-4 h-4 text-[#0071e3] shrink-0" />
+                    <span>Aplicar Reajuste Percentual (%) na Tabela Selecionada:</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     <input
                       type="number"
                       step="0.5"
@@ -4526,14 +4492,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     <button
                       type="button"
                       onClick={handleApplyPercentageAdjustment}
-                      className="px-4 py-1.5 rounded-[980px] bg-[#0071e3] text-white text-[12px]"
+                      className="px-4 py-1.5 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold"
                     >
                       Aplicar Reajuste
                     </button>
                     <button
                       type="button"
                       onClick={() => setPriceTableModalOpen(true)}
-                      className="px-4 py-1.5 rounded-[980px] bg-[#0b2240] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
+                      className="w-full sm:w-auto px-4 py-1.5 rounded-[980px] bg-[#0b2240] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
                     >
                       + Nova Tabela de Vigência
                     </button>
@@ -4546,21 +4512,21 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                   )
                     .slice((priceRowsPage - 1) * 15, priceRowsPage * 15)
                     .map((item) => (
-                    <div
-                      key={item.exam_id}
-                      className="py-3 flex items-center justify-between"
-                    >
-                      <div>
-                        <span className="font-mono font-semibold text-[#1d1d1f] mr-2">
-                          {item.exam_code}
+                      <div
+                        key={item.exam_id}
+                        className="py-3 flex items-center justify-between"
+                      >
+                        <div>
+                          <span className="font-mono font-semibold text-[#1d1d1f] mr-2">
+                            {item.exam_code}
+                          </span>
+                          <span className="text-[#707070]">{item.exam_name}</span>
+                        </div>
+                        <span className="font-mono font-semibold text-[#1d1d1f]">
+                          R$ {Number(item.price).toFixed(2)}
                         </span>
-                        <span className="text-[#707070]">{item.exam_name}</span>
                       </div>
-                      <span className="font-mono font-semibold text-[#1d1d1f]">
-                        R$ {Number(item.price).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
+                    ))}
                 </div>
                 <PaginationBar
                   page={priceRowsPage}
@@ -4577,10 +4543,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'references' && (
             <div className="space-y-6">
               {referenceModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-                  <div className="bg-[#f5f5f7] rounded-[28px] max-w-5xl w-full max-h-[92vh] overflow-y-auto p-6 space-y-4 shadow-2xl border border-black/10">
-                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                      <h3 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4">
+                  <div className="bg-[#f5f5f7] rounded-[24px] sm:rounded-[28px] max-w-5xl w-full min-w-0 max-h-[92vh] overflow-y-auto p-3.5 sm:p-6 space-y-4 shadow-2xl border border-black/10">
+                    <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
+                      <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                         {editingReferenceId
                           ? 'Editar Valor & Layout de Referência'
                           : 'Novo Valor & Layout de Referência'}
@@ -4592,152 +4558,152 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           setEditingReferenceId(null);
                           setNewRefForm({ ...newRefForm, reference_text_content: '' });
                         }}
-                        className="px-3 py-1 rounded-full bg-white text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer"
+                        className="px-3 py-1 rounded-full bg-white text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
                       >
                         Fechar
                       </button>
                     </div>
-                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 items-start min-w-0">
                       <form
                         onSubmit={handleAddReference}
-                        className="xl:col-span-7 bg-white rounded-[28px] p-[28px] space-y-4"
+                        className="xl:col-span-7 min-w-0 bg-white rounded-[20px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4"
                       >
 
-                  <SearchableSelectField
-                    label="Exame *"
-                    modalTitle="Selecionar Exame para Referência"
-                    modalSubtitle="Pesquise por código, nome ou seção técnica"
-                    searchPlaceholder="Ex: 000, Hemograma, Renal..."
-                    items={exams}
-                    value={newRefForm.exam_id}
-                    getId={(ex) => ex.id}
-                    getPrimaryLabel={(ex) => `[${ex.code}] ${ex.name}`}
-                    getSecondaryLabel={(ex) => `${ex.section} • ${ex.tube_type}`}
-                    getBadge={(ex) => ex.section}
-                    getSearchText={(ex) => `${ex.code} ${ex.name} ${ex.section}`}
-                    onChange={(id) => setNewRefForm({ ...newRefForm, exam_id: id })}
-                  />
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-[12px] text-[#707070] mb-1">Espécie *</label>
-                      <select
-                        value={newRefForm.species}
-                        onChange={(e) => setNewRefForm({ ...newRefForm, species: e.target.value })}
-                        className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                      >
-                        <option value="Canino">Canino</option>
-                        <option value="Felino">Felino</option>
-                        <option value="Equino">Equino</option>
-                        <option value="Silvestre">Silvestre</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-[#707070] mb-1">Sexo *</label>
-                      <select
-                        value={newRefForm.gender}
-                        onChange={(e) => setNewRefForm({ ...newRefForm, gender: e.target.value })}
-                        className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                      >
-                        <option value="Ambos">Ambos (M/F)</option>
-                        <option value="M">Macho (M)</option>
-                        <option value="F">Fêmea (F)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-[#707070] mb-1">
-                        Idade Mín. (Dias) *
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={newRefForm.min_age_days}
-                        onChange={(e) =>
-                          setNewRefForm({ ...newRefForm, min_age_days: Number(e.target.value) })
-                        }
-                        className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] text-[#707070] mb-1">
-                        Idade Máx. (Dias) *
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={newRefForm.max_age_days}
-                        onChange={(e) =>
-                          setNewRefForm({ ...newRefForm, max_age_days: Number(e.target.value) })
-                        }
-                        className="w-full px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Campo 1: Janela de Edição Visual (sem escrever HTML) */}
-                  <RichHtmlEditor
-                    label="Layout & Parâmetros de Referência (Editor Visual)"
-                    value={newRefForm.reference_text_content}
-                    onChange={(html) =>
-                      setNewRefForm({ ...newRefForm, reference_text_content: html })
-                    }
-                    minHeightClass="min-h-[160px]"
-                    placeholder="Monte o layout da referência com títulos, negrito, listas, cores..."
-                  />
-
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition"
-                  >
-                    {editingReferenceId
-                      ? 'Salvar Alterações da Referência'
-                      : '+ Salvar Valor e Layout de Referência'}
-                  </button>
-                </form>
-
-                {/* Campo 2: Visualização ao Vivo do Layout da Referência */}
-                <div className="xl:col-span-5 bg-white rounded-[28px] p-[28px] space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="inline-flex items-center gap-1.5 text-[15px] font-bold text-[#0b2240]">
-                      <Eye className="w-4 h-4 text-[#1d9496]" />
-                      <span>Visualização ao Vivo da Referência</span>
-                    </div>
-                    <span className="text-[11px] text-[#5b6675] bg-slate-100 px-2.5 py-0.5 rounded-full">
-                      {newRefForm.species} • {newRefForm.gender}
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
-                    <div className="text-[12px] font-bold text-[#0b2240]">
-                      {exams.find((item) => item.id === newRefForm.exam_id)?.name || 'Exame'}
-                    </div>
-                    <div className="text-[11px] text-[#1d9496] font-semibold">
-                      Faixa: {newRefForm.min_age_days} a {newRefForm.max_age_days} dias
-                    </div>
-                    <div className="bg-white rounded-xl border border-slate-200/80 p-4 min-h-[180px] text-[13px] text-[#0b2240] leading-relaxed [&_h2]:text-base [&_h2]:font-bold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5">
-                      {newRefForm.reference_text_content.replace(/<[^>]+>/g, '').trim() ? (
-                        <div
-                          dangerouslySetInnerHTML={{
-                            __html: newRefForm.reference_text_content,
-                          }}
+                        <SearchableSelectField
+                          label="Exame *"
+                          modalTitle="Selecionar Exame para Referência"
+                          modalSubtitle="Pesquise por código, nome ou seção técnica"
+                          searchPlaceholder="Ex: 000, Hemograma, Renal..."
+                          items={exams}
+                          value={newRefForm.exam_id}
+                          getId={(ex) => ex.id}
+                          getPrimaryLabel={(ex) => `[${ex.code}] ${ex.name}`}
+                          getSecondaryLabel={(ex) => `${ex.section} • ${ex.tube_type}`}
+                          getBadge={(ex) => ex.section}
+                          getSearchText={(ex) => `${ex.code} ${ex.name} ${ex.section}`}
+                          onChange={(id) => setNewRefForm({ ...newRefForm, exam_id: id })}
                         />
-                      ) : (
-                        <span className="text-slate-400 italic text-[12px]">
-                          O layout formatado da referência aparecerá aqui ao vivo enquanto você edita...
-                        </span>
-                      )}
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div>
+                            <label className="block text-[12px] text-[#707070] mb-1">Espécie *</label>
+                            <select
+                              value={newRefForm.species}
+                              onChange={(e) => setNewRefForm({ ...newRefForm, species: e.target.value })}
+                              className="w-full px-3 sm:px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                            >
+                              <option value="Canino">Canino</option>
+                              <option value="Felino">Felino</option>
+                              <option value="Equino">Equino</option>
+                              <option value="Silvestre">Silvestre</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-[#707070] mb-1">Sexo *</label>
+                            <select
+                              value={newRefForm.gender}
+                              onChange={(e) => setNewRefForm({ ...newRefForm, gender: e.target.value })}
+                              className="w-full px-3 sm:px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                            >
+                              <option value="Ambos">Ambos (M/F)</option>
+                              <option value="M">Macho (M)</option>
+                              <option value="F">Fêmea (F)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-[#707070] mb-1">
+                              Idade Mín. (Dias) *
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={newRefForm.min_age_days}
+                              onChange={(e) =>
+                                setNewRefForm({ ...newRefForm, min_age_days: Number(e.target.value) })
+                              }
+                              className="w-full px-3 sm:px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[12px] text-[#707070] mb-1">
+                              Idade Máx. (Dias) *
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={newRefForm.max_age_days}
+                              onChange={(e) =>
+                                setNewRefForm({ ...newRefForm, max_age_days: Number(e.target.value) })
+                              }
+                              className="w-full px-3 sm:px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Campo 1: Janela de Edição Visual (sem escrever HTML) */}
+                        <RichHtmlEditor
+                          label="Layout & Parâmetros de Referência (Editor Visual)"
+                          value={newRefForm.reference_text_content}
+                          onChange={(html) =>
+                            setNewRefForm({ ...newRefForm, reference_text_content: html })
+                          }
+                          minHeightClass="min-h-[160px]"
+                          placeholder="Monte o layout da referência com títulos, negrito, listas, cores..."
+                        />
+
+                        <button
+                          type="submit"
+                          className="w-full py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition"
+                        >
+                          {editingReferenceId
+                            ? 'Salvar Alterações da Referência'
+                            : '+ Salvar Valor e Layout de Referência'}
+                        </button>
+                      </form>
+
+                      {/* Campo 2: Visualização ao Vivo do Layout da Referência */}
+                      <div className="xl:col-span-5 min-w-0 bg-white rounded-[20px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="inline-flex items-center gap-1.5 text-[14px] sm:text-[15px] font-bold text-[#0b2240]">
+                            <Eye className="w-4 h-4 text-[#1d9496] shrink-0" />
+                            <span>Visualização ao Vivo da Referência</span>
+                          </div>
+                          <span className="text-[11px] text-[#5b6675] bg-slate-100 px-2.5 py-0.5 rounded-full">
+                            {newRefForm.species} • {newRefForm.gender}
+                          </span>
+                        </div>
+
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 sm:p-4 space-y-2">
+                          <div className="text-[12px] font-bold text-[#0b2240] break-words">
+                            {exams.find((item) => item.id === newRefForm.exam_id)?.name || 'Exame'}
+                          </div>
+                          <div className="text-[11px] text-[#1d9496] font-semibold">
+                            Faixa: {newRefForm.min_age_days} a {newRefForm.max_age_days} dias
+                          </div>
+                          <div className="bg-white rounded-xl border border-slate-200/80 p-3 sm:p-4 min-h-[180px] text-[13px] text-[#0b2240] leading-relaxed overflow-x-auto [&_h2]:text-base [&_h2]:font-bold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5">
+                            {newRefForm.reference_text_content.replace(/<[^>]+>/g, '').trim() ? (
+                              <div
+                                dangerouslySetInnerHTML={{
+                                  __html: newRefForm.reference_text_content,
+                                }}
+                              />
+                            ) : (
+                              <span className="text-slate-400 italic text-[12px]">
+                                O layout formatado da referência aparecerá aqui ao vivo enquanto você edita...
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </div>
                   </div>
                 </div>
               )}
 
               {/* Matriz de Referências Cadastradas */}
-              <div className="bg-white rounded-[28px] p-[28px] space-y-3">
+              <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+                  <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                     Matriz de Referências Cadastradas ({references.length})
                   </h3>
                   <button
@@ -4747,7 +4713,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       setNewRefForm({ ...newRefForm, reference_text_content: '' });
                       setReferenceModalOpen(true);
                     }}
-                    className="px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer shrink-0"
+                    className="w-full sm:w-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer shrink-0"
                   >
                     + Nova Referência
                   </button>
@@ -4822,11 +4788,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'templates' && editingTemplate && (
             <form
               onSubmit={handleSaveTemplate}
-              className="bg-white rounded-[28px] p-[28px] space-y-6"
+              className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-5 sm:space-y-6"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+                  <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                     Editor Visual de Modelos de Laudos
                   </h3>
                   <p className="text-[12px] text-[#707070]">
@@ -4934,22 +4900,20 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       <button
                         type="button"
                         onClick={() => setTemplatePreviewWithSample(true)}
-                        className={`px-2.5 py-1 rounded-full transition ${
-                          templatePreviewWithSample
-                            ? 'bg-[#0b2240] text-white'
-                            : 'text-[#5b6675] hover:text-[#0b2240]'
-                        }`}
+                        className={`px-2.5 py-1 rounded-full transition ${templatePreviewWithSample
+                          ? 'bg-[#0b2240] text-white'
+                          : 'text-[#5b6675] hover:text-[#0b2240]'
+                          }`}
                       >
                         Dados de Exemplo
                       </button>
                       <button
                         type="button"
                         onClick={() => setTemplatePreviewWithSample(false)}
-                        className={`px-2.5 py-1 rounded-full transition ${
-                          !templatePreviewWithSample
-                            ? 'bg-[#0b2240] text-white'
-                            : 'text-[#5b6675] hover:text-[#0b2240]'
-                        }`}
+                        className={`px-2.5 py-1 rounded-full transition ${!templatePreviewWithSample
+                          ? 'bg-[#0b2240] text-white'
+                          : 'text-[#5b6675] hover:text-[#0b2240]'
+                          }`}
                       >
                         Com Tags
                       </button>
@@ -4961,53 +4925,53 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       dangerouslySetInnerHTML={{
                         __html: templatePreviewWithSample
                           ? renderReportHtmlWithDynamicTags(
-                              editingTemplate,
-                              orders[0] || {
-                                id: 'sample-order',
-                                protocol_code: 'VET-2026-0001',
-                                patient_id: 'pat-sample',
-                                vet_id: 'vet-sample',
-                                total_amount: 120,
-                                status: 'concluido',
-                                created_at: new Date().toISOString(),
-                                released_at: new Date().toISOString(),
-                                patient: {
-                                  id: 'pat-sample',
-                                  name: 'Thor',
-                                  species: 'Canino',
-                                  breed: 'Golden Retriever',
-                                  gender: 'M',
-                                  age_days: 1095,
-                                  tutor_name: 'Mariana Costa',
-                                },
-                                vet: {
-                                  id: 'vet-sample',
-                                  name: 'Dr. Carlos Mendes',
-                                  crmv: 'CRMV-SP 45821',
-                                  clinic_name: 'Clínica PetCare',
-                                  email: 'carlos@petcare.com.br',
-                                  phone: '(11) 99999-0000',
-                                },
-                                results: [
-                                  {
-                                    id: 'res-sample',
-                                    order_id: 'sample-order',
-                                    exam_id: 'exam-sample',
-                                    exam_code: 'HEMO-01',
-                                    exam_name: 'Hemograma Completo Veterinário',
-                                    section: 'Hematologia',
-                                    applied_price: 68,
-                                    dynamic_content: {
-                                      Eritrócitos: '6,8 milhões/mm³',
-                                      Hemoglobina: '15,2 g/dL',
-                                      Leucócitos: '9.400 /mm³',
-                                    },
-                                    reference_snapshot:
-                                      'Eritrócitos: 5,5 a 8,5 milhões/mm³ | Hemoglobina: 12 a 18 g/dL',
+                            editingTemplate,
+                            orders[0] || {
+                              id: 'sample-order',
+                              protocol_code: 'VET-2026-0001',
+                              patient_id: 'pat-sample',
+                              vet_id: 'vet-sample',
+                              total_amount: 120,
+                              status: 'concluido',
+                              created_at: new Date().toISOString(),
+                              released_at: new Date().toISOString(),
+                              patient: {
+                                id: 'pat-sample',
+                                name: 'Thor',
+                                species: 'Canino',
+                                breed: 'Golden Retriever',
+                                gender: 'M',
+                                age_days: 1095,
+                                tutor_name: 'Mariana Costa',
+                              },
+                              vet: {
+                                id: 'vet-sample',
+                                name: 'Dr. Carlos Mendes',
+                                crmv: 'CRMV-SP 45821',
+                                clinic_name: 'Clínica PetCare',
+                                email: 'carlos@petcare.com.br',
+                                phone: '(11) 99999-0000',
+                              },
+                              results: [
+                                {
+                                  id: 'res-sample',
+                                  order_id: 'sample-order',
+                                  exam_id: 'exam-sample',
+                                  exam_code: 'HEMO-01',
+                                  exam_name: 'Hemograma Completo Veterinário',
+                                  section: 'Hematologia',
+                                  applied_price: 68,
+                                  dynamic_content: {
+                                    Eritrócitos: '6,8 milhões/mm³',
+                                    Hemoglobina: '15,2 g/dL',
+                                    Leucócitos: '9.400 /mm³',
                                   },
-                                ],
-                              }
-                            )
+                                  reference_snapshot:
+                                    'Eritrócitos: 5,5 a 8,5 milhões/mm³ | Hemoglobina: 12 a 18 g/dL',
+                                },
+                              ],
+                            }
+                          )
                           : `<div style="font-family:Inter,system-ui,sans-serif;color:#0f172a;line-height:1.5;"><div>${editingTemplate.header_html || ''}</div><div style="margin:14px 0;">${editingTemplate.body_template || ''}</div><div>${editingTemplate.footer_html || ''}</div></div>`,
                       }}
                     />
@@ -5027,14 +4991,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'users' && (
             <div className="space-y-6">
               {/* USUÁRIOS DO LABORATÓRIO */}
-              <div className="bg-white rounded-[28px] p-[28px] space-y-5">
+              <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#e8f2fd] text-[#0071e3] text-[11px] font-semibold mb-1.5">
                       <Lock className="w-3 h-3" />
                       Acesso exclusivo ao Painel Laboratorial
                     </span>
-                    <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+                    <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                       Usuários do Laboratório
                     </h3>
                     <p className="text-[12px] text-[#707070]">
@@ -5049,7 +5013,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                         setLabUserForm({ name: '', email: '', role: 'biomedical', password: '' });
                         setUserModalOpen(true);
                       }}
-                      className="px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer shrink-0"
+                      className="w-full sm:w-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer shrink-0"
                     >
                       + Novo Usuário
                     </button>
@@ -5064,7 +5028,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 ) : (
                   <>
                     {userModalOpen && (
-                      <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+                      <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
                         <form
                           onSubmit={async (e) => {
                             e.preventDefault();
@@ -5097,10 +5061,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                               showToast(err?.message || 'Erro ao salvar usuário.');
                             }
                           }}
-                          className="bg-white rounded-[28px] max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl border border-black/10"
+                          className="bg-white rounded-[24px] sm:rounded-[28px] max-w-xl w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
                         >
-                          <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                            <h4 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+                          <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
+                            <h4 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                               {editingLabUserId ? 'Editar Usuário do Laboratório' : 'Novo Usuário do Laboratório'}
                             </h4>
                             <button
@@ -5110,85 +5074,85 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                                 setEditingLabUserId(null);
                                 setLabUserForm({ name: '', email: '', role: 'biomedical', password: '' });
                               }}
-                              className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer"
+                              className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
                             >
                               Fechar
                             </button>
                           </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[11px] text-[#707070] mb-1">Nome Completo *</label>
-                          <input
-                            type="text"
-                            required
-                            value={labUserForm.name}
-                            onChange={(e) => setLabUserForm({ ...labUserForm, name: e.target.value })}
-                            placeholder="Ex: Dra. Camila Rocha"
-                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] text-[#707070] mb-1">E-mail de Login *</label>
-                          <input
-                            type="email"
-                            required
-                            value={labUserForm.email}
-                            onChange={(e) => setLabUserForm({ ...labUserForm, email: e.target.value })}
-                            placeholder="camila@vetlifelab.com.br"
-                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] text-[#707070] mb-1">Perfil de Acesso *</label>
-                          <select
-                            value={labUserForm.role}
-                            onChange={(e) =>
-                              setLabUserForm({
-                                ...labUserForm,
-                                role: e.target.value as 'admin' | 'biomedical',
-                              })
-                            }
-                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                          >
-                            <option value="biomedical">Biomédico / Técnico (Rotina & Laudos)</option>
-                            <option value="admin">Administrador (Acesso Total Lab)</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[11px] text-[#707070] mb-1">
-                            {editingLabUserId ? 'Nova Senha (opcional)' : 'Senha de Acesso *'}
-                          </label>
-                          <input
-                            type="password"
-                            required={!editingLabUserId}
-                            minLength={4}
-                            value={labUserForm.password}
-                            onChange={(e) => setLabUserForm({ ...labUserForm, password: e.target.value })}
-                            placeholder={editingLabUserId ? 'Deixe em branco para manter' : 'Mínimo 4 caracteres'}
-                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="submit"
-                          className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
-                        >
-                          {editingLabUserId ? 'Salvar Alterações' : 'Cadastrar Usuário'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setUserModalOpen(false);
-                            setEditingLabUserId(null);
-                            setLabUserForm({ name: '', email: '', role: 'biomedical', password: '' });
-                          }}
-                          className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[#707070] text-[12px] font-semibold cursor-pointer"
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    </form>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] text-[#707070] mb-1">Nome Completo *</label>
+                              <input
+                                type="text"
+                                required
+                                value={labUserForm.name}
+                                onChange={(e) => setLabUserForm({ ...labUserForm, name: e.target.value })}
+                                placeholder="Ex: Dra. Camila Rocha"
+                                className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] text-[#707070] mb-1">E-mail de Login *</label>
+                              <input
+                                type="email"
+                                required
+                                value={labUserForm.email}
+                                onChange={(e) => setLabUserForm({ ...labUserForm, email: e.target.value })}
+                                placeholder="camila@vetlifelab.com.br"
+                                className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] text-[#707070] mb-1">Perfil de Acesso *</label>
+                              <select
+                                value={labUserForm.role}
+                                onChange={(e) =>
+                                  setLabUserForm({
+                                    ...labUserForm,
+                                    role: e.target.value as 'admin' | 'biomedical',
+                                  })
+                                }
+                                className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                              >
+                                <option value="biomedical">Biomédico / Técnico (Rotina & Laudos)</option>
+                                <option value="admin">Administrador (Acesso Total Lab)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[11px] text-[#707070] mb-1">
+                                {editingLabUserId ? 'Nova Senha (opcional)' : 'Senha de Acesso *'}
+                              </label>
+                              <input
+                                type="password"
+                                required={!editingLabUserId}
+                                minLength={4}
+                                value={labUserForm.password}
+                                onChange={(e) => setLabUserForm({ ...labUserForm, password: e.target.value })}
+                                placeholder={editingLabUserId ? 'Deixe em branco para manter' : 'Mínimo 4 caracteres'}
+                                className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="submit"
+                              className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
+                            >
+                              {editingLabUserId ? 'Salvar Alterações' : 'Cadastrar Usuário'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUserModalOpen(false);
+                                setEditingLabUserId(null);
+                                setLabUserForm({ name: '', email: '', role: 'biomedical', password: '' });
+                              }}
+                              className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[#707070] text-[12px] font-semibold cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </form>
                       </div>
                     )}
 
@@ -5219,11 +5183,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                                     {u.name}
                                   </span>
                                   <span
-                                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                      u.role === 'admin'
-                                        ? 'bg-[#0b2240] text-white'
-                                        : 'bg-[#e8f2fd] text-[#0071e3]'
-                                    }`}
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${u.role === 'admin'
+                                      ? 'bg-[#0b2240] text-white'
+                                      : 'bg-[#e8f2fd] text-[#0071e3]'
+                                      }`}
                                   >
                                     {u.role === 'admin' ? 'Administrador' : 'Biomédico / Técnico'}
                                   </span>
@@ -5299,14 +5262,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'vets' && (
             <div className="space-y-6">
               {/* VETERINÁRIOS E CLÍNICAS PARCEIRAS */}
-              <div className="bg-white rounded-[28px] p-[28px] space-y-5">
+              <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold mb-1.5">
                       <Lock className="w-3 h-3" />
                       Acesso exclusivo ao Portal do Veterinário
                     </span>
-                    <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+                    <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                       Veterinários & Clínicas Parceiras
                     </h3>
                     <p className="text-[12px] text-[#707070]">
@@ -5320,14 +5283,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       setVetForm({ name: '', crmv: '', clinic_name: '', email: '', phone: '', password: '' });
                       setVetModalOpen(true);
                     }}
-                    className="px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer shrink-0"
+                    className="w-full sm:w-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer shrink-0"
                   >
                     + Novo Veterinário
                   </button>
                 </div>
 
                 {vetModalOpen && (
-                  <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
@@ -5364,10 +5327,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           showToast(err?.message || 'Erro ao salvar veterinário.');
                         }
                       }}
-                      className="bg-white rounded-[28px] max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl border border-black/10"
+                      className="bg-white rounded-[24px] sm:rounded-[28px] max-w-xl w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
                     >
-                      <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                        <h4 className="font-display text-[20px] font-semibold text-[#1d1d1f]">
+                      <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
+                        <h4 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                           {editingVetId ? 'Editar Veterinário Parceiro' : 'Novo Veterinário / Clínica Parceira'}
                         </h4>
                         <button
@@ -5377,100 +5340,100 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                             setEditingVetId(null);
                             setVetForm({ name: '', crmv: '', clinic_name: '', email: '', phone: '', password: '' });
                           }}
-                          className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer"
+                          className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
                         >
                           Fechar
                         </button>
                       </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] text-[#707070] mb-1">Nome do Veterinário *</label>
-                      <input
-                        type="text"
-                        required
-                        value={vetForm.name}
-                        onChange={(e) => setVetForm({ ...vetForm, name: e.target.value })}
-                        placeholder="Ex: Dr. Lucas Ferreira"
-                        className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#707070] mb-1">E-mail de Acesso *</label>
-                      <input
-                        type="email"
-                        required
-                        value={vetForm.email}
-                        onChange={(e) => setVetForm({ ...vetForm, email: e.target.value })}
-                        placeholder="lucas@vetcare.com.br"
-                        className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#707070] mb-1">Telefone / WhatsApp *</label>
-                      <input
-                        type="text"
-                        required
-                        value={vetForm.phone}
-                        onChange={(e) => setVetForm({ ...vetForm, phone: e.target.value })}
-                        placeholder="(16) 99999-0000"
-                        className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#707070] mb-1">
-                        {editingVetId ? 'Nova Senha (opcional)' : 'Senha de Acesso *'}
-                      </label>
-                      <input
-                        type="password"
-                        required={!editingVetId}
-                        minLength={4}
-                        value={vetForm.password}
-                        onChange={(e) => setVetForm({ ...vetForm, password: e.target.value })}
-                        placeholder={editingVetId ? 'Deixe em branco para manter' : 'Mínimo 4 caracteres'}
-                        className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#707070] mb-1">CRMV (Opcional)</label>
-                      <input
-                        type="text"
-                        value={vetForm.crmv}
-                        onChange={(e) => setVetForm({ ...vetForm, crmv: e.target.value })}
-                        placeholder="Ex: CRMV-MG 12345"
-                        className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#707070] mb-1">Clínica / Hospital Parceiro (Opcional)</label>
-                      <input
-                        type="text"
-                        value={vetForm.clinic_name}
-                        onChange={(e) => setVetForm({ ...vetForm, clinic_name: e.target.value })}
-                        placeholder="Ex: Clínica VetCare"
-                        className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="submit"
-                      className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
-                    >
-                      {editingVetId ? 'Salvar Alterações' : 'Cadastrar Veterinário'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setVetModalOpen(false);
-                        setEditingVetId(null);
-                        setVetForm({ name: '', crmv: '', clinic_name: '', email: '', phone: '', password: '' });
-                      }}
-                      className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[#707070] text-[12px] font-semibold cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </form>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] text-[#707070] mb-1">Nome do Veterinário *</label>
+                          <input
+                            type="text"
+                            required
+                            value={vetForm.name}
+                            onChange={(e) => setVetForm({ ...vetForm, name: e.target.value })}
+                            placeholder="Ex: Dr. Lucas Ferreira"
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#707070] mb-1">E-mail de Acesso *</label>
+                          <input
+                            type="email"
+                            required
+                            value={vetForm.email}
+                            onChange={(e) => setVetForm({ ...vetForm, email: e.target.value })}
+                            placeholder="lucas@vetcare.com.br"
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#707070] mb-1">Telefone / WhatsApp *</label>
+                          <input
+                            type="text"
+                            required
+                            value={vetForm.phone}
+                            onChange={(e) => setVetForm({ ...vetForm, phone: e.target.value })}
+                            placeholder="(16) 99999-0000"
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#707070] mb-1">
+                            {editingVetId ? 'Nova Senha (opcional)' : 'Senha de Acesso *'}
+                          </label>
+                          <input
+                            type="password"
+                            required={!editingVetId}
+                            minLength={4}
+                            value={vetForm.password}
+                            onChange={(e) => setVetForm({ ...vetForm, password: e.target.value })}
+                            placeholder={editingVetId ? 'Deixe em branco para manter' : 'Mínimo 4 caracteres'}
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#707070] mb-1">CRMV (Opcional)</label>
+                          <input
+                            type="text"
+                            value={vetForm.crmv}
+                            onChange={(e) => setVetForm({ ...vetForm, crmv: e.target.value })}
+                            placeholder="Ex: CRMV-MG 12345"
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#707070] mb-1">Clínica / Hospital Parceiro (Opcional)</label>
+                          <input
+                            type="text"
+                            value={vetForm.clinic_name}
+                            onChange={(e) => setVetForm({ ...vetForm, clinic_name: e.target.value })}
+                            placeholder="Ex: Clínica VetCare"
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="submit"
+                          className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
+                        >
+                          {editingVetId ? 'Salvar Alterações' : 'Cadastrar Veterinário'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVetModalOpen(false);
+                            setEditingVetId(null);
+                            setVetForm({ name: '', crmv: '', clinic_name: '', email: '', phone: '', password: '' });
+                          }}
+                          className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[#707070] text-[12px] font-semibold cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
                   </div>
                 )}
 
@@ -5575,65 +5538,65 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           ABA 5: DASHBOARD FINANCEIRO (EXCLUSIVO ADMIN)
          ===================================================================== */}
       {activeTab === 'financial' && user.role === 'admin' && finStats && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-[28px] rounded-[28px]">
-              <div className="text-[12px] uppercase text-[#86868b]">Receita Bruta Mensal</div>
-              <div className="font-display text-[32px] font-semibold text-[#1d1d1f] font-mono mt-1">
+        <div className="space-y-5 sm:space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
+              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Receita Bruta Mensal</div>
+              <div className="font-display text-[24px] sm:text-[32px] font-semibold text-[#1d1d1f] font-mono mt-1">
                 R$ {finStats.monthly_revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </div>
-              <div className="text-[12px] text-[#707070] mt-1">Faturamento de exames</div>
+              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1">Faturamento de exames</div>
             </div>
 
-            <div className="bg-white p-[28px] rounded-[28px]">
-              <div className="text-[12px] uppercase text-[#86868b]">Ticket Médio por Pedido</div>
-              <div className="font-display text-[32px] font-semibold text-[#1d1d1f] font-mono mt-1">
+            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
+              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Ticket Médio por Pedido</div>
+              <div className="font-display text-[24px] sm:text-[32px] font-semibold text-[#1d1d1f] font-mono mt-1">
                 R$ {finStats.average_ticket.toFixed(2)}
               </div>
-              <div className="text-[12px] text-[#707070] mt-1">Média por protocolo emitido</div>
+              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1">Média por protocolo emitido</div>
             </div>
 
-            <div className="bg-white p-[28px] rounded-[28px]">
-              <div className="text-[12px] uppercase text-[#86868b]">
+            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
+              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">
                 Custos Operacionais & Insumos
               </div>
-              <div className="font-display text-[32px] font-semibold text-[#1d1d1f] font-mono mt-1">
+              <div className="font-display text-[24px] sm:text-[32px] font-semibold text-[#1d1d1f] font-mono mt-1">
                 R$ {finStats.operational_costs.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </div>
-              <div className="text-[12px] text-[#707070] mt-1">Reagentes, tubos e logística</div>
+              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1">Reagentes, tubos e logística</div>
             </div>
 
-            <div className="bg-[#1d1d1f] text-[#f5f5f7] p-[28px] rounded-[28px]">
-              <div className="text-[12px] uppercase text-[#86868b]">
+            <div className="bg-[#1d1d1f] text-[#f5f5f7] p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
+              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">
                 Resultado Líquido (Balancete)
               </div>
-              <div className="font-display text-[32px] font-semibold text-white font-mono mt-1">
+              <div className="font-display text-[24px] sm:text-[32px] font-semibold text-white font-mono mt-1">
                 R$ {finStats.net_margin.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </div>
-              <div className="text-[12px] text-[#86868b] mt-1">
+              <div className="text-[11px] sm:text-[12px] text-[#86868b] mt-1">
                 Margem Operacional: {finStats.margin_percent}%
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-6 bg-white rounded-[28px] p-[28px] space-y-4">
-              <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+            <div className="lg:col-span-6 bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4">
+              <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                 Faturamento por Tabela de Vigência / Convênio
               </h3>
               <div className="space-y-3">
                 {finStats.revenue_by_table.map((row) => (
                   <div
                     key={row.table_name}
-                    className="p-5 rounded-[25px] bg-[#f5f5f7] flex items-center justify-between text-[12px]"
+                    className="p-4 sm:p-5 rounded-[20px] sm:rounded-[25px] bg-[#f5f5f7] flex flex-wrap items-center justify-between gap-2 text-[12px]"
                   >
-                    <div>
-                      <div className="font-semibold text-[#1d1d1f]">{row.table_name}</div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[#1d1d1f] break-words">{row.table_name}</div>
                       <div className="text-[#707070]">
                         {row.partner} • {row.count} atendimentos
                       </div>
                     </div>
-                    <div className="font-mono font-semibold text-[#1d1d1f] text-[17px]">
+                    <div className="font-mono font-semibold text-[#1d1d1f] text-[15px] sm:text-[17px] shrink-0">
                       R$ {row.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </div>
                   </div>
@@ -5641,24 +5604,24 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               </div>
             </div>
 
-            <div className="lg:col-span-6 bg-white rounded-[28px] p-[28px] space-y-4">
-              <h3 className="font-display text-[21px] font-semibold text-[#1d1d1f]">
+            <div className="lg:col-span-6 bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4">
+              <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
                 Balancete Simples (Entradas e Custos Operacionais)
               </h3>
               <div className="divide-y divide-[#f5f5f7] text-[12px]">
                 {finStats.ledger_entries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="py-3.5 flex items-center justify-between gap-2"
+                    className="py-3.5 flex flex-wrap items-center justify-between gap-2"
                   >
-                    <div>
-                      <div className="font-semibold text-[#1d1d1f]">{entry.description}</div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[#1d1d1f] break-words">{entry.description}</div>
                       <div className="text-[#86868b]">
                         {entry.date} • {entry.category}
                       </div>
                     </div>
                     <span
-                      className={`font-mono font-semibold ${entry.type === 'entrada' ? 'text-[#1d1d1f]' : 'text-[#707070]'
+                      className={`font-mono font-semibold shrink-0 ${entry.type === 'entrada' ? 'text-[#1d1d1f]' : 'text-[#707070]'
                         }`}
                     >
                       {entry.type === 'entrada' ? '+' : '-'} R${' '}

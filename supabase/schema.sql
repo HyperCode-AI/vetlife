@@ -203,6 +203,9 @@ CREATE TABLE IF NOT EXISTS public.collection_requests (
     email VARCHAR(150) DEFAULT '',
     address TEXT NOT NULL,
     notes TEXT DEFAULT '',
+    preferred_date VARCHAR(20),
+    scheduled_date VARCHAR(20),
+    scheduled_time VARCHAR(20),
     status VARCHAR(30) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'agendada', 'concluida', 'cancelada')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

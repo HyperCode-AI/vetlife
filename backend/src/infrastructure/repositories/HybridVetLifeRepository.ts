@@ -85,7 +85,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       throw new ConflictError(`Já existe um usuário cadastrado com o e-mail '${email}'.`);
     }
     const created: User = {
-      id: `usr-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       name: data.name.trim(),
       email,
       role: data.role,
@@ -245,8 +245,9 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     const resolvedPrice = Number(data.price ?? data.base_price ?? 70);
     const tubeOrMaterial = (data.tube_type || data.material || 'Tubo EDTA').trim();
 
+    const defaultTemplate = await this.getDefaultReportTemplate();
     const newExam: Exam = {
-      id: `exam-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       code: data.code.trim().toUpperCase(),
       name: data.name.trim(),
       section: data.section.trim(),
@@ -258,7 +259,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       material: data.material?.trim() || tubeOrMaterial,
       preparation: data.preparation || 'Jejum de 6 a 8 horas.',
       label_qty: Number(data.label_qty ?? 1),
-      reference_template_id: data.reference_template_id || 'tpl-default-001',
+      reference_template_id: data.reference_template_id || defaultTemplate.id,
       base_price: resolvedPrice,
       price: resolvedPrice,
       active_price: resolvedPrice,
@@ -295,7 +296,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     // Add price to all price tables
     for (const pt of this.state.priceTables) {
       this.state.examPrices.push({
-        id: `ep-${randomUUID().slice(0, 8)}`,
+        id: randomUUID(),
         price_table_id: pt.id,
         exam_id: newExam.id,
         price: resolvedPrice,
@@ -425,7 +426,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     this.state.examInputFields = this.state.examInputFields.filter((f) => f.exam_id !== examId);
 
     const createdFields: ExamInputField[] = fields.map((f, index) => ({
-      id: f.id || `fld-${randomUUID().slice(0, 8)}`,
+      id: f.id || randomUUID(),
       exam_id: examId,
       field_name: f.field_name.trim(),
       field_label: (f.field_label || f.field_name).trim(),
@@ -451,7 +452,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
 
     const existingForExam = this.state.examInputFields.filter((f) => f.exam_id === examId);
     const newField: ExamInputField = {
-      id: `fld-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       exam_id: examId,
       field_name: field.field_name.trim(),
       field_label: (field.field_label || field.field_name).trim(),
@@ -506,7 +507,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     prices: Array<{ exam_id: string; price: number }>
   ): Promise<PriceTable> {
     const newTable: PriceTable = {
-      id: `pt-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       name: data.name.trim(),
       partner_clinic: data.partner_clinic || null,
       start_date: data.start_date,
@@ -527,7 +528,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
 
     for (const item of priceEntries) {
       this.state.examPrices.push({
-        id: `ep-${randomUUID().slice(0, 8)}`,
+        id: randomUUID(),
         price_table_id: newTable.id,
         exam_id: item.exam_id,
         price: Number(item.price),
@@ -564,7 +565,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       this.state.examPrices = this.state.examPrices.filter((p) => p.price_table_id !== id);
       for (const item of prices) {
         this.state.examPrices.push({
-          id: `ep-${randomUUID().slice(0, 8)}`,
+          id: randomUUID(),
           price_table_id: id,
           exam_id: item.exam_id,
           price: Number(item.price),
@@ -617,7 +618,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
   public async createExamReference(data: Omit<ExamReference, 'id'>): Promise<ExamReference> {
     const exam = this.state.exams.find((e) => e.id === data.exam_id);
     const created: ExamReference = {
-      id: `ref-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       exam_id: data.exam_id,
       exam_name: exam?.name,
       parameter_name: data.parameter_name || exam?.name || 'Parâmetro Geral',
@@ -684,7 +685,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     }
 
     const created: ReportTemplate = {
-      id: `tpl-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       name: data.name,
       header_html: data.header_html,
       footer_html: data.footer_html,
@@ -750,7 +751,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
 
   public async createPatient(data: Omit<Patient, 'id' | 'created_at'>): Promise<Patient> {
     const created: Patient = {
-      id: `pat-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       name: data.name.trim(),
       species: data.species.trim(),
       breed: data.breed.trim(),
@@ -857,7 +858,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       throw new ConflictError(`Já existe um veterinário cadastrado com o e-mail '${email}'.`);
     }
     const created: Vet = {
-      id: `vet-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       name: data.name.trim(),
       crmv: (data.crmv || '').trim().toUpperCase(),
       clinic_name: (data.clinic_name || '').trim(),
@@ -999,7 +1000,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     resultsData: Array<Omit<ExamResult, 'id' | 'order_id'>>
   ): Promise<Order> {
     const newOrder: Order = {
-      id: `ord-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       protocol_code: orderData.protocol_code,
       patient_id: orderData.patient_id,
       vet_id: orderData.vet_id,
@@ -1015,7 +1016,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
 
     for (const res of resultsData) {
       this.state.examResults.push({
-        id: `res-${randomUUID().slice(0, 8)}`,
+        id: randomUUID(),
         order_id: newOrder.id,
         exam_id: res.exam_id,
         applied_price: Number(res.applied_price),
@@ -1098,6 +1099,16 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
   // COLLECTION REQUESTS (Landing Page)
   // ===========================================================================
   public async listCollectionRequests(): Promise<CollectionRequest[]> {
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { data, error } = await sb
+        .from('collection_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        return data as CollectionRequest[];
+      }
+    }
     return [...this.state.collectionRequests];
   }
 
@@ -1107,7 +1118,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     }
   ): Promise<CollectionRequest> {
     const created: CollectionRequest = {
-      id: `col-${randomUUID().slice(0, 8)}`,
+      id: randomUUID(),
       clinic_or_tutor_name: data.clinic_or_tutor_name.trim(),
       phone: data.phone.trim(),
       email: (data.email || '').trim(),
@@ -1118,6 +1129,17 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       created_at: new Date().toISOString(),
     };
     this.state.collectionRequests.unshift(created);
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { data: inserted, error } = await sb
+        .from('collection_requests')
+        .insert(created)
+        .select()
+        .single();
+      if (!error && inserted) {
+        return inserted as CollectionRequest;
+      }
+    }
     return created;
   }
 
@@ -1127,6 +1149,26 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     scheduledDate?: string,
     scheduledTime?: string
   ): Promise<CollectionRequest> {
+    const sb = getSupabaseClient();
+    if (sb) {
+      const patch: Record<string, any> = { status };
+      if (scheduledDate !== undefined) patch.scheduled_date = scheduledDate;
+      if (scheduledTime !== undefined) patch.scheduled_time = scheduledTime;
+      const { data: updated, error } = await sb
+        .from('collection_requests')
+        .update(patch)
+        .eq('id', id)
+        .select()
+        .maybeSingle();
+      if (!error && updated) {
+        const idx = this.state.collectionRequests.findIndex((c) => c.id === id);
+        if (idx !== -1) {
+          this.state.collectionRequests[idx] = updated as CollectionRequest;
+        }
+        return updated as CollectionRequest;
+      }
+    }
+
     const idx = this.state.collectionRequests.findIndex((c) => c.id === id);
     if (idx === -1) {
       throw new NotFoundError(`Solicitação de coleta '${id}' não encontrada.`);

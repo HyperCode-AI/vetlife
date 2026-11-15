@@ -3,7 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../../domain/erro
 import { IExamRepository } from '../../domain/repositories/IVetLifeRepository';
 
 export class ExamUseCases {
-  constructor(private readonly examRepo: IExamRepository) {}
+  constructor(private readonly examRepo: IExamRepository) { }
 
   public async listExams(): Promise<Exam[]> {
     return this.examRepo.listExams();
@@ -108,7 +108,7 @@ export class ExamUseCases {
       material: input.material || tubeOrMaterial,
       preparation: input.preparation,
       label_qty: Number(input.label_qty ?? 1),
-      reference_template_id: input.reference_template_id || 'tpl-default-001',
+      reference_template_id: input.reference_template_id || '',
       base_price: resolvedPrice,
       price: resolvedPrice,
       input_fields: normalizedFields,

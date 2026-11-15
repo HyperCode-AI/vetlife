@@ -59,8 +59,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   };
 
   return (
-    <div className="min-h-[calc(100vh-140px)] flex items-center justify-center py-10 px-4">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-900/5 border border-slate-200/80 p-7 sm:p-10 space-y-7">
+    <div className="min-h-[calc(100vh-140px)] flex items-center justify-center py-6 sm:py-10 px-0 sm:px-4">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-900/5 border border-slate-200/80 p-5 sm:p-10 space-y-6 sm:space-y-7">
         {/* Cabeçalho com marca VetLife */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">

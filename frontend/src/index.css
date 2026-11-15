@@ -74,6 +74,21 @@
 }
 
 @layer base {
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  input[type="date"],
+  input[type="time"],
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   body {
     background-color: var(--color-fog-canvas);
     color: var(--color-apple-ink);

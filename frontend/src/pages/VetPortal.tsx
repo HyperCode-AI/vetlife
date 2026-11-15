@@ -61,25 +61,25 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
   });
 
   return (
-    <div className="space-y-8 py-10 pb-24">
+    <div className="space-y-5 sm:space-y-8 py-6 sm:py-10 pb-20 sm:pb-24">
       {/* BARRA DO VETERINÁRIO LOGADO */}
-      <div className="bg-white rounded-[28px] p-[28px] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-[999px] bg-[#f5f5f7] text-[#1d1d1f] flex items-center justify-center">
+      <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center gap-3.5 sm:gap-4 min-w-0">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[999px] bg-[#f5f5f7] text-[#1d1d1f] flex items-center justify-center shrink-0">
             <Stethoscope className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="font-display text-[24px] font-semibold text-[#1d1d1f]">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f] leading-tight">
                 {vet ? vet.name : 'Visualização Laboratorial — Portal do Veterinário'}
               </h1>
               {vet?.crmv && (
-                <span className="px-[10px] py-[4px] rounded-[999px] bg-[#f5f5f7] font-mono text-[12px] text-[#1d1d1f]">
+                <span className="px-[10px] py-[4px] rounded-[999px] bg-[#f5f5f7] font-mono text-[11px] sm:text-[12px] text-[#1d1d1f] shrink-0">
                   {vet.crmv}
                 </span>
               )}
             </div>
-            <div className="text-[12px] text-[#707070] mt-0.5">
+            <div className="text-[12px] text-[#707070] mt-0.5 break-words">
               {vet
                 ? `${vet.clinic_name} • ${vet.email}`
                 : isLabStaff
@@ -91,7 +91,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
 
         <button
           onClick={handleLogout}
-          className="px-5 py-2 rounded-[980px] border border-[#1d1d1f] text-[#1d1d1f] text-[12px] hover:bg-[#1d1d1f] hover:text-white transition inline-flex items-center gap-2 self-start sm:self-auto"
+          className="px-5 py-2 rounded-[980px] border border-[#1d1d1f] text-[#1d1d1f] text-[12px] hover:bg-[#1d1d1f] hover:text-white transition inline-flex items-center gap-2 self-start sm:self-auto shrink-0"
         >
           <LogOut className="w-3.5 h-3.5" />
           Sair
@@ -99,11 +99,11 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
       </div>
 
       {/* LISTAGEM DE EXAMES SOLICITADOS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-7 bg-white rounded-[28px] p-[28px] space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-[24px] font-semibold text-[#1d1d1f]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+        <div className="lg:col-span-7 bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-5 sm:space-y-6">
+          <div className="space-y-3.5 sm:space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f]">
                 Exames Solicitados ({filteredOrders.length})
               </h2>
               <span className="text-[12px] text-[#86868b]">Download direto em PDF</span>
@@ -138,16 +138,16 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
               <div
                 key={ord.id}
                 onClick={() => setSelectedOrder(ord)}
-                className={`p-5 rounded-[25px] cursor-pointer transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                className={`p-4 sm:p-5 rounded-[22px] sm:rounded-[25px] cursor-pointer transition flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4 ${
                   selectedOrder?.id === ord.id ? 'bg-[#e8e8ed]' : 'bg-[#f5f5f7] hover:bg-[#e8e8ed]/70'
                 }`}
               >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2.5">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-[12px] font-semibold text-[#1d1d1f]">
                       {ord.protocol_code}
                     </span>
-                    <span className="px-[10px] py-[4px] rounded-[999px] bg-white text-[12px] text-[#1d1d1f]">
+                    <span className="px-[10px] py-[4px] rounded-[999px] bg-white text-[11px] sm:text-[12px] text-[#1d1d1f]">
                       {ord.status === 'concluido'
                         ? 'Concluído'
                         : ord.status === 'em_analise'
@@ -155,14 +155,14 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
                         : 'Pendente'}
                     </span>
                   </div>
-                  <div className="font-display text-[19px] font-semibold text-[#1d1d1f]">
+                  <div className="font-display text-[17px] sm:text-[19px] font-semibold text-[#1d1d1f]">
                     {ord.patient?.name}{' '}
                     <span className="font-sans font-normal text-[12px] text-[#707070]">
                       ({ord.patient?.species} • {ord.patient?.breed} • Tutor:{' '}
                       {ord.patient?.tutor_name})
                     </span>
                   </div>
-                  <div className="text-[12px] text-[#86868b]">
+                  <div className="text-[12px] text-[#86868b] break-words">
                     Exames: {(ord.results || []).map((r) => r.exam_code).join(', ')}
                   </div>
                 </div>
@@ -174,7 +174,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
                       e.stopPropagation();
                       downloadOrderPdf(ord);
                     }}
-                    className="px-4 py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-normal inline-flex items-center gap-1.5 hover:opacity-95 transition"
+                    className="w-full sm:w-auto justify-center px-4 py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-normal inline-flex items-center gap-1.5 hover:opacity-95 transition"
                   >
                     <FileDown className="w-3.5 h-3.5" />
                     Baixar PDF
@@ -186,18 +186,18 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
         </div>
 
         {/* PREVIEW DO LAUDO SELECIONADO */}
-        <div className="lg:col-span-5 bg-white rounded-[28px] p-[28px]">
+        <div className="lg:col-span-5 bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px]">
           {selectedOrder ? (
             <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
                   <span className="text-[12px] font-mono text-[#86868b]">
                     {selectedOrder.protocol_code}
                   </span>
-                  <h3 className="font-display text-[24px] font-semibold text-[#1d1d1f]">
+                  <h3 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f] leading-tight">
                     {selectedOrder.patient?.name} ({selectedOrder.patient?.species})
                   </h3>
-                  <p className="text-[12px] text-[#707070]">
+                  <p className="text-[12px] text-[#707070] mt-0.5">
                     Idade:{' '}
                     {formatAgeLabel(
                       selectedOrder.patient?.age_days,
@@ -206,7 +206,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
                     • Tutor: {selectedOrder.patient?.tutor_name}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0">
                   <button
                     onClick={() => downloadOrderPdf(selectedOrder)}
                     className="px-4 py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] inline-flex items-center gap-1.5"
@@ -226,25 +226,25 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
 
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {(selectedOrder.results || []).map((res) => (
-                  <div key={res.id} className="p-5 rounded-[25px] bg-[#f5f5f7] space-y-3">
-                    <div className="font-display text-[19px] font-semibold text-[#1d1d1f]">
+                  <div key={res.id} className="p-4 sm:p-5 rounded-[22px] sm:rounded-[25px] bg-[#f5f5f7] space-y-3">
+                    <div className="font-display text-[17px] sm:text-[19px] font-semibold text-[#1d1d1f]">
                       [{res.exam_code}] {res.exam_name}
                     </div>
                     {Object.entries(res.dynamic_content || {}).length === 0 ? (
                       <div className="text-[12px] text-[#707070]">Em processamento laboratorial.</div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-2 text-[12px]">
+                      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 gap-2 text-[12px]">
                         {Object.entries(res.dynamic_content).map(([k, v]) => (
-                          <div key={k} className="bg-white p-3 rounded-[18px]">
-                            <span className="text-[#86868b] block text-[10px] uppercase">{k}</span>
-                            <span className="font-mono font-semibold text-[#1d1d1f]">
+                          <div key={k} className="bg-white p-3 rounded-[18px] min-w-0">
+                            <span className="text-[#86868b] block text-[10px] uppercase truncate">{k}</span>
+                            <span className="font-mono font-semibold text-[#1d1d1f] break-words">
                               {String(v)}
                             </span>
                           </div>
                         ))}
                       </div>
                     )}
-                    <div className="text-[12px] text-[#707070] bg-white p-3 rounded-[18px]">
+                    <div className="text-[12px] text-[#707070] bg-white p-3 rounded-[18px] break-words">
                       <strong className="text-[#1d1d1f]">Ref:</strong>{' '}
                       {res.reference_snapshot ||
                         res.matched_reference?.reference_text_content ||
@@ -255,7 +255,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({ onLogout }) => {
               </div>
             </div>
           ) : (
-            <div className="text-center py-12 text-[#86868b] text-[17px]">
+            <div className="text-center py-12 text-[#86868b] text-[15px] sm:text-[17px]">
               Selecione um atendimento ao lado para inspecionar o laudo completo.
             </div>
           )}

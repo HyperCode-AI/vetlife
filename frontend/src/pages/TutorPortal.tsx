@@ -124,15 +124,15 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
   const results = order?.results || [];
 
   return (
-    <div className="max-w-[1100px] mx-auto space-y-5 py-6 pb-16 px-4">
+    <div className="max-w-[1100px] mx-auto space-y-4 sm:space-y-5 py-4 sm:py-6 pb-16 px-0 sm:px-4">
       {/* BUSCA COMPACTA POR PROTOCOLO */}
-      <div className="bg-white rounded-[24px] p-5 space-y-3 border border-black/5">
+      <div className="bg-white rounded-[24px] p-4 sm:p-5 space-y-3 border border-black/5">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-2">
           <div>
-            <h1 className="font-display text-[26px] sm:text-[32px] font-semibold leading-tight text-[#1d1d1f]">
+            <h1 className="font-display text-[24px] sm:text-[32px] font-semibold leading-tight text-[#1d1d1f]">
               Consulta de Resultados
             </h1>
-            <p className="text-[13px] text-[#707070]">
+            <p className="text-[13px] text-[#707070] mt-0.5">
               Informe o código de protocolo do comprovante de atendimento para visualizar e baixar o laudo oficial em PDF.
             </p>
           </div>
@@ -146,13 +146,13 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
               value={protocolCode}
               onChange={(e) => setProtocolCode(e.target.value)}
               placeholder="Ex: VET-2026-0001"
-              className="w-full h-10 pl-10 pr-4 rounded-full bg-[#f5f5f7] font-mono text-[14px] uppercase text-[#1d1d1f] placeholder:text-[#86868b] focus:outline-none focus:ring-2 focus:ring-[#0071e3]"
+              className="w-full h-11 sm:h-10 pl-10 pr-4 rounded-full bg-[#f5f5f7] font-mono text-[14px] uppercase text-[#1d1d1f] placeholder:text-[#86868b] focus:outline-none focus:ring-2 focus:ring-[#0071e3]"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="h-10 px-6 rounded-full bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition shrink-0 cursor-pointer"
+            className="h-11 sm:h-10 px-6 rounded-full bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition shrink-0 cursor-pointer"
           >
             {loading ? 'Consultando...' : 'Consultar Resultado'}
           </button>
@@ -161,8 +161,8 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
 
       {/* ERRO SE PROTOCOLO NÃO EXISTIR */}
       {error && (
-        <div className="bg-white rounded-[24px] p-5 text-[#1d1d1f] flex items-center gap-3 border border-black/5">
-          <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+        <div className="bg-white rounded-[24px] p-4 sm:p-5 text-[#1d1d1f] flex items-start sm:items-center gap-3 border border-black/5">
+          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5 sm:mt-0" />
           <div>
             <div className="font-display text-[16px] font-semibold">Protocolo não encontrado</div>
             <div className="text-[13px] text-[#707070]">{error}</div>
@@ -172,7 +172,7 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
 
       {/* VISUALIZAÇÃO COMPACTA DO ATENDIMENTO E EXAMES EM DROPDOWN */}
       {order && (
-        <div className="bg-white rounded-[24px] p-5 sm:p-6 space-y-5 border border-black/5">
+        <div className="bg-white rounded-[24px] p-4 sm:p-6 space-y-5 border border-black/5">
           {/* Cabeçalho Compacto */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#e5e5ea]">
             <div className="space-y-1">
@@ -182,9 +182,9 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
                 </span>
                 {renderStatusChip(order.status)}
               </div>
-              <h2 className="font-display text-[22px] sm:text-[24px] font-semibold leading-tight text-[#1d1d1f]">
+              <h2 className="font-display text-[20px] sm:text-[24px] font-semibold leading-tight text-[#1d1d1f]">
                 {order.patient?.name}{' '}
-                <span className="text-[15px] font-normal text-[#707070]">
+                <span className="text-[14px] sm:text-[15px] font-normal text-[#707070]">
                   ({order.patient?.species} • {order.patient?.breed})
                 </span>
               </h2>
@@ -195,18 +195,18 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
                 <button
                   type="button"
                   onClick={() => handleDownloadFullPdf(order)}
-                  className="h-9 px-4 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
+                  className="flex-1 sm:flex-initial justify-center h-9 px-4 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
                 >
-                  <FileDown className="w-3.5 h-3.5" />
-                  Baixar PDF Completo
+                  <FileDown className="w-3.5 h-3.5 shrink-0" />
+                  <span>Baixar PDF Completo</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => printFormattedReportWindow(order)}
-                  className="h-9 px-4 rounded-full border border-[#1d1d1f] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#1d1d1f] hover:text-white transition cursor-pointer"
+                  className="flex-1 sm:flex-initial justify-center h-9 px-4 rounded-full border border-[#1d1d1f] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#1d1d1f] hover:text-white transition cursor-pointer"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  Imprimir Completo
+                  <Printer className="w-3.5 h-3.5 shrink-0" />
+                  <span>Imprimir Completo</span>
                 </button>
               </div>
             )}

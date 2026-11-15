@@ -27,7 +27,7 @@ async function invokeApp(
       originalUrl: `/api/v1${path}`,
       headers,
       body: body !== undefined ? body : {},
-       _body: true, // tells express.json() that body is already parsed
+      _body: true, // tells express.json() that body is already parsed
       connection: {},
       socket: {},
       ip: '127.0.0.1',
@@ -295,6 +295,14 @@ async function runIntegrationTests(): Promise<void> {
   console.log('✅ [6/10] HU-04 & HU-05 (Valores de referência e templates de laudo) validados');
 
   // 7. HU-06, HU-07, HU-08, HU-09, RN-03, RN-04: Biomédico cria pedido, gera etiquetas, lança resultados dinâmicos + anexo e libera laudo
+  const vetsListRes = await invokeApp('GET', '/vets', undefined, biomedToken);
+  assert.strictEqual(vetsListRes.status, 200);
+  const firstVetId = vetsListRes.json.data[0].id;
+  const examsListRes = await invokeApp('GET', '/exams', undefined, biomedToken);
+  assert.strictEqual(examsListRes.status, 200);
+  const hemogramaExam = examsListRes.json.data.find((e: any) => e.code === '057');
+  assert.ok(hemogramaExam);
+
   const newOrder = await invokeApp(
     'POST',
     '/orders',
@@ -308,8 +316,8 @@ async function runIntegrationTests(): Promise<void> {
         tutor_name: 'Eduardo Fontes',
         tutor_phone: '(11) 98877-6655',
       },
-      vet_id: 'vet-carlos-001',
-      exam_ids: [newExamId, 'exam-hemograma'],
+      vet_id: firstVetId,
+      exam_ids: [newExamId, hemogramaExam.id],
       notes: 'Suspeita clínica de hipotireoidismo.',
     },
     biomedToken
