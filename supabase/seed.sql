@@ -16,6 +16,7 @@ TRUNCATE TABLE
     public.exam_references,
     public.exam_prices,
     public.price_tables,
+    public.exam_label_templates,
     public.exam_input_fields,
     public.exams,
     public.report_templates,
@@ -631,3 +632,29 @@ INSERT INTO public.exam_results (id, order_id, exam_id, applied_price, dynamic_c
 INSERT INTO public.collection_requests (id, clinic_or_tutor_name, phone, email, address, notes, status, created_at) VALUES
     ('24640b26-bdab-49d7-9e4b-c52c751e3be6', 'Clínica Veterinária PetCare (Dr. Carlos)', '(11) 99812-4501', 'coleta@clinicapetcare.com.br', 'Rua Oscar Freire, 980 - Jardins, São Paulo/SP', '3 tubos de EDTA e 2 tubos de bioquímica refrigerados na recepção.', 'agendada', NOW() - INTERVAL '3 hours'),
     ('ad7cc60f-d5bb-49df-b173-9a5468086664', 'Hospital Veterinário VetVida', '(11) 99740-3320', 'laboratorio@hospitalvetvida.com.br', 'Av. Ibirapuera, 2310 - Moema, São Paulo/SP', 'Urgência: 1 amostra de urocultura por cistocentese no gelo.', 'pendente', NOW() - INTERVAL '45 minutes');
+
+-- =============================================================================
+-- 12. ETIQUETAS N:1 POR EXAME (exam_label_templates) — Populado a partir dos tubos de cada exame
+-- =============================================================================
+INSERT INTO public.exam_label_templates (exam_id, tube_type, label_qty, display_order)
+SELECT
+    e.id AS exam_id,
+    UPPER(LEFT(BTRIM(part.val), 1)) || SUBSTRING(BTRIM(part.val) FROM 2) AS tube_type,
+    CASE
+        WHEN array_length(regexp_split_to_array(e.tube_type, '\s+\+\s+'), 1) = 1
+        THEN GREATEST(1, COALESCE(e.label_qty, 1))
+        ELSE 1
+    END AS label_qty,
+    part.ord::INTEGER AS display_order
+FROM public.exams e
+CROSS JOIN LATERAL unnest(regexp_split_to_array(e.tube_type, '\s+\+\s+')) WITH ORDINALITY AS part(val, ord)
+WHERE BTRIM(part.val) <> '';
+
+UPDATE public.exams e
+SET label_qty = sub.total_qty
+FROM (
+    SELECT exam_id, SUM(label_qty)::INTEGER AS total_qty
+    FROM public.exam_label_templates
+    GROUP BY exam_id
+) sub
+WHERE e.id = sub.exam_id;

@@ -1,4 +1,9 @@
-import { Exam, ExamInputField } from '../../domain/entities';
+import {
+  Exam,
+  ExamInputField,
+  ExamLabelTemplate,
+  parseTubeTypeToLabelTemplates,
+} from '../../domain/entities';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError';
 import { IExamRepository } from '../../domain/repositories/IVetLifeRepository';
 
@@ -62,12 +67,13 @@ export class ExamUseCases {
     material?: string;
     preparation?: string;
     label_qty?: number;
+    label_templates?: ExamLabelTemplate[];
     reference_template_id?: string | null;
     base_price?: number;
     price?: number;
     input_fields?: Array<Partial<ExamInputField> & { field_name: string }>;
   }): Promise<Exam> {
-    if (!input.code || !input.name || !input.section || (!input.tube_type && !input.material)) {
+    if (!input.code || !input.name || !input.section || (!input.tube_type && !input.material && (!input.label_templates || input.label_templates.length === 0))) {
       throw new ValidationError(
         'Código, nome, seção técnica e tipo de tubo/amostra são obrigatórios.'
       );
@@ -94,7 +100,28 @@ export class ExamUseCases {
 
     const deliveryDays = Number(input.delivery_days ?? 1);
     const resolvedPrice = Number(input.price ?? input.base_price ?? 70);
-    const tubeOrMaterial = input.tube_type || input.material || 'Tubo EDTA';
+    const normalizedTemplates: ExamLabelTemplate[] =
+      input.label_templates && input.label_templates.length > 0
+        ? input.label_templates
+            .filter((t) => t && String(t.tube_type || '').trim().length > 0)
+            .map((t, idx) => ({
+              tube_type: String(t.tube_type).trim(),
+              label_qty: Math.max(1, Number(t.label_qty) || 1),
+              display_order: idx + 1,
+            }))
+        : parseTubeTypeToLabelTemplates(
+            input.tube_type || input.material || 'Tubo EDTA',
+            input.label_qty
+          );
+
+    const tubeOrMaterial =
+      normalizedTemplates.length > 0
+        ? normalizedTemplates.map((t) => t.tube_type).join(' + ')
+        : input.tube_type || input.material || 'Tubo EDTA';
+    const resolvedLabelQty =
+      normalizedTemplates.length > 0
+        ? normalizedTemplates.reduce((acc, t) => acc + t.label_qty, 0)
+        : Number(input.label_qty ?? 1);
 
     return this.examRepo.createExam({
       code: input.code,
@@ -107,7 +134,8 @@ export class ExamUseCases {
       tube_type: tubeOrMaterial,
       material: input.material || tubeOrMaterial,
       preparation: input.preparation,
-      label_qty: Number(input.label_qty ?? 1),
+      label_qty: resolvedLabelQty,
+      label_templates: normalizedTemplates,
       reference_template_id: input.reference_template_id || '',
       base_price: resolvedPrice,
       price: resolvedPrice,

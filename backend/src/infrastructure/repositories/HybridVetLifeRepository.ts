@@ -3,6 +3,7 @@ import {
   CollectionRequest,
   Exam,
   ExamInputField,
+  ExamLabelTemplate,
   ExamPrice,
   ExamReference,
   ExamResult,
@@ -12,6 +13,7 @@ import {
   ReportTemplate,
   User,
   Vet,
+  parseTubeTypeToLabelTemplates,
 } from '../../domain/entities';
 import { ConflictError, NotFoundError } from '../../domain/errors/AppError';
 import { IVetLifeRepository } from '../../domain/repositories/IVetLifeRepository';
@@ -240,11 +242,46 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       exam.delivery_time_label ||
       `${deliveryDays} ${deliveryDays === 1 ? 'dia útil' : 'dias úteis'}`;
 
+    const stateTemplates = (this.state.examLabelTemplates || [])
+      .filter((lt) => lt.exam_id === exam.id)
+      .sort((a, b) => Number(a.display_order || 1) - Number(b.display_order || 1));
+
+    const rawTemplates: ExamLabelTemplate[] =
+      exam.label_templates && exam.label_templates.length > 0
+        ? exam.label_templates
+        : stateTemplates.length > 0
+          ? stateTemplates
+          : parseTubeTypeToLabelTemplates(
+              exam.tube_type || exam.material || 'Tubo Padrão',
+              exam.label_qty,
+              exam.id
+            );
+
+    const normalizedTemplates: ExamLabelTemplate[] = rawTemplates.map((lt, idx) => ({
+      id: lt.id || `lt-${exam.id}-${idx + 1}`,
+      exam_id: exam.id,
+      tube_type: (lt.tube_type || exam.tube_type || 'Tubo Padrão').trim(),
+      label_qty: Math.max(1, Number(lt.label_qty) || 1),
+      display_order: Number(lt.display_order ?? idx + 1),
+    }));
+
+    const joinedTubes =
+      normalizedTemplates.length > 0
+        ? normalizedTemplates.map((lt) => lt.tube_type).join(' + ')
+        : exam.tube_type || exam.material || 'Tubo Padrão';
+    const totalLabelQty =
+      normalizedTemplates.length > 0
+        ? normalizedTemplates.reduce((acc, lt) => acc + lt.label_qty, 0)
+        : Math.max(1, Number(exam.label_qty) || 1);
+
     return {
       ...exam,
       delivery_days: deliveryDays,
       delivery_time_label: deliveryLabel,
-      material: exam.material || exam.tube_type,
+      tube_type: joinedTubes,
+      material: exam.material || joinedTubes,
+      label_qty: totalLabelQty,
+      label_templates: normalizedTemplates,
       base_price: resolvedPrice,
       price: resolvedPrice,
       active_price: resolvedPrice,
@@ -255,12 +292,17 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
   public async listExams(): Promise<Exam[]> {
     const sb = getSupabaseClient();
     if (sb) {
-      const [{ data: examsData, error }, { data: priceTables }, { data: examPrices }] =
-        await Promise.all([
-          sb.from('exams').select('*, exam_input_fields(*)').order('code', { ascending: true }),
-          sb.from('price_tables').select('*').eq('is_active', true),
-          sb.from('exam_prices').select('*'),
-        ]);
+      const [
+        { data: examsData, error },
+        { data: priceTables },
+        { data: examPrices },
+        { data: labelTemplatesData },
+      ] = await Promise.all([
+        sb.from('exams').select('*, exam_input_fields(*)').order('code', { ascending: true }),
+        sb.from('price_tables').select('*').eq('is_active', true),
+        sb.from('exam_prices').select('*'),
+        sb.from('exam_label_templates').select('*').order('display_order', { ascending: true }),
+      ]);
       if (error) throw new Error(error.message);
 
       const activePt =
@@ -274,6 +316,21 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
         }
       }
 
+      const templatesByExamId = new Map<string, ExamLabelTemplate[]>();
+      if (Array.isArray(labelTemplatesData)) {
+        for (const lt of labelTemplatesData as any[]) {
+          const list = templatesByExamId.get(lt.exam_id) || [];
+          list.push({
+            id: lt.id,
+            exam_id: lt.exam_id,
+            tube_type: String(lt.tube_type || '').trim(),
+            label_qty: Math.max(1, Number(lt.label_qty) || 1),
+            display_order: Number(lt.display_order || list.length + 1),
+          });
+          templatesByExamId.set(lt.exam_id, list);
+        }
+      }
+
       return (examsData || []).map((row: Record<string, unknown>) => {
         const base = row as unknown as Exam;
         const dbPrice = priceMap.get(base.id);
@@ -282,14 +339,52 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
             (a, b) => a.display_order - b.display_order
           )
           : [];
+        const dbTemplates = templatesByExamId.get(base.id);
         return this.enrichExam({
           ...base,
           ...(dbPrice !== undefined ? { base_price: dbPrice, price: dbPrice, active_price: dbPrice } : {}),
+          ...(dbTemplates && dbTemplates.length > 0 ? { label_templates: dbTemplates } : {}),
           input_fields: fields,
         });
       });
     }
     return this.state.exams.map((e) => this.enrichExam(e));
+  }
+
+  private async saveExamLabelTemplates(
+    examId: string,
+    templates: ExamLabelTemplate[]
+  ): Promise<ExamLabelTemplate[]> {
+    const normalized: ExamLabelTemplate[] = templates
+      .filter((t) => t && String(t.tube_type || '').trim().length > 0)
+      .map((t, index) => ({
+        id: t.id && /^[0-9a-f-]{36}$/i.test(t.id) ? t.id : randomUUID(),
+        exam_id: examId,
+        tube_type: String(t.tube_type).trim(),
+        label_qty: Math.max(1, Number(t.label_qty) || 1),
+        display_order: index + 1,
+      }));
+
+    const sb = getSupabaseClient();
+    if (sb) {
+      await sb.from('exam_label_templates').delete().eq('exam_id', examId);
+      if (normalized.length > 0) {
+        const payload = normalized.map((n) => ({
+          id: n.id,
+          exam_id: examId,
+          tube_type: n.tube_type,
+          label_qty: n.label_qty,
+          display_order: n.display_order,
+        }));
+        await sb.from('exam_label_templates').insert(payload);
+      }
+    }
+
+    this.state.examLabelTemplates = (this.state.examLabelTemplates || []).filter(
+      (lt) => lt.exam_id !== examId
+    );
+    this.state.examLabelTemplates.push(...normalized);
+    return normalized;
   }
 
   public async findExamById(id: string): Promise<Exam | null> {
@@ -306,7 +401,21 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
   public async createExam(data: Omit<Exam, 'id' | 'created_at'>): Promise<Exam> {
     const deliveryDays = Number(data.delivery_days ?? 1);
     const resolvedPrice = Number(data.price ?? data.base_price ?? 70);
-    const tubeOrMaterial = (data.tube_type || data.material || 'Tubo EDTA').trim();
+    const initialTemplates =
+      data.label_templates && data.label_templates.length > 0
+        ? data.label_templates
+        : parseTubeTypeToLabelTemplates(
+            data.tube_type || data.material || 'Tubo EDTA',
+            data.label_qty
+          );
+    const tubeOrMaterial =
+      initialTemplates.length > 0
+        ? initialTemplates.map((t) => String(t.tube_type).trim()).join(' + ')
+        : (data.tube_type || data.material || 'Tubo EDTA').trim();
+    const totalLabelQty =
+      initialTemplates.length > 0
+        ? initialTemplates.reduce((acc, t) => acc + Math.max(1, Number(t.label_qty) || 1), 0)
+        : Number(data.label_qty ?? 1);
 
     const defaultTemplate = await this.getDefaultReportTemplate();
     const newExam: Exam = {
@@ -321,7 +430,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       tube_type: tubeOrMaterial,
       material: data.material?.trim() || tubeOrMaterial,
       preparation: data.preparation || 'Jejum de 6 a 8 horas.',
-      label_qty: Number(data.label_qty ?? 1),
+      label_qty: totalLabelQty,
       reference_template_id: data.reference_template_id || defaultTemplate.id,
       base_price: resolvedPrice,
       price: resolvedPrice,
@@ -350,6 +459,9 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       }
     }
 
+    const savedTemplates = await this.saveExamLabelTemplates(newExam.id, initialTemplates);
+    newExam.label_templates = savedTemplates;
+
     this.state.exams.push(newExam);
 
     if (data.input_fields && data.input_fields.length > 0) {
@@ -370,6 +482,38 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
   }
 
   public async updateExam(id: string, data: Partial<Exam>): Promise<Exam> {
+    const incomingTemplates =
+      data.label_templates && data.label_templates.length > 0
+        ? data.label_templates
+            .filter((t) => t && String(t.tube_type || '').trim().length > 0)
+            .map((t, idx) => ({
+              tube_type: String(t.tube_type).trim(),
+              label_qty: Math.max(1, Number(t.label_qty) || 1),
+              display_order: idx + 1,
+            }))
+        : data.tube_type !== undefined || data.material !== undefined
+          ? parseTubeTypeToLabelTemplates(
+              String(data.tube_type ?? data.material ?? 'Tubo Padrão'),
+              data.label_qty
+            )
+          : undefined;
+
+    const derivedTubeType =
+      incomingTemplates && incomingTemplates.length > 0
+        ? incomingTemplates.map((t) => t.tube_type).join(' + ')
+        : data.tube_type !== undefined
+          ? data.tube_type.trim()
+          : data.material !== undefined
+            ? data.material.trim()
+            : undefined;
+
+    const derivedLabelQty =
+      incomingTemplates && incomingTemplates.length > 0
+        ? incomingTemplates.reduce((acc, t) => acc + t.label_qty, 0)
+        : data.label_qty !== undefined
+          ? Number(data.label_qty)
+          : undefined;
+
     const sb = getSupabaseClient();
     if (sb) {
       const { data: existing } = await sb
@@ -393,10 +537,8 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
             : data.delivery_days !== undefined
               ? `${nextDeliveryDays} ${nextDeliveryDays === 1 ? 'dia útil' : 'dias úteis'}`
               : existing.delivery_time_label,
-        ...(data.tube_type !== undefined || data.material !== undefined
-          ? { tube_type: (data.tube_type ?? data.material ?? existing.tube_type).trim() }
-          : {}),
-        ...(data.label_qty !== undefined ? { label_qty: Number(data.label_qty) } : {}),
+        ...(derivedTubeType !== undefined ? { tube_type: derivedTubeType } : {}),
+        ...(derivedLabelQty !== undefined ? { label_qty: derivedLabelQty } : {}),
         ...(data.reference_template_id !== undefined
           ? { reference_template_id: data.reference_template_id || null }
           : {}),
@@ -409,6 +551,11 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
         .single();
       if (error) throw new Error(error.message);
 
+      let savedTemplates: ExamLabelTemplate[] | undefined;
+      if (incomingTemplates && incomingTemplates.length > 0) {
+        savedTemplates = await this.saveExamLabelTemplates(existing.id, incomingTemplates);
+      }
+
       if (data.price !== undefined || data.base_price !== undefined) {
         const nextPrice = Number(data.price ?? data.base_price);
         await sb.from('exam_prices').update({ price: nextPrice }).eq('exam_id', existing.id);
@@ -418,6 +565,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       }
       return this.enrichExam({
         ...(updatedRow as Exam),
+        ...(savedTemplates ? { label_templates: savedTemplates } : {}),
         ...(data.price !== undefined || data.base_price !== undefined
           ? {
             price: Number(data.price ?? data.base_price),
@@ -442,6 +590,11 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
           ? Number(data.base_price)
           : current.base_price ?? current.price ?? 50;
 
+    let savedTemplates = current.label_templates;
+    if (incomingTemplates && incomingTemplates.length > 0) {
+      savedTemplates = await this.saveExamLabelTemplates(current.id, incomingTemplates);
+    }
+
     const updated: Exam = {
       ...current,
       code: data.code !== undefined ? data.code.trim().toUpperCase() : current.code,
@@ -454,19 +607,11 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
           : data.delivery_days !== undefined
             ? `${nextDeliveryDays} ${nextDeliveryDays === 1 ? 'dia útil' : 'dias úteis'}`
             : current.delivery_time_label,
-      tube_type:
-        data.tube_type !== undefined
-          ? data.tube_type.trim()
-          : data.material !== undefined
-            ? data.material.trim()
-            : current.tube_type,
+      tube_type: derivedTubeType !== undefined ? derivedTubeType : current.tube_type,
       material:
-        data.material !== undefined
-          ? data.material.trim()
-          : data.tube_type !== undefined
-            ? data.tube_type.trim()
-            : current.material || current.tube_type,
-      label_qty: data.label_qty !== undefined ? Number(data.label_qty) : current.label_qty,
+        derivedTubeType !== undefined ? derivedTubeType : current.material || current.tube_type,
+      label_qty: derivedLabelQty !== undefined ? derivedLabelQty : current.label_qty,
+      label_templates: savedTemplates,
       reference_template_id:
         data.reference_template_id !== undefined
           ? data.reference_template_id
@@ -505,6 +650,9 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       if (error) throw new Error(error.message);
       this.state.exams = this.state.exams.filter((e) => e.id !== id);
       this.state.examInputFields = this.state.examInputFields.filter((f) => f.exam_id !== id);
+      this.state.examLabelTemplates = (this.state.examLabelTemplates || []).filter(
+        (lt) => lt.exam_id !== id
+      );
       this.state.examPrices = this.state.examPrices.filter((p) => p.exam_id !== id);
       return;
     }
@@ -515,6 +663,9 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     }
     this.state.exams.splice(idx, 1);
     this.state.examInputFields = this.state.examInputFields.filter((f) => f.exam_id !== id);
+    this.state.examLabelTemplates = (this.state.examLabelTemplates || []).filter(
+      (lt) => lt.exam_id !== id
+    );
     this.state.examPrices = this.state.examPrices.filter((p) => p.exam_id !== id);
   }
 

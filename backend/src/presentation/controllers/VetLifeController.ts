@@ -207,8 +207,28 @@ export class VetLifeController {
     try {
       const b = req.body || {};
       const resolvedPrice = b.price ?? b.base_price ?? b.basePrice ?? b.active_price ?? 70;
+      const rawLabelTemplates = Array.isArray(b.label_templates ?? b.labelTemplates)
+        ? (b.label_templates ?? b.labelTemplates).filter(
+            (t: any) => t && String(t.tube_type || '').trim().length > 0
+          )
+        : undefined;
+      const derivedTubeFromTemplates =
+        rawLabelTemplates && rawLabelTemplates.length > 0
+          ? rawLabelTemplates.map((t: any) => String(t.tube_type).trim()).join(' + ')
+          : undefined;
+      const derivedQtyFromTemplates =
+        rawLabelTemplates && rawLabelTemplates.length > 0
+          ? rawLabelTemplates.reduce(
+              (acc: number, t: any) => acc + Math.max(1, Number(t.label_qty) || 1),
+              0
+            )
+          : undefined;
       const tubeOrMaterial =
-        b.tube_type ?? b.tubeType ?? b.material ?? 'Sangue em tubo de tampa roxo com EDTA';
+        derivedTubeFromTemplates ??
+        b.tube_type ??
+        b.tubeType ??
+        b.material ??
+        'Sangue em tubo de tampa roxo com EDTA';
       const parsed = createExamSchema.parse({
         code: String(b.code || '').trim(),
         name: b.name,
@@ -218,7 +238,8 @@ export class VetLifeController {
         tube_type: tubeOrMaterial,
         material: b.material ?? tubeOrMaterial,
         preparation: b.preparation,
-        label_qty: b.label_qty ?? b.labelQty ?? 1,
+        label_qty: derivedQtyFromTemplates ?? b.label_qty ?? b.labelQty ?? 1,
+        label_templates: rawLabelTemplates,
         reference_template_id: b.reference_template_id ?? b.referenceTemplateId ?? null,
         base_price: resolvedPrice,
         price: resolvedPrice,
@@ -239,16 +260,33 @@ export class VetLifeController {
     try {
       const b = req.body || {};
       const resolvedPrice = b.price ?? b.base_price ?? b.basePrice ?? b.active_price;
+      const rawLabelTemplates = Array.isArray(b.label_templates ?? b.labelTemplates)
+        ? (b.label_templates ?? b.labelTemplates).filter(
+            (t: any) => t && String(t.tube_type || '').trim().length > 0
+          )
+        : undefined;
+      const derivedTubeFromTemplates =
+        rawLabelTemplates && rawLabelTemplates.length > 0
+          ? rawLabelTemplates.map((t: any) => String(t.tube_type).trim()).join(' + ')
+          : undefined;
+      const derivedQtyFromTemplates =
+        rawLabelTemplates && rawLabelTemplates.length > 0
+          ? rawLabelTemplates.reduce(
+              (acc: number, t: any) => acc + Math.max(1, Number(t.label_qty) || 1),
+              0
+            )
+          : undefined;
       const updated = await this.examUseCases.updateExam(req.params.id, {
         code: b.code,
         name: b.name,
         section: b.section,
         delivery_days: b.delivery_days ?? b.deliveryDays,
         delivery_time_label: b.delivery_time_label ?? b.deliveryTimeLabel,
-        tube_type: b.tube_type ?? b.tubeType ?? b.material,
-        material: b.material ?? b.tube_type ?? b.tubeType,
+        tube_type: derivedTubeFromTemplates ?? b.tube_type ?? b.tubeType ?? b.material,
+        material: derivedTubeFromTemplates ?? b.material ?? b.tube_type ?? b.tubeType,
         preparation: b.preparation,
-        label_qty: b.label_qty ?? b.labelQty,
+        label_qty: derivedQtyFromTemplates ?? b.label_qty ?? b.labelQty,
+        ...(rawLabelTemplates !== undefined ? { label_templates: rawLabelTemplates } : {}),
         reference_template_id: b.reference_template_id ?? b.referenceTemplateId,
         base_price: resolvedPrice,
         price: resolvedPrice,

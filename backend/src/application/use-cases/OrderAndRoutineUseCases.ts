@@ -6,6 +6,7 @@ import {
   ReportAttachment,
   SampleLabel,
   Vet,
+  parseTubeTypeToLabelTemplates,
 } from '../../domain/entities';
 import { NotFoundError, ValidationError } from '../../domain/errors/AppError';
 import { IVetLifeRepository } from '../../domain/repositories/IVetLifeRepository';
@@ -378,29 +379,48 @@ export class OrderAndRoutineUseCases {
     for (const result of order.results || []) {
       const exam = result.exam;
       if (!exam) continue;
-      const qty = Math.max(1, Number(exam.label_qty || 1));
 
-      for (let i = 1; i <= qty; i++) {
-        labels.push({
-          label_id: `${order.protocol_code}-${exam.code}-${i}`,
-          protocol_code: order.protocol_code,
-          barcode_value: `${order.protocol_code.replace(/-/g, '')}${exam.code.replace(
-            /-/g,
-            ''
-          )}${i}`,
-          patient_name: order.patient?.name || 'Animal',
-          species: order.patient?.species || 'Canino',
-          tutor_name: order.patient?.tutor_name || 'Tutor',
-          vet_name: order.vet?.name || 'Veterinário',
-          exam_code: exam.code,
-          exam_name: exam.name,
-          section: exam.section,
-          material: exam.material || exam.tube_type,
-          tube_type: exam.tube_type,
-          label_index: i,
-          total_labels_for_exam: qty,
-          created_at: order.created_at,
-        });
+      const rawTemplates =
+        exam.label_templates && exam.label_templates.length > 0
+          ? exam.label_templates
+          : parseTubeTypeToLabelTemplates(
+              exam.tube_type || exam.material || 'Tubo Padrão',
+              exam.label_qty,
+              exam.id
+            );
+
+      const totalExamLabels = Math.max(
+        1,
+        rawTemplates.reduce((acc, tpl) => acc + Math.max(1, Number(tpl.label_qty) || 1), 0)
+      );
+
+      let labelIdx = 0;
+      for (const tpl of rawTemplates) {
+        const tplQty = Math.max(1, Number(tpl.label_qty) || 1);
+        const specificTube = (tpl.tube_type || exam.tube_type || exam.material || 'Tubo Padrão').trim();
+        for (let q = 1; q <= tplQty; q++) {
+          labelIdx++;
+          labels.push({
+            label_id: `${order.protocol_code}-${exam.code}-${labelIdx}`,
+            protocol_code: order.protocol_code,
+            barcode_value: `${order.protocol_code.replace(/-/g, '')}${exam.code.replace(
+              /-/g,
+              ''
+            )}${labelIdx}`,
+            patient_name: order.patient?.name || 'Animal',
+            species: order.patient?.species || 'Canino',
+            tutor_name: order.patient?.tutor_name || 'Tutor',
+            vet_name: order.vet?.name || 'Veterinário',
+            exam_code: exam.code,
+            exam_name: exam.name,
+            section: exam.section,
+            material: specificTube,
+            tube_type: specificTube,
+            label_index: labelIdx,
+            total_labels_for_exam: totalExamLabels,
+            created_at: order.created_at,
+          });
+        }
       }
     }
 

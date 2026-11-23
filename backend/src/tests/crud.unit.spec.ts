@@ -408,6 +408,42 @@ async function runCrudUnitTests(): Promise<void> {
     const labels = await orderUC.generateOrderLabels(created.id);
     assert.ok(labels.total_labels >= 2);
 
+    // N:1 Exam Label Templates test: exam with 1x Tampa Roxa + 1x Tampa Amarela
+    const multiTubeExam = await examUC.createExam({
+      code: 'MULTI-TUBE-01',
+      name: 'Painel Múltiplos Tubos N:1',
+      section: 'Bioquímica',
+      delivery_days: 1,
+      tube_type: 'Tubo Tampa Roxa + Tubo Tampa Amarela',
+      label_qty: 2,
+      label_templates: [
+        { tube_type: 'Sangue em tubo de tampa roxa com EDTA', label_qty: 1, display_order: 1 },
+        { tube_type: 'Sangue em tubo de tampa amarela com gel separador', label_qty: 1, display_order: 2 },
+      ],
+      price: 150,
+    });
+    assert.strictEqual(multiTubeExam.label_templates?.length, 2);
+    assert.strictEqual(multiTubeExam.label_qty, 2);
+
+    const multiOrder = await orderUC.createOrder({
+      patient: {
+        name: 'Paciente MultiTubo',
+        species: 'Canino',
+        breed: 'SRD',
+        gender: 'M',
+        tutor_name: 'Tutor MultiTubo',
+      },
+      vet_id: vets[0].id,
+      exam_ids: [multiTubeExam.id],
+    });
+    const multiLabels = await orderUC.generateOrderLabels(multiOrder.id);
+    assert.strictEqual(multiLabels.total_labels, 2);
+    assert.strictEqual(multiLabels.labels[0].tube_type, 'Sangue em tubo de tampa roxa com EDTA');
+    assert.strictEqual(multiLabels.labels[1].tube_type, 'Sangue em tubo de tampa amarela com gel separador');
+
+    await orderUC.deleteOrder(multiOrder.id);
+    await examUC.deleteExam(multiTubeExam.id);
+
     await orderUC.deleteOrder(created.id);
     await assert.rejects(() => orderUC.getOrderById(created.id), /não encontrado/);
     console.log('✅ [8/11] Unit CRUD: Orders (Create, Read, Update, Labels, Delete)');

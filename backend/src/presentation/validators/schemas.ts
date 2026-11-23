@@ -21,6 +21,14 @@ export const examInputFieldSchema = z.object({
   display_order: z.number().optional().default(1),
 });
 
+export const examLabelTemplateSchema = z.object({
+  id: z.string().optional(),
+  exam_id: z.string().optional(),
+  tube_type: z.string().min(1, 'Informe o tipo de tubo ou amostra.'),
+  label_qty: z.coerce.number().min(1).default(1),
+  display_order: z.coerce.number().optional().default(1),
+});
+
 export const createExamSchema = z.object({
   code: z.string().min(1, 'Código do exame é obrigatório.'),
   name: z.string().min(2, 'Nome do exame é obrigatório.'),
@@ -31,6 +39,7 @@ export const createExamSchema = z.object({
   material: z.string().optional(),
   preparation: z.string().optional(),
   label_qty: z.coerce.number().min(1).default(1),
+  label_templates: z.array(examLabelTemplateSchema).optional(),
   reference_template_id: z.string().nullable().optional(),
   base_price: z.coerce.number().min(0).optional(),
   price: z.coerce.number().min(0).optional(),

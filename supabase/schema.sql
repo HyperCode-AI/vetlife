@@ -54,6 +54,21 @@ CREATE INDEX IF NOT EXISTS idx_exams_code ON public.exams(code);
 CREATE INDEX IF NOT EXISTS idx_exams_section ON public.exams(section);
 
 -- =============================================================================
+-- 3B. TABELA: exam_label_templates (Etiquetas N:1 por Exame — Tubo/Amostra + Qtd)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.exam_label_templates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    exam_id UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
+    tube_type TEXT NOT NULL,
+    label_qty INTEGER NOT NULL DEFAULT 1 CHECK (label_qty >= 1),
+    display_order INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_label_templates_exam_id
+    ON public.exam_label_templates(exam_id, display_order);
+
+-- =============================================================================
 -- 4. TABELA: exam_input_fields (Campos Dinâmicos por Exame — HU-02, RN-01, RN-03)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS public.exam_input_fields (

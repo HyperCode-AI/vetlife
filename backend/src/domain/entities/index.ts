@@ -26,6 +26,48 @@ export interface ExamInputField {
   display_order: number;
 }
 
+export interface ExamLabelTemplate {
+  id?: string;
+  exam_id?: string;
+  tube_type: string;
+  label_qty: number;
+  display_order?: number;
+}
+
+export function parseTubeTypeToLabelTemplates(
+  tubeTypeRaw: string,
+  totalQty?: number,
+  examId = ''
+): ExamLabelTemplate[] {
+  const cleanRaw = (tubeTypeRaw || 'Tubo Padrão').trim();
+  const segments = cleanRaw
+    .split(/\s+\+\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (segments.length <= 1) {
+    const formatted = cleanRaw.charAt(0).toUpperCase() + cleanRaw.slice(1);
+    return [
+      {
+        ...(examId ? { exam_id: examId } : {}),
+        tube_type: formatted,
+        label_qty: Math.max(1, Number(totalQty) || 1),
+        display_order: 1,
+      },
+    ];
+  }
+
+  return segments.map((seg, idx) => {
+    const formatted = seg.charAt(0).toUpperCase() + seg.slice(1);
+    return {
+      ...(examId ? { exam_id: examId } : {}),
+      tube_type: formatted,
+      label_qty: 1,
+      display_order: idx + 1,
+    };
+  });
+}
+
 export interface Exam {
   id: string;
   code: string;
@@ -37,6 +79,7 @@ export interface Exam {
   material?: string;
   preparation?: string;
   label_qty: number;
+  label_templates?: ExamLabelTemplate[];
   reference_template_id: string | null;
   base_price?: number;
   price?: number;

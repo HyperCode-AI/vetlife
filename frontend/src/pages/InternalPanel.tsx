@@ -57,6 +57,7 @@ import {
   api,
   calculatePatientAgeDays,
   formatAgeLabel,
+  parseTubeTypeToLabelTemplates,
   renderReportHtmlWithDynamicTags,
   resolveReferenceForPatient,
 } from '../services/api';
@@ -248,6 +249,9 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     delivery_time_label: '1 dia útil',
     tube_type: 'Tubo EDTA (Tampa Roxa)',
     label_qty: 1,
+    label_templates: [
+      { tube_type: 'Tubo EDTA (Tampa Roxa)', label_qty: 1 },
+    ] as Array<{ tube_type: string; label_qty: number }>,
     base_price: 85,
   });
   const [examTablePrices, setExamTablePrices] = useState<Record<string, number>>({});
@@ -1308,6 +1312,25 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
   const handleStartEditExam = (ex: Exam) => {
     const resolvedPrice = ex.price ?? ex.base_price ?? getExamPriceInTable(ex.id);
     const days = Number(ex.delivery_days) || 1;
+    const resolvedTemplates =
+      Array.isArray(ex.label_templates) && ex.label_templates.length > 0
+        ? ex.label_templates.map((lt) => ({
+            tube_type: lt.tube_type,
+            label_qty: Math.max(1, Number(lt.label_qty) || 1),
+          }))
+        : parseTubeTypeToLabelTemplates(
+            ex.tube_type || ex.material || 'Tubo EDTA (Tampa Roxa)',
+            ex.label_qty
+          ).map((lt) => ({
+            tube_type: lt.tube_type,
+            label_qty: Math.max(1, Number(lt.label_qty) || 1),
+          }));
+
+    const combinedTube =
+      resolvedTemplates.map((lt) => lt.tube_type).join(' + ') || 'Tubo EDTA (Tampa Roxa)';
+    const totalLabels =
+      resolvedTemplates.reduce((acc, lt) => acc + (Number(lt.label_qty) || 1), 0) || 1;
+
     setEditingExamId(ex.id);
     setNewExamForm({
       code: ex.code,
@@ -1316,8 +1339,9 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       delivery_days: days,
       delivery_time_label:
         ex.delivery_time_label || (days === 1 ? '1 dia útil' : `${days} dias úteis`),
-      tube_type: ex.tube_type || ex.material || 'Tubo EDTA (Tampa Roxa)',
-      label_qty: Number(ex.label_qty) || 1,
+      tube_type: combinedTube,
+      label_qty: totalLabels,
+      label_templates: resolvedTemplates,
       base_price: Number(resolvedPrice) || 75,
     });
     const perTable: Record<string, number> = {};
@@ -1347,6 +1371,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       delivery_time_label: '1 dia útil',
       tube_type: 'Tubo EDTA (Tampa Roxa)',
       label_qty: 1,
+      label_templates: [{ tube_type: 'Tubo EDTA (Tampa Roxa)', label_qty: 1 }],
       base_price: 85,
     });
     setExamTablePrices({});
@@ -1365,6 +1390,28 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
         examTablePrices[pt.id] !== undefined ? Number(examTablePrices[pt.id]) : priceValue;
     });
 
+    const validTemplates = (newExamForm.label_templates || [])
+      .filter((lt) => lt && typeof lt.tube_type === 'string' && lt.tube_type.trim().length > 0)
+      .map((lt, idx) => ({
+        tube_type: lt.tube_type.trim(),
+        label_qty: Math.max(1, Number(lt.label_qty) || 1),
+        display_order: idx + 1,
+      }));
+
+    const finalTemplates =
+      validTemplates.length > 0
+        ? validTemplates
+        : [
+            {
+              tube_type: newExamForm.tube_type?.trim() || 'Tubo EDTA (Tampa Roxa)',
+              label_qty: Math.max(1, Number(newExamForm.label_qty) || 1),
+              display_order: 1,
+            },
+          ];
+
+    const combinedTube = finalTemplates.map((lt) => lt.tube_type).join(' + ');
+    const totalLabelQty = finalTemplates.reduce((acc, lt) => acc + lt.label_qty, 0);
+
     if (editingExamId) {
       const existing = exams.find((item) => item.id === editingExamId);
       await api.saveExam(
@@ -1376,9 +1423,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
           section: newExamForm.section,
           delivery_days: days,
           delivery_time_label: label,
-          tube_type: newExamForm.tube_type,
-          material: newExamForm.tube_type,
-          label_qty: Number(newExamForm.label_qty) || 1,
+          tube_type: combinedTube,
+          material: combinedTube,
+          label_qty: totalLabelQty,
+          label_templates: finalTemplates,
           base_price: priceValue,
           price: priceValue,
         },
@@ -1386,7 +1434,9 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       );
       await loadAllData();
       handleCancelEditExam();
-      showToast(`Exame ${newExamForm.code} atualizado com prazo (${label}) e preços por tabela!`);
+      showToast(
+        `Exame ${newExamForm.code} atualizado (${finalTemplates.length} tipo(s) de tubo / ${totalLabelQty} etiqueta(s))!`
+      );
       return;
     }
 
@@ -1395,7 +1445,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
         ...newExamForm,
         delivery_days: days,
         delivery_time_label: label,
-        material: newExamForm.tube_type,
+        tube_type: combinedTube,
+        material: combinedTube,
+        label_qty: totalLabelQty,
+        label_templates: finalTemplates,
         base_price: priceValue,
         price: priceValue,
         input_fields: [
@@ -1413,7 +1466,9 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     );
     await loadAllData();
     handleCancelEditExam();
-    showToast(`Novo exame ${newExamForm.code} cadastrado com prazo (${label}) e preços por tabela!`);
+    showToast(
+      `Novo exame ${newExamForm.code} cadastrado (${finalTemplates.length} tipo(s) de tubo / ${totalLabelQty} etiqueta(s))!`
+    );
   };
 
   const handleAddDynamicField = async (e: React.FormEvent) => {
@@ -4894,8 +4949,26 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                               {ex.name}
                             </td>
                             <td className="py-3 px-3 text-[#707070]">
-                              <div className="font-medium text-[#1d1d1f]">{ex.section}</div>
-                              <div className="text-[11px]">{ex.tube_type || ex.material}</div>
+                              <div className="font-medium text-[#1d1d1f] flex items-center gap-1.5 flex-wrap">
+                                <span>{ex.section}</span>
+                                <span className="px-2 py-0.5 rounded-full bg-[#0071e3]/10 text-[#0066cc] text-[10px] font-bold">
+                                  {ex.label_qty || 1} etiq.
+                                </span>
+                              </div>
+                              {Array.isArray(ex.label_templates) && ex.label_templates.length > 0 ? (
+                                <div className="mt-1 space-y-0.5">
+                                  {ex.label_templates.map((lt, idx) => (
+                                    <div key={idx} className="text-[11px] text-[#55555a] flex items-center gap-1">
+                                      <span className="font-mono font-bold text-[#1d1d1f]">
+                                        {lt.label_qty}x
+                                      </span>
+                                      <span>{lt.tube_type}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-[11px]">{ex.tube_type || ex.material}</div>
+                              )}
                             </td>
                             <td className="py-3 px-3 whitespace-nowrap">
                               <span className="px-2.5 py-0.5 rounded-full bg-[#f5f5f7] text-[#1d1d1f] font-semibold">
@@ -5148,36 +5221,120 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[12px] text-[#707070] mb-1">
-                          Tipo de Tubo / Amostra *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={newExamForm.tube_type}
-                          onChange={(e) =>
-                            setNewExamForm({ ...newExamForm, tube_type: e.target.value })
+                    <div className="p-4 rounded-[20px] bg-[#f5f5f7] space-y-3 border border-[#e8e8ed]">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1d1d1f] flex items-center gap-1.5">
+                          <Tag className="w-3.5 h-3.5 text-[#0071e3]" />
+                          Configuração de Etiquetas por Tubo / Amostra (N:1) *
+                          <span className="px-2 py-0.5 rounded-full bg-[#0071e3]/10 text-[#0066cc] text-[10px] font-bold">
+                            Total:{' '}
+                            {(newExamForm.label_templates || []).reduce(
+                              (acc, lt) => acc + (Math.max(1, Number(lt.label_qty) || 1)),
+                              0
+                            )}{' '}
+                            etiqueta(s)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNewExamForm((prev) => ({
+                              ...prev,
+                              label_templates: [
+                                ...(prev.label_templates || []),
+                                { tube_type: '', label_qty: 1 },
+                              ],
+                            }))
                           }
-                          placeholder="Ex: Tubo EDTA (Tampa Roxa)"
-                          className="w-full px-3.5 py-2 rounded-[14px] bg-[#f5f5f7] text-[12px]"
-                        />
+                          className="px-3 py-1.5 rounded-full bg-[#0071e3] text-white text-[11px] font-semibold hover:opacity-95 transition inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Adicionar Tubo / Etiqueta
+                        </button>
                       </div>
-                      <div>
-                        <label className="block text-[12px] text-[#707070] mb-1">
-                          Qtd. Etiquetas *
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={10}
-                          value={newExamForm.label_qty}
-                          onChange={(e) =>
-                            setNewExamForm({ ...newExamForm, label_qty: Number(e.target.value) })
-                          }
-                          className="w-full px-3.5 py-2 rounded-[14px] bg-[#f5f5f7] text-[12px]"
-                        />
+
+                      <div className="space-y-2">
+                        {(newExamForm.label_templates || []).map((tpl, idx) => (
+                          <div
+                            key={idx}
+                            className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end bg-white p-3 rounded-[16px] border border-[#e5e5ea]"
+                          >
+                            <div className="sm:col-span-8">
+                              <label className="block text-[11px] font-semibold text-[#707070] mb-1">
+                                Tipo de Tubo / Amostra #{idx + 1} *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={tpl.tube_type}
+                                onChange={(e) => {
+                                  const next = [...(newExamForm.label_templates || [])];
+                                  next[idx] = { ...next[idx], tube_type: e.target.value };
+                                  setNewExamForm({
+                                    ...newExamForm,
+                                    label_templates: next,
+                                    tube_type: next.map((t) => t.tube_type).filter(Boolean).join(' + '),
+                                  });
+                                }}
+                                placeholder="Ex: Sangue em tubo de tampa roxa com EDTA"
+                                className="w-full px-3.5 py-2 rounded-[12px] bg-[#f5f5f7] text-[12px]"
+                              />
+                            </div>
+                            <div className="sm:col-span-3">
+                              <label className="block text-[11px] font-semibold text-[#707070] mb-1">
+                                Qtd. Etiquetas *
+                              </label>
+                              <input
+                                type="number"
+                                required
+                                min={1}
+                                max={20}
+                                value={tpl.label_qty}
+                                onChange={(e) => {
+                                  const next = [...(newExamForm.label_templates || [])];
+                                  next[idx] = {
+                                    ...next[idx],
+                                    label_qty: Math.max(1, Number(e.target.value) || 1),
+                                  };
+                                  setNewExamForm({
+                                    ...newExamForm,
+                                    label_templates: next,
+                                    label_qty: next.reduce(
+                                      (acc, t) => acc + Math.max(1, Number(t.label_qty) || 1),
+                                      0
+                                    ),
+                                  });
+                                }}
+                                className="w-full px-3.5 py-2 rounded-[12px] bg-[#f5f5f7] font-mono font-semibold text-[12px]"
+                              />
+                            </div>
+                            <div className="sm:col-span-1 flex justify-end">
+                              <button
+                                type="button"
+                                disabled={(newExamForm.label_templates || []).length <= 1}
+                                onClick={() => {
+                                  if ((newExamForm.label_templates || []).length <= 1) return;
+                                  const next = (newExamForm.label_templates || []).filter(
+                                    (_, i) => i !== idx
+                                  );
+                                  setNewExamForm({
+                                    ...newExamForm,
+                                    label_templates: next,
+                                    tube_type: next.map((t) => t.tube_type).filter(Boolean).join(' + '),
+                                    label_qty: next.reduce(
+                                      (acc, t) => acc + Math.max(1, Number(t.label_qty) || 1),
+                                      0
+                                    ),
+                                  });
+                                }}
+                                title="Remover este tubo/etiqueta"
+                                className="p-2 rounded-xl text-[#707070] hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 

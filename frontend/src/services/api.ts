@@ -2,6 +2,7 @@ import {
   User,
   Vet,
   Exam,
+  ExamLabelTemplate,
   ExamInputField,
   PriceTable,
   ExamReference,
@@ -473,17 +474,66 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return json as T;
 }
 
+export function parseTubeTypeToLabelTemplates(
+  tubeTypeRaw?: string,
+  totalQty?: number
+): ExamLabelTemplate[] {
+  const cleanRaw = (tubeTypeRaw || '').trim();
+  if (!cleanRaw) {
+    return [{ tube_type: 'Tubo EDTA (Tampa Roxa)', label_qty: Math.max(1, Number(totalQty) || 1), display_order: 1 }];
+  }
+  const parts = cleanRaw
+    .split(/\s+\+\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (parts.length <= 1) {
+    const single = parts[0] || 'Tubo EDTA (Tampa Roxa)';
+    const capitalized = single.charAt(0).toUpperCase() + single.slice(1);
+    return [{ tube_type: capitalized, label_qty: Math.max(1, Number(totalQty) || 1), display_order: 1 }];
+  }
+
+  return parts.map((part, idx) => {
+    const capitalized = part.charAt(0).toUpperCase() + part.slice(1);
+    return {
+      tube_type: capitalized,
+      label_qty: 1,
+      display_order: idx + 1,
+    };
+  });
+}
+
 function normalizeExam(ex: any): Exam {
   const days = Number(ex.delivery_days) || 1;
   const resolvedPrice = Number(ex.price ?? ex.base_price ?? ex.active_price ?? 0);
+  const rawTemplates: ExamLabelTemplate[] =
+    Array.isArray(ex.label_templates) && ex.label_templates.length > 0
+      ? ex.label_templates
+          .filter((lt: any) => lt && typeof lt.tube_type === 'string' && lt.tube_type.trim().length > 0)
+          .map((lt: any, idx: number) => ({
+            id: lt.id,
+            exam_id: lt.exam_id || ex.id,
+            tube_type: lt.tube_type.trim(),
+            label_qty: Math.max(1, Number(lt.label_qty) || 1),
+            display_order: Number(lt.display_order) || idx + 1,
+          }))
+      : parseTubeTypeToLabelTemplates(
+          ex.tube_type || ex.material || 'Tubo EDTA (Tampa Roxa)',
+          ex.label_qty
+        );
+
+  const joinedTubeType = rawTemplates.map((lt) => lt.tube_type).join(' + ');
+  const totalLabelQty = rawTemplates.reduce((acc, lt) => acc + (Number(lt.label_qty) || 1), 0);
+
   return {
     ...ex,
     delivery_days: days,
     delivery_time_label:
       ex.delivery_time_label || (days === 1 ? '1 dia útil' : `${days} dias úteis`),
-    tube_type: ex.tube_type || ex.material || 'Tubo EDTA (Tampa Roxa)',
-    material: ex.material || ex.tube_type || 'Tubo EDTA (Tampa Roxa)',
-    label_qty: Number(ex.label_qty) || 1,
+    tube_type: joinedTubeType || ex.tube_type || ex.material || 'Tubo EDTA (Tampa Roxa)',
+    material: joinedTubeType || ex.material || ex.tube_type || 'Tubo EDTA (Tampa Roxa)',
+    label_qty: totalLabelQty || Number(ex.label_qty) || 1,
+    label_templates: rawTemplates,
     base_price: resolvedPrice,
     price: resolvedPrice,
   };
@@ -834,14 +884,35 @@ export const api = {
     const label =
       exam.delivery_time_label?.trim() || (days === 1 ? '1 dia útil' : `${days} dias úteis`);
     const resolvedPrice = Number(exam.price ?? exam.base_price ?? 80);
+
+    const normalizedTemplates: ExamLabelTemplate[] =
+      Array.isArray(exam.label_templates) && exam.label_templates.length > 0
+        ? exam.label_templates
+            .filter((lt) => lt && typeof lt.tube_type === 'string' && lt.tube_type.trim().length > 0)
+            .map((lt, idx) => ({
+              tube_type: lt.tube_type.trim(),
+              label_qty: Math.max(1, Number(lt.label_qty) || 1),
+              display_order: idx + 1,
+            }))
+        : parseTubeTypeToLabelTemplates(
+            exam.tube_type || exam.material || 'Tubo EDTA (Tampa Roxa)',
+            exam.label_qty
+          );
+
+    const joinedTubeType =
+      normalizedTemplates.map((lt) => lt.tube_type).join(' + ') || 'Tubo EDTA (Tampa Roxa)';
+    const totalLabelQty =
+      normalizedTemplates.reduce((acc, lt) => acc + (Number(lt.label_qty) || 1), 0) || 1;
+
     const payload: Partial<Exam> = {
       ...exam,
       code: (exam.code || 'EXM-NEW').toUpperCase(),
       delivery_days: days,
       delivery_time_label: label,
-      tube_type: exam.tube_type || exam.material || 'Tubo EDTA (Tampa Roxa)',
-      material: exam.material || exam.tube_type || 'Tubo EDTA (Tampa Roxa)',
-      label_qty: Number(exam.label_qty) || 1,
+      tube_type: joinedTubeType,
+      material: joinedTubeType,
+      label_qty: totalLabelQty,
+      label_templates: normalizedTemplates,
       base_price: resolvedPrice,
       price: resolvedPrice,
     };

@@ -3,6 +3,7 @@ import {
   CollectionRequest,
   Exam,
   ExamInputField,
+  ExamLabelTemplate,
   ExamPrice,
   ExamReference,
   ExamResult,
@@ -12,6 +13,7 @@ import {
   ReportTemplate,
   User,
   Vet,
+  parseTubeTypeToLabelTemplates,
 } from '../../domain/entities';
 import { loadOfficialCatalog2026 } from './catalog2026';
 
@@ -20,6 +22,7 @@ export interface SeedDatabaseState {
   reportTemplates: ReportTemplate[];
   exams: Exam[];
   examInputFields: ExamInputField[];
+  examLabelTemplates: ExamLabelTemplate[];
   priceTables: PriceTable[];
   examPrices: ExamPrice[];
   examReferences: ExamReference[];
@@ -130,14 +133,28 @@ export function createInitialSeedState(): SeedDatabaseState {
   ];
 
   const rawCatalog2026 = loadOfficialCatalog2026();
+  const examLabelTemplates: ExamLabelTemplate[] = [];
 
   const exams: Exam[] = rawCatalog2026.map((item) => {
     const isMicroOrParas =
       item.section.toLowerCase().includes('microbiologia') ||
       item.section.toLowerCase().includes('parasitologia');
+    const examId = item.id || `exam-${item.code}`;
+    const parsedTemplates = parseTubeTypeToLabelTemplates(
+      item.material,
+      item.label_qty,
+      examId
+    ).map((lt, idx) => ({
+      ...lt,
+      id: `lt-${item.code}-${idx + 1}`,
+      exam_id: examId,
+      display_order: idx + 1,
+    }));
+    examLabelTemplates.push(...parsedTemplates);
+    const totalQty = parsedTemplates.reduce((acc, lt) => acc + (Number(lt.label_qty) || 1), 0);
 
     return {
-      id: item.id || `exam-${item.code}`,
+      id: examId,
       code: item.code,
       name: item.name,
       section: item.section,
@@ -150,7 +167,8 @@ export function createInitialSeedState(): SeedDatabaseState {
       tube_type: item.material,
       material: item.material,
       preparation: item.preparation || 'Jejum de 6 a 8 horas.',
-      label_qty: Number(item.label_qty || 1),
+      label_qty: totalQty,
+      label_templates: parsedTemplates,
       reference_template_id: isMicroOrParas ? 'tpl-micro-002' : 'tpl-default-001',
       base_price: Number(item.price),
       price: Number(item.price),
@@ -893,11 +911,21 @@ export function createInitialSeedState(): SeedDatabaseState {
       ...e,
       id: toUuid(e.id),
       reference_template_id: e.reference_template_id ? toUuid(e.reference_template_id) : null,
+      label_templates: (e.label_templates || []).map((lt) => ({
+        ...lt,
+        id: lt.id ? toUuid(lt.id) : undefined,
+        exam_id: toUuid(e.id),
+      })),
     })),
     examInputFields: examInputFields.map((f) => ({
       ...f,
       id: toUuid(f.id),
       exam_id: toUuid(f.exam_id),
+    })),
+    examLabelTemplates: examLabelTemplates.map((lt) => ({
+      ...lt,
+      id: lt.id ? toUuid(lt.id) : undefined,
+      exam_id: lt.exam_id ? toUuid(lt.exam_id) : undefined,
     })),
     priceTables: priceTables.map((pt) => ({ ...pt, id: toUuid(pt.id) })),
     examPrices: examPrices.map((ep) => ({

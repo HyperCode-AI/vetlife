@@ -32,6 +32,14 @@ export interface ExamInputField {
   display_order?: number;
 }
 
+export interface ExamLabelTemplate {
+  id?: string;
+  exam_id?: string;
+  tube_type: string;
+  label_qty: number;
+  display_order?: number;
+}
+
 export interface Exam {
   id: string;
   code: string;
@@ -42,6 +50,7 @@ export interface Exam {
   tube_type: string;
   material?: string;
   label_qty: number;
+  label_templates?: ExamLabelTemplate[];
   reference_template_id?: string;
   base_price?: number;
   price?: number;
