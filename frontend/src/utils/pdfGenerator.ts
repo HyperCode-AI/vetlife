@@ -1,6 +1,15 @@
 import { Order, CollectionLabel, ReportTemplate } from '../types';
-import { formatAgeLabel, renderReportWithDynamicTags } from '../services/api';
-import { SEED_REPORT_TEMPLATES } from '../services/mockData';
+import { formatAgeLabel, renderReportHtmlWithDynamicTags, resolveSideBySideReference } from '../services/api';
+
+const DEFAULT_FALLBACK_TEMPLATE: ReportTemplate = {
+  id: 'default',
+  name: 'Laudo Oficial VetLife',
+  header_html: '<div style="border-bottom:2px solid #0d9488;padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;"><div>{{logo}}</div><div style="text-align:right;font-size:12px;"><strong>Protocolo:</strong> {{protocolo}}<br/><strong>Emissão:</strong> {{data_liberacao}}</div></div>',
+  body_template:
+    '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;"><strong>Paciente:</strong> {{paciente}} ({{especie}} • {{idade}}) | <strong>Tutor:</strong> {{tutor}}<br/><strong>Veterinário(a):</strong> {{veterinario}} ({{crmv}})</div>{{resultados}}',
+  footer_html: 'Documento assinado eletronicamente pelo Corpo Biomédico VetLife.',
+  is_default: true,
+};
 
 function sanitizePdfText(input: string): string {
   return input
@@ -18,7 +27,7 @@ function sanitizePdfText(input: string): string {
  * Cross-matched Reference Values by Species/Gender/Age, Attachments and Biomedical Signature).
  */
 export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate): void {
-  const tpl = customTemplate || order.template || SEED_REPORT_TEMPLATES[0];
+  const tpl = customTemplate || order.template || DEFAULT_FALLBACK_TEMPLATE;
   const ageLabel = formatAgeLabel(order.patient?.age_days, order.patient?.birth_date);
   const releaseStr = order.released_at
     ? new Date(order.released_at).toLocaleString('pt-BR')
@@ -69,25 +78,28 @@ export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate):
 
     const entries = Object.entries(res.dynamic_content || {});
     const fields = res.input_fields || [];
-    if (entries.length === 0) {
-      lines.push({ text: '   - Parametros em processamento na bancada tecnica.', size: 9 });
-    } else {
-      entries.forEach(([key, val]) => {
-        const meta = fields.find((f) => f.field_name === key);
-        const label = meta?.field_label || key;
-        const unit = meta?.unit ? ` ${meta.unit}` : '';
-        lines.push({ text: `   * ${label}: ${val}${unit}`, size: 9 });
-      });
-    }
-
     const refText =
       res.reference_snapshot ||
       res.matched_reference?.reference_text_content ||
-      'Referencia cruzada padrao para a especie/idade.';
-    // Wrap reference text into 88-char chunks
-    const cleanRef = `   Ref. (${order.patient?.species || 'Especie'}/${ageLabel}): ${refText}`;
-    for (let i = 0; i < cleanRef.length; i += 88) {
-      lines.push({ text: cleanRef.slice(i, i + 88), size: 8 });
+      'Referencia padrao para a especie/idade.';
+
+    if (entries.length === 0) {
+      lines.push({ text: '   - Parametros em processamento na bancada tecnica.', size: 9 });
+    } else {
+      lines.push({
+        text: '   PARAMETRO ANALISADO                | RESULTADO OBTIDO       | VALOR DE REFERENCIA',
+        size: 8,
+        bold: true,
+      });
+      entries.forEach(([key, val]) => {
+        const meta = fields.find((f) => f.field_name === key);
+        const rawLabel = meta?.field_label || key;
+        const label = rawLabel.slice(0, 34).padEnd(34, ' ');
+        const unit = meta?.unit ? ` ${meta.unit}` : '';
+        const valStr = `${val}${unit}`.slice(0, 22).padEnd(22, ' ');
+        const sideRef = resolveSideBySideReference(key, rawLabel, refText).slice(0, 36);
+        lines.push({ text: `   ${label} | ${valStr} | ${sideRef}`, size: 8.5 });
+      });
     }
 
     if (res.attachments && res.attachments.length > 0) {
@@ -169,9 +181,9 @@ export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate):
  * Opens a formatted print preview window for either the official report or tube barcode labels.
  */
 export function printFormattedReportWindow(order: Order, template?: ReportTemplate): void {
-  const tpl = template || order.template || SEED_REPORT_TEMPLATES[0];
-  const rendered = renderReportWithDynamicTags(tpl, order);
-  const win = window.open('', '_blank', 'width=900,height=750');
+  const tpl = template || order.template || DEFAULT_FALLBACK_TEMPLATE;
+  const renderedHtml = renderReportHtmlWithDynamicTags(tpl, order);
+  const win = window.open('', '_blank', 'width=940,height=780');
   if (!win) {
     downloadOrderPdf(order, tpl);
     return;
@@ -183,25 +195,30 @@ export function printFormattedReportWindow(order: Order, template?: ReportTempla
         <meta charset="utf-8" />
         <title>Laudo Oficial ${order.protocol_code} — VetLife Lab</title>
         <style>
-          body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 32px; line-height: 1.5; }
-          .header { border-bottom: 3px solid #059669; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
-          .brand { font-size: 22px; font-weight: 800; color: #065f46; }
-          .protocol-box { background: #ecfdf5; border: 1px solid #10b981; padding: 8px 14px; border-radius: 8px; font-family: monospace; font-weight: bold; }
-          pre { white-space: pre-wrap; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; background: #f8fafc; padding: 18px; border-radius: 8px; border: 1px solid #e2e8f0; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 32px; line-height: 1.5; background: #fff; }
+          .header { border-bottom: 2px solid #0d9488; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+          .brand-wrap { display: flex; align-items: center; gap: 12px; }
+          .brand-logo { height: 48px; width: auto; object-fit: contain; border-radius: 8px; }
+          .brand { font-size: 20px; font-weight: 800; color: #0b2240; }
+          .protocol-box { background: #f0fdfa; border: 1px solid #0d9488; padding: 8px 14px; border-radius: 8px; font-family: monospace; font-weight: bold; color: #0f766e; }
+          .report-body { font-size: 13px; }
           .sig { margin-top: 28px; text-align: right; font-size: 12px; color: #334155; border-top: 1px dashed #cbd5e1; padding-top: 12px; }
         </style>
       </head>
       <body>
         <div class="header">
-          <div>
-            <div class="brand">VetLife Diagnósticos Veterinários</div>
-            <div style="font-size:12px;color:#475569;">https://vetlifelab.com.br — Central Diagnóstica Veterinária</div>
+          <div class="brand-wrap">
+            <img src="/images/vetlife-logo.jpg" alt="VetLife" class="brand-logo" />
+            <div>
+              <div class="brand">VetLife Diagnósticos Veterinários</div>
+              <div style="font-size:12px;color:#475569;">https://vetlifelab.com.br — Central Diagnóstica Veterinária</div>
+            </div>
           </div>
           <div class="protocol-box">Protocolo: ${order.protocol_code}</div>
         </div>
-        <pre>${rendered}</pre>
+        <div class="report-body">${renderedHtml}</div>
         <div class="sig">
-          <strong>Assinado Digitalmente:</strong> Dra. Camila Prado — Biomédica Responsável (CRBM-1 9841)<br/>
+          <strong>Assinado Digitalmente:</strong> Dra. Maysa Barbosa de Almeida (RT) &amp; Dra. Kerollyn Passos Silva<br/>
           Verificação pública sem senha em <strong>vetlifelab.com.br/consulta</strong> informando o código <strong>${order.protocol_code}</strong>
         </div>
         <script>setTimeout(() => { window.print(); }, 350);</script>
@@ -211,25 +228,203 @@ export function printFormattedReportWindow(order: Order, template?: ReportTempla
   win.document.close();
 }
 
+function wrapPdfText(input: string, maxChars: number): string[] {
+  const clean = sanitizePdfText(input);
+  if (clean.length <= maxChars) return [clean];
+  const words = clean.split(' ');
+  const out: string[] = [];
+  let current = '';
+  for (const w of words) {
+    if ((current + ' ' + w).trim().length > maxChars) {
+      if (current) out.push(current);
+      current = w;
+    } else {
+      current = (current + ' ' + w).trim();
+    }
+  }
+  if (current) out.push(current);
+  return out;
+}
+
+function inferMaterialAndTube(lbl: CollectionLabel): { material: string; tube: string } {
+  const rawTube = (lbl.tube_type || 'Tubo Padrao').trim();
+  const lower = rawTube.toLowerCase();
+  let material = 'Amostra';
+  if (lower.includes('soro') || lower.includes('amarelo') || lower.includes('vermelh')) {
+    material = 'Soro';
+  } else if (
+    lower.includes('sangue') ||
+    lower.includes('edta') ||
+    lower.includes('roxo') ||
+    lower.includes('citrat') ||
+    lower.includes('heparin')
+  ) {
+    material = 'Sangue';
+  } else if (lower.includes('urina')) {
+    material = 'Urina';
+  } else if (lower.includes('fezes') || lower.includes('copro')) {
+    material = 'Fezes';
+  } else if (lower.includes('swab') || lower.includes('raspado') || lower.includes('pele')) {
+    material = 'Swab/Pele';
+  } else if (lower.includes('biops') || lower.includes('histop') || lower.includes('citol')) {
+    material = 'Tecido';
+  }
+  return { material, tube: rawTube };
+}
+
+function formatThermalDateTime(iso?: string): string {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return '';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yy}, ${hh}:${min}`;
+}
+
+/**
+ * Gera e baixa PDF 1.4 no tamanho exato 50mm x 30mm (141.73 pt x 85.04 pt)
+ * para impressora térmica Zebra (1 etiqueta por página, estritamente Preto e Branco,
+ * cabeçalho branco com código maior, paciente+data+espécie na mesma linha e rodapé CÓDIGO | EXAME).
+ */
+export function downloadThermalLabelsPdf(
+  labels: CollectionLabel[],
+  protocolCode?: string
+): void {
+  if (!labels || labels.length === 0) return;
+
+  const W = 141.73; // 50 mm
+  const H = 85.04;  // 30 mm
+
+  const objects: string[] = [];
+  const pageObjectIds: number[] = [];
+  const contentObjectIds: number[] = [];
+  let nextObjId = 5;
+
+  for (let i = 0; i < labels.length; i++) {
+    pageObjectIds.push(nextObjId++);
+    contentObjectIds.push(nextObjId++);
+  }
+
+  objects[1] = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n';
+  objects[2] = `2 0 obj\n<< /Type /Pages /Kids [${pageObjectIds
+    .map((id) => `${id} 0 R`)
+    .join(' ')}] /Count ${pageObjectIds.length} >>\nendobj\n`;
+  objects[3] = '3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n';
+  objects[4] = '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n';
+
+  for (let i = 0; i < labels.length; i++) {
+    const lbl = labels[i];
+    const pId = pageObjectIds[i];
+    const cId = contentObjectIds[i];
+
+    const patientUpper = sanitizePdfText((lbl.patient_name || 'PACIENTE').toUpperCase()).slice(0, 11);
+    const tutorText = sanitizePdfText(`Tutor: ${lbl.tutor_name || '-'}`).slice(0, 32);
+    const dateTimeStr = sanitizePdfText(formatThermalDateTime(lbl.created_at));
+    const speciesText = sanitizePdfText(lbl.species || '').slice(0, 9);
+    const { material, tube } = inferMaterialAndTube(lbl);
+    const matTubeLines = wrapPdfText(`Material: ${material}  Tubo: ${tube}`, 36).slice(0, 2);
+    const proto = sanitizePdfText(lbl.protocol_code || protocolCode || 'VET-2026');
+    const examCode = sanitizePdfText(lbl.exam_code || '000');
+    const examPipeLines = wrapPdfText(`${examCode} | ${lbl.exam_name || 'Exame'}`, 35).slice(0, 2);
+    const idxStr = sanitizePdfText(`${lbl.label_index}/${lbl.total_labels_for_exam}`);
+
+    const cmds: string[] = [];
+    // Cabeçalho branco com texto preto e código do protocolo maior
+    cmds.push('0 g 0 G');
+    cmds.push('BT /F2 6.8 Tf 4.5 75.2 Td (VETLIFE) Tj ET');
+    cmds.push(`BT /F2 8.6 Tf 40.0 74.8 Td (${proto}) Tj ET`);
+    cmds.push(`BT /F2 6.8 Tf 120.0 75.2 Td (${idxStr}) Tj ET`);
+    cmds.push('0.9 w 4.5 71.8 m 137.23 71.8 l S');
+
+    // Linha 1: Paciente (cortado se grande) + Data/Hora + Espécie na mesma linha com fonte maior
+    cmds.push(`BT /F2 7.4 Tf 4.5 62.8 Td (${patientUpper}) Tj ET`);
+    cmds.push(`BT /F2 6.2 Tf 53.0 62.8 Td (${dateTimeStr}) Tj ET`);
+    if (speciesText) {
+      cmds.push(`BT /F2 6.2 Tf 97.5 62.8 Td (ESP: ${speciesText}) Tj ET`);
+    }
+
+    // Linha 2: Tutor + linha divisória
+    cmds.push(`BT /F1 6.2 Tf 4.5 54.4 Td (${tutorText}) Tj ET`);
+    cmds.push('0.5 w 4.5 51.0 m 137.23 51.0 l S');
+
+    // Material e Tubo
+    cmds.push(`BT /F1 5.8 Tf 4.5 43.8 Td (${matTubeLines[0] || ''}) Tj ET`);
+    if (matTubeLines[1]) {
+      cmds.push(`BT /F1 5.8 Tf 4.5 37.0 Td (${matTubeLines[1]}) Tj ET`);
+    }
+
+    // Caixa de rodapé: CÓDIGO | NOME/RESUMO DO EXAME (sem repetir protocolo, até 2 linhas)
+    cmds.push('0.8 w 4.5 4.2 132.73 26.5 re S');
+    cmds.push(`BT /F2 6.6 Tf 7.5 21.0 Td (${examPipeLines[0] || ''}) Tj ET`);
+    if (examPipeLines[1]) {
+      cmds.push(`BT /F1 6.0 Tf 7.5 11.5 Td (${examPipeLines[1]}) Tj ET`);
+    }
+
+    const stream = cmds.join('\n') + '\n';
+    objects[pId] = `${pId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W.toFixed(
+      2
+    )} ${H.toFixed(2)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${cId} 0 R >>\nendobj\n`;
+    objects[cId] = `${cId} 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`;
+  }
+
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [0];
+  for (let id = 1; id < nextObjId; id++) {
+    offsets[id] = pdf.length;
+    pdf += objects[id];
+  }
+
+  const xrefStart = pdf.length;
+  pdf += `xref\n0 ${nextObjId}\n0000000000 65535 f \n`;
+  for (let id = 1; id < nextObjId; id++) {
+    pdf += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${nextObjId} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  const blob = new Blob([pdf], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const code = (protocolCode || labels[0]?.protocol_code || 'VETLIFE').replace(/[^a-zA-Z0-9_-]/g, '');
+  link.href = url;
+  link.download = `Etiquetas-Zebra-50x30mm-${code}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
 export function printCollectionLabelsWindow(labels: CollectionLabel[]): void {
-  const win = window.open('', '_blank', 'width=720,height=650');
-  if (!win) return;
-  const cardsHtml = labels
-    .map(
-      (lbl) => `
-      <div class="label-card">
-        <div class="top-row">
-          <span><strong>VETLIFE LAB</strong> • ${lbl.protocol_code}</span>
-          <span>Etiqueta ${lbl.label_index}/${lbl.total_labels_for_exam}</span>
+  const win = window.open('', '_blank', 'width=480,height=640');
+  if (!win) {
+    downloadThermalLabelsPdf(labels);
+    return;
+  }
+  const pagesHtml = labels
+    .map((lbl) => {
+      const { material, tube } = inferMaterialAndTube(lbl);
+      const dt = formatThermalDateTime(lbl.created_at);
+      return `
+      <div class="label-page">
+        <div class="bar">
+          <span class="brand-name">VETLIFE</span>
+          <span class="proto-header">${lbl.protocol_code}</span>
+          <span class="idx-header">${lbl.label_index}/${lbl.total_labels_for_exam}</span>
         </div>
-        <div class="patient">${lbl.patient_name} (${lbl.species}) — Tutor: ${lbl.tutor_name}</div>
-        <div class="exam"><strong>[${lbl.exam_code}]</strong> ${lbl.exam_name}</div>
-        <div class="tube">Tubo: ${lbl.tube_type} | Setor: ${lbl.section}</div>
-        <div class="barcode">||| || |||| | ||| |||| || | ||||</div>
-        <div class="barcode-code">${lbl.barcode}</div>
+        <div class="patient-row">
+          <span class="patient">${(lbl.patient_name || '').toUpperCase()}</span>
+          <span class="dt">${dt}</span>
+          <span class="esp"><strong>ESP:</strong> ${lbl.species || '-'}</span>
+        </div>
+        <div class="tutor"><strong>Tutor:</strong> ${lbl.tutor_name || '-'}</div>
+        <div class="mat"><strong>Material:</strong> ${material} &nbsp; <strong>Tubo:</strong> ${tube}</div>
+        <div class="footer-box">
+          <div class="exam-pipe"><span class="exam-code">${lbl.exam_code}</span> | ${lbl.exam_name}</div>
+        </div>
       </div>
-    `
-    )
+    `;
+    })
     .join('');
 
   win.document.write(`
@@ -237,23 +432,59 @@ export function printCollectionLabelsWindow(labels: CollectionLabel[]): void {
     <html lang="pt-BR">
       <head>
         <meta charset="utf-8" />
-        <title>Etiquetas de Coleta — VetLife</title>
+        <title>Etiquetas Térmicas Zebra 50x30mm — VetLife</title>
         <style>
-          body { font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; }
-          .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-          .label-card { background: #fff; border: 2px dashed #0f172a; border-radius: 8px; padding: 12px; font-size: 11px; }
-          .top-row { display: flex; justify-content: space-between; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-bottom: 6px; }
-          .patient { font-size: 13px; font-weight: bold; margin-bottom: 4px; }
-          .exam { color: #065f46; margin-bottom: 3px; }
-          .tube { background: #f1f5f9; padding: 3px 6px; border-radius: 4px; font-weight: 600; margin-bottom: 6px; }
-          .barcode { font-family: monospace; font-size: 20px; letter-spacing: 3px; text-align: center; font-weight: 900; margin-top: 4px; }
-          .barcode-code { font-family: monospace; font-size: 10px; text-align: center; color: #475569; }
+          @page { size: 50mm 30mm; margin: 0; }
+          * { box-sizing: border-box; color: #000 !important; }
+          body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background: #fff; }
+          .label-page {
+            width: 50mm; height: 30mm; padding: 1.2mm 1.5mm;
+            page-break-after: always; break-after: page;
+            display: flex; flex-direction: column; justify-content: space-between;
+            background: #fff; border: 0; overflow: hidden;
+          }
+          .label-page:last-child { page-break-after: auto; break-after: auto; }
+          .bar {
+            background: #fff !important; color: #000 !important;
+            border-bottom: 0.35mm solid #000;
+            display: flex; justify-content: space-between; align-items: baseline;
+            padding: 0 0 0.5mm 0; font-family: monospace; font-weight: 700;
+          }
+          .brand-name { font-size: 6.6pt; }
+          .proto-header { font-size: 8.6pt; font-weight: 800; }
+          .idx-header { font-size: 6.6pt; }
+          .patient-row {
+            display: flex; justify-content: space-between; align-items: baseline; gap: 1mm;
+            padding-top: 0.3mm;
+          }
+          .patient {
+            font-size: 7.4pt; font-weight: 800; line-height: 1.1;
+            max-width: 42%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          }
+          .dt { font-size: 6.2pt; font-weight: 600; white-space: nowrap; }
+          .esp { font-size: 6.2pt; font-weight: 700; white-space: nowrap; }
+          .tutor {
+            font-size: 6.2pt; line-height: 1.1;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            border-bottom: 0.25mm solid #000; padding-bottom: 0.5mm;
+          }
+          .mat { font-size: 5.8pt; line-height: 1.15; max-height: 5.8mm; overflow: hidden; }
+          .footer-box { border: 0.3mm solid #000; padding: 0.6mm 1.1mm; background: #fff; }
+          .exam-pipe {
+            font-size: 6.2pt; font-weight: 600; line-height: 1.15;
+            max-height: 5.8mm; overflow: hidden;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          }
+          .exam-code { font-size: 7.2pt; font-weight: 800; font-family: monospace; }
+          @media screen {
+            body { background: #e5e5e5; padding: 12px; display: flex; flex-wrap: wrap; gap: 10px; }
+            .label-page { box-shadow: 0 1px 4px rgba(0,0,0,0.25); }
+          }
         </style>
       </head>
       <body>
-        <h3 style="margin-top:0;">Impressão Térmica de Etiquetas de Amostra Biológica — VetLife</h3>
-        <div class="grid">${cardsHtml}</div>
-        <script>setTimeout(() => { window.print(); }, 350);</script>
+        ${pagesHtml}
+        <script>setTimeout(() => { window.print(); }, 300);</script>
       </body>
     </html>
   `);

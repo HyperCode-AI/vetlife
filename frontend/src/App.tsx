@@ -3,18 +3,40 @@ import {
   Search,
   Stethoscope,
   LayoutDashboard,
+  Users,
+  ClipboardPlus,
+  FlaskConical,
+  Settings,
+  DollarSign,
   ExternalLink,
   Menu,
   X,
   LogOut,
   ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ArrowLeft,
   Mail,
   Shield,
+  Plus,
+  Calendar,
+  List,
+  Sliders,
+  Tag,
+  BookOpen,
+  FileText,
 } from 'lucide-react';
 import { LandingPage } from './pages/LandingPage';
 import { TutorPortal } from './pages/TutorPortal';
 import { VetPortal } from './pages/VetPortal';
-import { InternalPanel } from './pages/InternalPanel';
+import {
+  InternalPanel,
+  InternalTab,
+  RoutineSubTab,
+  SettingsSubTab,
+} from './pages/InternalPanel';
 import { LoginPage } from './pages/LoginPage';
 import { api } from './services/api';
 import {
@@ -32,8 +54,18 @@ export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(() =>
     detectInitialView(detectInitialDomainMode())
   );
+  const [viewHistory, setViewHistory] = useState<Array<{ view: AppView; protocol?: string }>>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [internalTab, setInternalTab] = useState<InternalTab>('operational');
+  const [routineSubTab, setRoutineSubTab] = useState<RoutineSubTab>('list');
+  const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>('exams');
+  const [routineMenuExpanded, setRoutineMenuExpanded] = useState(true);
+  const [settingsMenuExpanded, setSettingsMenuExpanded] = useState(false);
+  const [internalTabNonce, setInternalTabNonce] = useState(0);
+  const [openNewOrderNonce, setOpenNewOrderNonce] = useState(0);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const [, setAuthRevision] = useState(0);
   const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() =>
@@ -118,8 +150,11 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleNavigate = (view: AppView, protocolCode?: string) => {
+  const handleNavigate = (view: AppView, protocolCode?: string, skipHistory = false) => {
     setMobileMenuOpen(false);
+    if (!skipHistory && view !== currentView) {
+      setViewHistory((prev) => [...prev.slice(-10), { view: currentView, protocol: selectedProtocol }]);
+    }
     if (protocolCode) {
       setSelectedProtocol(protocolCode);
     } else if (view === 'tutor') {
@@ -160,6 +195,7 @@ export const App: React.FC = () => {
   const handleAuthSuccess = (targetView: 'internal' | 'vet') => {
     const nextDomain: VetLifeDomainMode = targetView === 'internal' ? 'adm' : 'app';
     setAuthRevision((r) => r + 1);
+    setInternalTab('operational');
     setDomainMode(nextDomain);
     setCurrentView(targetView);
     syncBrowserUrl(nextDomain, targetView);
@@ -169,6 +205,7 @@ export const App: React.FC = () => {
   const handleAuthLogout = (scope: 'internal' | 'vet') => {
     api.logout();
     setAuthRevision((r) => r + 1);
+    setInternalTab('operational');
     const nextDomain: VetLifeDomainMode = scope === 'internal' ? 'adm' : 'app';
     const nextView: AppView = scope === 'internal' ? 'login' : 'vet';
     setDomainMode(nextDomain);
@@ -262,7 +299,7 @@ export const App: React.FC = () => {
 
       {/* GLOBAL NAVBAR */}
       {showPublicHeader ? (
-        <header className="sticky top-0 z-50 w-full bg-[#fafbfc]/95 backdrop-blur-md border-b border-slate-200/70 no-print">
+        <header className="sticky top-0 z-30 w-full bg-[#fafbfc]/95 backdrop-blur-md border-b border-slate-200/70 no-print">
           <div className="max-w-[1360px] mx-auto px-3.5 sm:px-6 h-[64px] sm:h-[72px] flex items-center justify-between gap-2 xl:gap-4">
             {/* Esquerda: Logo compacto VetLife */}
             <button
@@ -439,66 +476,79 @@ export const App: React.FC = () => {
           )}
         </header>
       ) : showInternalHeader ? (
-        <header className="sticky top-0 z-50 w-full h-[60px] bg-[#0b2240] text-white shadow-sm no-print">
-          <div className="max-w-[1320px] mx-auto px-3 sm:px-6 h-full flex items-center justify-between gap-2 sm:gap-4">
-            <button
-              onClick={() => handleNavigate(isLabAuthenticated ? 'internal' : 'vet')}
-              className="flex items-center gap-2 text-white hover:opacity-90 transition shrink-0"
-              aria-label="VetLife Sistema"
-            >
-              <img
-                src="/images/vetlife-logo.jpg"
-                alt="VetLife"
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5"
-              />
-              <span className="text-[14px] sm:text-[15px] font-bold tracking-tight text-white">VetLife</span>
-            </button>
+        <header className="sticky top-0 z-30 w-full h-[60px] bg-[#0b2240] text-white shadow-sm no-print">
+          <div className="w-full px-3 sm:px-5 h-full flex items-center justify-between gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              {/* Botão Desktop: Expandir / Recolher Sidebar */}
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed((prev) => !prev)}
+                title={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+                aria-label={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+                className="hidden md:inline-flex p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer shrink-0"
+              >
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen className="w-4 h-4 text-[#7fdbea]" />
+                ) : (
+                  <PanelLeftClose className="w-4 h-4 text-[#7fdbea]" />
+                )}
+              </button>
 
-            <nav className="flex items-center gap-2 sm:gap-6 text-[11.5px] sm:text-[13px] font-medium text-white min-w-0">
-              {isLabAuthenticated && !isVetAuthenticated && (
-                <button
-                  onClick={() => handleNavigate('internal')}
-                  className={`inline-flex items-center gap-1 sm:gap-1.5 transition whitespace-nowrap ${
-                    currentView === 'internal' || currentView === 'login'
-                      ? 'text-[#7fdbea] font-semibold'
-                      : 'text-white/80 hover:text-white'
-                  }`}
-                >
-                  <LayoutDashboard className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                  <span className="sm:hidden">Painel</span>
-                  <span className="hidden sm:inline">Painel Laboratorial</span>
-                </button>
-              )}
-
-              {isVetAuthenticated && !isLabAuthenticated && (
-                <button
-                  onClick={() => handleNavigate('vet')}
-                  className={`inline-flex items-center gap-1 sm:gap-1.5 transition whitespace-nowrap ${
-                    currentView === 'vet'
-                      ? 'text-[#7fdbea] font-semibold'
-                      : 'text-white/80 hover:text-white'
-                  }`}
-                >
-                  <Stethoscope className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                  <span className="sm:hidden">Portal Vet</span>
-                  <span className="hidden sm:inline">Portal do Veterinário</span>
-                </button>
-              )}
+              {/* Botão Mobile: Abrir Gaveta da Sidebar */}
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen((prev) => !prev)}
+                aria-label="Abrir menu de módulos"
+                className="md:hidden inline-flex p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer shrink-0"
+              >
+                <Menu className="w-4 h-4 text-[#7fdbea]" />
+              </button>
 
               <button
-                onClick={() => handleNavigate('tutor')}
-                className="inline-flex items-center gap-1 sm:gap-1.5 transition text-white/80 hover:text-white whitespace-nowrap"
+                onClick={() => {
+                  if (isLabAuthenticated) {
+                    setInternalTab('operational');
+                    setInternalTabNonce((n) => n + 1);
+                    handleNavigate('internal');
+                  } else {
+                    handleNavigate('vet');
+                  }
+                }}
+                className="flex items-center gap-2 text-white hover:opacity-90 transition shrink-0 cursor-pointer"
+                aria-label="VetLife Sistema"
               >
-                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="sm:hidden">Protocolo</span>
-                <span className="hidden sm:inline">Consulta de Protocolo</span>
+                <img
+                  src="/images/vetlife-logo.jpg"
+                  alt="VetLife"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain bg-white p-0.5"
+                />
+                <span className="text-[14px] sm:text-[15px] font-bold tracking-tight text-white">
+                  VetLife
+                </span>
               </button>
-            </nav>
 
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <span className="hidden sm:inline text-white/25">|</span>
+
+              <span className="hidden sm:inline-flex items-center gap-1.5 text-[12.5px] font-medium text-white/85 truncate">
+                {isLabAuthenticated && !isVetAuthenticated
+                  ? 'Painel Laboratorial'
+                  : 'Portal do Veterinário'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleNavigate('tutor')}
+                className="hidden sm:inline-flex px-3.5 py-1.5 rounded-full bg-white/10 text-white/90 hover:bg-white/20 hover:text-white text-[12px] font-medium transition items-center gap-1.5 cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5 text-[#7fdbea]" />
+                <span>Consulta de Protocolo</span>
+              </button>
+
               <button
                 onClick={() => handleNavigate('landing')}
-                className="hidden sm:inline-flex px-3.5 py-1.5 rounded-full bg-white/10 text-white hover:bg-white/20 text-[12px] font-medium transition items-center gap-1.5"
+                className="hidden sm:inline-flex px-3.5 py-1.5 rounded-full bg-white/10 text-white hover:bg-white/20 text-[12px] font-medium transition items-center gap-1.5 cursor-pointer"
               >
                 <span>Voltar ao Site</span>
                 <ExternalLink className="w-3.5 h-3.5 text-[#7fdbea]" />
@@ -509,7 +559,7 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setUserMenuOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2.5 sm:pr-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white transition"
+                  className="inline-flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2.5 sm:pr-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
                   aria-expanded={userMenuOpen}
                   aria-haspopup="menu"
                 >
@@ -565,9 +615,20 @@ export const App: React.FC = () => {
                         type="button"
                         onClick={() => {
                           setUserMenuOpen(false);
+                          handleNavigate('tutor');
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 text-[#0b2240] text-[12.5px] font-medium inline-flex items-center gap-2 cursor-pointer"
+                      >
+                        <Search className="w-3.5 h-3.5 text-[#1d9496]" />
+                        <span>Consulta de Protocolo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserMenuOpen(false);
                           handleNavigate('landing');
                         }}
-                        className="sm:hidden w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 text-[#0b2240] text-[12.5px] font-medium inline-flex items-center gap-2"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 text-[#0b2240] text-[12.5px] font-medium inline-flex items-center gap-2 cursor-pointer"
                       >
                         <ExternalLink className="w-3.5 h-3.5 text-[#1d9496]" />
                         <span>Voltar ao Site</span>
@@ -578,7 +639,7 @@ export const App: React.FC = () => {
                           setUserMenuOpen(false);
                           handleAuthLogout(isLabAuthenticated ? 'internal' : 'vet');
                         }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-red-50 text-red-600 text-[12.5px] font-semibold inline-flex items-center gap-2 transition"
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-red-50 text-red-600 text-[12.5px] font-semibold inline-flex items-center gap-2 transition cursor-pointer"
                       >
                         <LogOut className="w-4 h-4" />
                         <span>Sair da Conta</span>
@@ -592,8 +653,539 @@ export const App: React.FC = () => {
         </header>
       ) : null}
 
-      {/* CONTEÚDO PRINCIPAL */}
-      <main className="relative z-10 flex-1 w-full max-w-[1360px] mx-auto px-4 sm:px-8">
+      {/* CORPO: SIDEBAR EXPANSÍVEL/RECOLHÍVEL + CONTEÚDO PRINCIPAL */}
+      <div className="flex flex-1 min-w-0">
+        {showInternalHeader && (
+          <>
+            {/* Overlay Mobile da Sidebar */}
+            {mobileSidebarOpen && (
+              <div
+                className="fixed inset-0 z-40 bg-[#0b2240]/45 backdrop-blur-xs md:hidden no-print"
+                onClick={() => setMobileSidebarOpen(false)}
+              />
+            )}
+
+            <aside
+              aria-label="Menu lateral de módulos"
+              className={`no-print bg-white border-r border-slate-200/80 flex flex-col justify-between transition-all duration-200 shrink-0 ${
+                sidebarCollapsed ? 'md:w-[74px]' : 'md:w-[252px]'
+              } ${
+                mobileSidebarOpen
+                  ? 'fixed top-[60px] bottom-0 left-0 z-40 w-[260px] shadow-2xl'
+                  : 'hidden md:flex md:sticky md:top-[60px] md:h-[calc(100vh-60px)] md:z-20'
+              }`}
+            >
+              <div className="p-3 space-y-5 overflow-y-auto flex-1">
+                {/* Perfil / Cabeçalho da Sidebar */}
+                <div
+                  className={`flex items-center ${
+                    sidebarCollapsed ? 'md:justify-center' : 'justify-between'
+                  } px-2 pt-1`}
+                >
+                  {!sidebarCollapsed && (
+                    <div className="min-w-0">
+                      <div className="text-[10.5px] font-bold uppercase tracking-wider text-[#86868b]">
+                        Módulos do Sistema
+                      </div>
+                      <div className="text-[12px] font-semibold text-[#0b2240] truncate">
+                        {authDisplayRole}
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (mobileSidebarOpen) {
+                        setMobileSidebarOpen(false);
+                      } else {
+                        setSidebarCollapsed((prev) => !prev);
+                      }
+                    }}
+                    title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+                    className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-[#0b2240] transition cursor-pointer shrink-0"
+                  >
+                    {mobileSidebarOpen ? (
+                      <X className="w-4 h-4" />
+                    ) : sidebarCollapsed ? (
+                      <ChevronRight className="w-4 h-4" />
+                    ) : (
+                      <ChevronLeft className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Atalhos conforme Perfil (Admin vs Biomédico/Técnico vs Veterinário) */}
+                {isLabAuthenticated && !isVetAuthenticated && (
+                  <>
+                    <div className="space-y-1">
+                      {!sidebarCollapsed && (
+                        <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#86868b]">
+                          Operação
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        title="Dashboard Operacional"
+                        onClick={() => {
+                          if (currentView !== 'internal') handleNavigate('internal');
+                          setInternalTab('operational');
+                          setInternalTabNonce((n) => n + 1);
+                          setMobileSidebarOpen(false);
+                        }}
+                        className={`w-full flex items-center ${
+                          sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                          (currentView === 'internal' || currentView === 'login') &&
+                          internalTab === 'operational'
+                            ? 'bg-[#0071e3] text-white shadow-xs'
+                            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                        }`}
+                      >
+                        <LayoutDashboard className="w-4 h-4 shrink-0" />
+                        <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                          Dashboard Operacional
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        title="Pacientes"
+                        onClick={() => {
+                          if (currentView !== 'internal') handleNavigate('internal');
+                          setInternalTab('patients');
+                          setInternalTabNonce((n) => n + 1);
+                          setMobileSidebarOpen(false);
+                        }}
+                        className={`w-full flex items-center ${
+                          sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                          (currentView === 'internal' || currentView === 'login') &&
+                          internalTab === 'patients'
+                            ? 'bg-[#0071e3] text-white shadow-xs'
+                            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                        }`}
+                      >
+                        <Users className="w-4 h-4 shrink-0" />
+                        <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                          Pacientes
+                        </span>
+                      </button>
+
+                      {/* Item com Subitens: Atendimentos / Rotina */}
+                      <div className="space-y-1">
+                        <div className="flex items-center">
+                          <button
+                            type="button"
+                            title="Atendimentos / Rotina"
+                            onClick={() => {
+                              if (currentView !== 'internal') handleNavigate('internal');
+                              if (sidebarCollapsed) {
+                                setSidebarCollapsed(false);
+                                setRoutineMenuExpanded(true);
+                              } else if (internalTab === 'routine') {
+                                setRoutineMenuExpanded((prev) => !prev);
+                              } else {
+                                setRoutineMenuExpanded(true);
+                              }
+                              setInternalTab('routine');
+                              setRoutineSubTab('list');
+                              setInternalTabNonce((n) => n + 1);
+                            }}
+                            className={`w-full flex items-center ${
+                              sidebarCollapsed ? 'md:justify-center md:px-0' : 'justify-between px-3.5'
+                            } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-2 transition cursor-pointer ${
+                              (currentView === 'internal' || currentView === 'login') &&
+                              internalTab === 'routine'
+                                ? 'bg-[#0071e3] text-white shadow-xs'
+                                : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                            }`}
+                          >
+                            <span className="flex items-center gap-3 min-w-0">
+                              <ClipboardPlus className="w-4 h-4 shrink-0" />
+                              <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                                Atendimentos / Rotina
+                              </span>
+                            </span>
+                            {!sidebarCollapsed && (
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                                  routineMenuExpanded ? 'rotate-180' : ''
+                                }`}
+                              />
+                            )}
+                          </button>
+                        </div>
+
+                        {!sidebarCollapsed && routineMenuExpanded && (
+                          <div className="pl-5 pr-1 py-1 space-y-1 border-l-2 border-slate-100 ml-5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (currentView !== 'internal') handleNavigate('internal');
+                                setInternalTab('routine');
+                                setRoutineSubTab('list');
+                                setInternalTabNonce((n) => n + 1);
+                                setMobileSidebarOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition cursor-pointer ${
+                                (currentView === 'internal' || currentView === 'login') &&
+                                internalTab === 'routine' &&
+                                routineSubTab === 'list'
+                                  ? 'bg-[#0071e3]/10 text-[#0071e3]'
+                                  : 'text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                              }`}
+                            >
+                              <List className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">Lista de Atendimentos</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (currentView !== 'internal') handleNavigate('internal');
+                                setOpenNewOrderNonce((n) => n + 1);
+                                setMobileSidebarOpen(false);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-[#0071e3] hover:bg-[#0071e3]/10 transition cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">+ Novo Atendimento</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (currentView !== 'internal') handleNavigate('internal');
+                                setInternalTab('routine');
+                                setRoutineSubTab('collections');
+                                setInternalTabNonce((n) => n + 1);
+                                setMobileSidebarOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition cursor-pointer ${
+                                (currentView === 'internal' || currentView === 'login') &&
+                                internalTab === 'routine' &&
+                                routineSubTab === 'collections'
+                                  ? 'bg-[#0071e3]/10 text-[#0071e3]'
+                                  : 'text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                              }`}
+                            >
+                              <Calendar className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">Solicitações de Coleta</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        title="Lançamento de Laudos"
+                        onClick={() => {
+                          if (currentView !== 'internal') handleNavigate('internal');
+                          setInternalTab('launch');
+                          setInternalTabNonce((n) => n + 1);
+                          setMobileSidebarOpen(false);
+                        }}
+                        className={`w-full flex items-center ${
+                          sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                          (currentView === 'internal' || currentView === 'login') &&
+                          internalTab === 'launch'
+                            ? 'bg-[#0071e3] text-white shadow-xs'
+                            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                        }`}
+                      >
+                        <FlaskConical className="w-4 h-4 shrink-0" />
+                        <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                          Lançamento de Laudos
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Exclusivo para perfil Administrador */}
+                    {activeAuthUser?.role === 'admin' && (
+                      <div className="space-y-1 pt-2 border-t border-slate-100">
+                        {!sidebarCollapsed && (
+                          <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#86868b]">
+                            Administração
+                          </div>
+                        )}
+
+                        {/* Item com Subitens: Configurações */}
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            title="Configurações"
+                            onClick={() => {
+                              if (currentView !== 'internal') handleNavigate('internal');
+                              if (sidebarCollapsed) {
+                                setSidebarCollapsed(false);
+                                setSettingsMenuExpanded(true);
+                              } else if (internalTab === 'settings') {
+                                setSettingsMenuExpanded((prev) => !prev);
+                              } else {
+                                setSettingsMenuExpanded(true);
+                              }
+                              setInternalTab('settings');
+                              setInternalTabNonce((n) => n + 1);
+                            }}
+                            className={`w-full flex items-center ${
+                              sidebarCollapsed ? 'md:justify-center md:px-0' : 'justify-between px-3.5'
+                            } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-2 transition cursor-pointer ${
+                              (currentView === 'internal' || currentView === 'login') &&
+                              internalTab === 'settings'
+                                ? 'bg-[#0071e3] text-white shadow-xs'
+                                : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                            }`}
+                          >
+                            <span className="flex items-center gap-3 min-w-0">
+                              <Settings className="w-4 h-4 shrink-0" />
+                              <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                                Configurações
+                              </span>
+                            </span>
+                            {!sidebarCollapsed && (
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                                  settingsMenuExpanded ? 'rotate-180' : ''
+                                }`}
+                              />
+                            )}
+                          </button>
+
+                          {!sidebarCollapsed && settingsMenuExpanded && (
+                            <div className="pl-5 pr-1 py-1 space-y-1 border-l-2 border-slate-100 ml-5">
+                              {(
+                                [
+                                  { id: 'exams' as SettingsSubTab, label: 'Catálogo de Exames', icon: FlaskConical },
+                                  { id: 'fields' as SettingsSubTab, label: 'Campos Dinâmicos', icon: Sliders },
+                                  { id: 'prices' as SettingsSubTab, label: 'Tabelas de Preços', icon: Tag },
+                                  { id: 'references' as SettingsSubTab, label: 'Valores de Referência', icon: BookOpen },
+                                  { id: 'templates' as SettingsSubTab, label: 'Modelos de Laudos', icon: FileText },
+                                  { id: 'users' as SettingsSubTab, label: 'Usuários do Lab', icon: Users },
+                                  { id: 'vets' as SettingsSubTab, label: 'Veterinários & Clínicas', icon: Stethoscope },
+                                ] as const
+                              ).map((sub) => {
+                                const IconComp = sub.icon;
+                                const isActiveSub =
+                                  (currentView === 'internal' || currentView === 'login') &&
+                                  internalTab === 'settings' &&
+                                  settingsSubTab === sub.id;
+                                return (
+                                  <button
+                                    key={sub.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (currentView !== 'internal') handleNavigate('internal');
+                                      setInternalTab('settings');
+                                      setSettingsSubTab(sub.id);
+                                      setInternalTabNonce((n) => n + 1);
+                                      setMobileSidebarOpen(false);
+                                    }}
+                                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-[11.5px] font-semibold transition cursor-pointer ${
+                                      isActiveSub
+                                        ? 'bg-[#0071e3]/10 text-[#0071e3]'
+                                        : 'text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                                    }`}
+                                  >
+                                    <IconComp className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{sub.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          title="Dashboard Financeiro"
+                          onClick={() => {
+                            if (currentView !== 'internal') handleNavigate('internal');
+                            setInternalTab('financial');
+                            setInternalTabNonce((n) => n + 1);
+                            setMobileSidebarOpen(false);
+                          }}
+                          className={`w-full flex items-center ${
+                            sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                          } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                            (currentView === 'internal' || currentView === 'login') &&
+                            internalTab === 'financial'
+                              ? 'bg-[#0071e3] text-white shadow-xs'
+                              : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                          }`}
+                        >
+                          <DollarSign className="w-4 h-4 shrink-0" />
+                          <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                            Dashboard Financeiro
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Atalhos exclusivos para o Perfil Médico Veterinário */}
+                {isVetAuthenticated && !isLabAuthenticated && (
+                  <div className="space-y-1">
+                    {!sidebarCollapsed && (
+                      <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#86868b]">
+                        Portal do Parceiro
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      title="Meus Exames e Laudos"
+                      onClick={() => {
+                        handleNavigate('vet');
+                        setMobileSidebarOpen(false);
+                      }}
+                      className={`w-full flex items-center ${
+                        sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                      } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                        currentView === 'vet'
+                          ? 'bg-[#0071e3] text-white shadow-xs'
+                          : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                      }`}
+                    >
+                      <Stethoscope className="w-4 h-4 shrink-0" />
+                      <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                        Meus Exames & Laudos
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      title="Solicitar Coleta"
+                      onClick={() => {
+                        setMobileSidebarOpen(false);
+                        handleScrollToSection('coleta');
+                      }}
+                      className={`w-full flex items-center ${
+                        sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                      } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer text-[#1d1d1f] hover:bg-[#f5f5f7]`}
+                    >
+                      <ClipboardPlus className="w-4 h-4 shrink-0" />
+                      <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                        Solicitar Coleta
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Acessos Rápidos / Externos Comuns */}
+                <div className="space-y-1 pt-2 border-t border-slate-100">
+                  {!sidebarCollapsed && (
+                    <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#86868b]">
+                      Acesso Rápido
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    title="Consulta de Protocolo"
+                    onClick={() => {
+                      handleNavigate('tutor');
+                      setMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center ${
+                      sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                    } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]`}
+                  >
+                    <Search className="w-4 h-4 shrink-0" />
+                    <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                      Consulta de Protocolo
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    title="Voltar ao Site"
+                    onClick={() => {
+                      handleNavigate('landing');
+                      setMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center ${
+                      sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                    } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]`}
+                  >
+                    <ExternalLink className="w-4 h-4 shrink-0" />
+                    <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                      Voltar ao Site
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Rodapé da Sidebar: Botão de Expandir / Recolher */}
+              <div className="p-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed((prev) => !prev)}
+                  title={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+                  className={`hidden md:flex w-full items-center ${
+                    sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-3.5'
+                  } py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-[#5b6675] hover:text-[#0b2240] text-[12px] font-semibold transition cursor-pointer`}
+                >
+                  {!sidebarCollapsed && <span>Recolher Menu</span>}
+                  {sidebarCollapsed ? (
+                    <PanelLeftOpen className="w-4 h-4 shrink-0" />
+                  ) : (
+                    <PanelLeftClose className="w-4 h-4 shrink-0" />
+                  )}
+                </button>
+              </div>
+            </aside>
+          </>
+        )}
+
+        {/* CONTEÚDO PRINCIPAL */}
+        <main className="relative flex-1 min-w-0 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
+        {currentView !== 'landing' && currentView !== 'internal' && (
+          <div className="pt-4 no-print">
+            <div className="bg-white rounded-[18px] px-3.5 py-2 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-2 text-[12px]">
+              <div className="flex flex-wrap items-center gap-1.5 text-[#5b6675]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (viewHistory.length > 0) {
+                      const prev = viewHistory[viewHistory.length - 1];
+                      setViewHistory((h) => h.slice(0, -1));
+                      handleNavigate(prev.view, prev.protocol, true);
+                    } else {
+                      handleNavigate('landing', undefined, true);
+                    }
+                  }}
+                  className="px-3 py-1 rounded-full bg-[#0b2240] text-white hover:bg-[#13325b] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Voltar</span>
+                </button>
+                <span className="text-slate-300 mx-1">|</span>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('landing')}
+                  className="font-semibold text-[#0b2240] hover:text-[#1d9496] transition"
+                >
+                  Início
+                </button>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <span className="font-semibold text-[#1d9496]">
+                  {currentView === 'tutor'
+                    ? selectedProtocol
+                      ? `Consulta de Resultados > Protocolo ${selectedProtocol}`
+                      : 'Consulta de Resultados'
+                    : currentView === 'vet'
+                    ? isVetAuthenticated
+                      ? 'Portal do Veterinário > Painel de Exames'
+                      : 'Portal do Veterinário > Login'
+                    : 'Área Laboratorial > Login'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         {currentView === 'landing' && <LandingPage onNavigate={handleNavigate} />}
         {currentView === 'tutor' && <TutorPortal initialProtocol={selectedProtocol} />}
         {currentView === 'vet' &&
@@ -644,7 +1236,21 @@ export const App: React.FC = () => {
               Validando sessão segura...
             </div>
           ) : isLabAuthenticated ? (
-            <InternalPanel onLogout={() => handleAuthLogout('internal')} />
+            <InternalPanel
+              activeTab={internalTab}
+              routineSubTab={routineSubTab}
+              settingsTab={settingsSubTab}
+              tabChangeNonce={internalTabNonce}
+              openNewOrderNonce={openNewOrderNonce}
+              onTabChange={(nextTab) => {
+                setInternalTab(nextTab);
+                if (nextTab === 'routine') setRoutineMenuExpanded(true);
+                if (nextTab === 'settings') setSettingsMenuExpanded(true);
+              }}
+              onRoutineSubTabChange={(nextSub) => setRoutineSubTab(nextSub)}
+              onSettingsTabChange={(nextSub) => setSettingsSubTab(nextSub)}
+              onLogout={() => handleAuthLogout('internal')}
+            />
           ) : isVetAuthenticated ? (
             <div className="min-h-[60vh] flex items-center justify-center py-12">
               <div className="max-w-md w-full bg-white rounded-[28px] p-8 shadow-sm border border-slate-200 text-center space-y-4">
@@ -680,7 +1286,8 @@ export const App: React.FC = () => {
               onBackToSite={() => handleNavigate('landing')}
             />
           ))}
-      </main>
+        </main>
+      </div>
 
       {/* RODAPÉ */}
       <footer className="relative z-10 w-full bg-transparent border-t border-slate-200/70 text-[#7b8694] py-10 sm:py-12 text-[13px] no-print">

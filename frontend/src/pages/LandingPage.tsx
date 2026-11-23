@@ -41,6 +41,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   const [founderImgSrc, setFounderImgSrc] = useState('/images/kerollyn-passos.jpg?v=2');
   const [collectionForm, setCollectionForm] = useState({
     clinic_or_tutor_name: '',
+    crmv: '',
     phone: '',
     email: '',
     address: '',
@@ -49,6 +50,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
   });
   const [submittingCollection, setSubmittingCollection] = useState(false);
   const [collectionSuccess, setCollectionSuccess] = useState<string | null>(null);
+  const [collectionError, setCollectionError] = useState<string | null>(null);
 
   const handleQuickProtocolSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,8 +65,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
 
   const handleCollectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!collectionForm.crmv.trim() || collectionForm.crmv.trim().length < 3) {
+      setCollectionError('O número do CRMV do médico veterinário é obrigatório para solicitar coleta.');
+      return;
+    }
     setSubmittingCollection(true);
     setCollectionSuccess(null);
+    setCollectionError(null);
     try {
       await api.createCollectionRequest(collectionForm);
       setCollectionSuccess(
@@ -72,12 +79,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
       );
       setCollectionForm({
         clinic_or_tutor_name: '',
+        crmv: '',
         phone: '',
         email: '',
         address: '',
         preferred_date: '2026-04-14',
         notes: '',
       });
+    } catch (err: any) {
+      setCollectionError(
+        err?.message || 'Não foi possível enviar a solicitação. Verifique o CRMV e tente novamente.'
+      );
     } finally {
       setSubmittingCollection(false);
     }
@@ -660,11 +672,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
               </div>
             )}
 
+            {collectionError && (
+              <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-[13.5px] font-medium">
+                {collectionError}
+              </div>
+            )}
+
             <form onSubmit={handleCollectionSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-[12px] font-semibold text-[#5b6675] mb-1.5">
-                    Clínica ou Responsável *
+                    Médico Veterinário / Clínica *
                   </label>
                   <input
                     type="text"
@@ -673,8 +691,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                     onChange={(e) =>
                       setCollectionForm({ ...collectionForm, clinic_or_tutor_name: e.target.value })
                     }
-                    placeholder="Nome da clínica ou responsável"
+                    placeholder="Nome do veterinário ou clínica"
                     className="w-full px-4 py-3 rounded-2xl bg-[#f5f5f7] text-[#0b2240] placeholder:text-[#7b8694] text-[15px] focus:outline-none focus:ring-2 focus:ring-[#1d9496]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-semibold text-[#5b6675] mb-1.5">
+                    CRMV Obrigatório *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={collectionForm.crmv}
+                    onChange={(e) =>
+                      setCollectionForm({ ...collectionForm, crmv: e.target.value.toUpperCase() })
+                    }
+                    placeholder="Ex: CRMV-MG 12345"
+                    className="w-full px-4 py-3 rounded-2xl bg-[#f5f5f7] font-mono uppercase text-[#0b2240] placeholder:text-[#7b8694] text-[15px] focus:outline-none focus:ring-2 focus:ring-[#1d9496]"
                   />
                 </div>
                 <div>

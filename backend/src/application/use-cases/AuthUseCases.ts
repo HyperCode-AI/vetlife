@@ -72,55 +72,52 @@ export class AuthUseCases {
     return { token, user: safeUser };
   }
 
-  public async loginVet(email: string, credential: string): Promise<{
+  public async loginVet(email: string, password: string): Promise<{
     token: string;
     vet: Vet;
   }> {
-    if (!email || !credential) {
+    if (!email || !password) {
       throw new ValidationError('E-mail e senha de acesso são obrigatórios.');
     }
 
-    const secret = credential.trim();
+    const secret = password.trim();
     const byEmail = await this.repo.findVetByEmail(email);
-    let vet: Vet | null = null;
 
-    if (byEmail) {
-      if (byEmail.password_hash) {
-        if (
-          this.verifyPassword(secret, byEmail.password_hash) ||
-          (byEmail.crmv && byEmail.crmv.toLowerCase() === secret.toLowerCase())
-        ) {
-          vet = byEmail;
-        }
-      } else {
-        const crmvMatch =
-          byEmail.crmv && byEmail.crmv.toLowerCase() === secret.toLowerCase();
-        const demoPasswords = ['vet123', 'Vet@2026', 'VetLife@2026'];
-        if (crmvMatch || demoPasswords.includes(secret)) {
-          vet = byEmail;
-        }
-      }
-    }
-
-    if (!vet) {
-      vet = await this.repo.findVetByEmailAndCrmv(email, secret);
-    }
-
-    if (!vet) {
+    if (!byEmail) {
       throw new UnauthorizedError(
-        'Médico Veterinário não encontrado para este e-mail ou senha/CRMV incorretos.'
+        'Médico Veterinário não encontrado para este e-mail ou senha incorreta.'
       );
     }
 
-    const { password_hash: _ph, ...safeVet } = vet;
+    if (!byEmail.crmv || !byEmail.crmv.trim()) {
+      throw new UnauthorizedError(
+        'Acesso restrito exclusivamente a Médicos Veterinários com CRMV válido cadastrado.'
+      );
+    }
+
+    let isAuthenticated = false;
+    if (byEmail.password_hash) {
+      isAuthenticated = this.verifyPassword(secret, byEmail.password_hash);
+    } else {
+      const demoPasswords = ['vet123', 'Vet@2026', 'VetLife@2026'];
+      isAuthenticated = demoPasswords.includes(secret);
+    }
+
+    if (!isAuthenticated) {
+      throw new UnauthorizedError(
+        'E-mail ou senha incorretos. O acesso ao Portal do Veterinário exige senha válida.'
+      );
+    }
+
+    const { password_hash: _ph, ...safeVet } = byEmail;
 
     const payload: JwtTokenPayload = {
-      sub: vet.id,
-      email: vet.email,
-      name: vet.name,
+      sub: byEmail.id,
+      email: byEmail.email,
+      name: byEmail.name,
       role: 'vet',
-      crmv: vet.crmv,
-      clinic_name: vet.clinic_name,
+      crmv: byEmail.crmv,
+      clinic_name: byEmail.clinic_name,
     };
 
     const signOptions: SignOptions = {

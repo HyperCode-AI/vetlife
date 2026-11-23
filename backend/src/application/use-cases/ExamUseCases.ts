@@ -132,7 +132,7 @@ export class ExamUseCases {
     field: Omit<ExamInputField, 'id' | 'exam_id'>
   ): Promise<ExamInputField> {
     if (!field.field_name) {
-      throw new ValidationError('O nome do campo dinâmico (field_name) é obrigatório (HU-02).');
+      throw new ValidationError('Informe o identificador do campo personalizado antes de salvar.');
     }
     return this.examRepo.addExamInputField(examId, {
       field_name: field.field_name,

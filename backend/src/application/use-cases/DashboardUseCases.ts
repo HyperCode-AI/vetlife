@@ -116,7 +116,7 @@ export class DashboardUseCases {
       }
     }
 
-    // Simple Balance Sheet (Balancete Operacional Mensal Estimado + Realizado)
+    // Simple Balance Sheet (Balancete Operacional baseado nos pedidos reais do banco)
     const reagentsAndKitsCost = Number((grossRevenue * 0.24).toFixed(2));
     const logisticsAndTubesCost = Number((grossRevenue * 0.08).toFixed(2));
     const qualityControlCost = Number((grossRevenue * 0.05).toFixed(2));
@@ -125,7 +125,27 @@ export class DashboardUseCases {
     );
     const netOperatingResult = Number((grossRevenue - totalOperationalCosts).toFixed(2));
     const marginPercent =
-      grossRevenue > 0 ? Number(((netOperatingResult / grossRevenue) * 100).toFixed(1)) : 63.0;
+      grossRevenue > 0 ? Number(((netOperatingResult / grossRevenue) * 100).toFixed(1)) : 0;
+
+    const partnerTableIds = new Set(
+      priceTables.filter((pt) => Boolean(pt.partner_clinic)).map((pt) => pt.id)
+    );
+    const partnerRevenue = Number(
+      orders
+        .filter((o) => o.price_table_id && partnerTableIds.has(o.price_table_id))
+        .reduce((s, o) => s + Number(o.total_amount || 0), 0)
+        .toFixed(2)
+    );
+    const directRevenue = Number(
+      orders
+        .filter((o) => !o.price_table_id || !partnerTableIds.has(o.price_table_id))
+        .reduce((s, o) => s + Number(o.total_amount || 0), 0)
+        .toFixed(2)
+    );
+    const periodLabel = new Date().toLocaleDateString('pt-BR', {
+      month: 'long',
+      year: 'numeric',
+    });
 
     return {
       indicators: {
@@ -137,27 +157,17 @@ export class DashboardUseCases {
         active_price_tables: priceTables.filter((pt) => pt.is_active).length,
       },
       balance_sheet: {
-        period: 'Março / 2026 (Acumulado Operacional)',
+        period: periodLabel,
         entries: [
           {
             category: 'Receita de Exames — Convênios e Clínicas Parceiras',
             type: 'credit',
-            amount: Number(
-              orders
-                .filter((o) => o.price_table_id === 'pt-2026-parceiros')
-                .reduce((s, o) => s + Number(o.total_amount), 0)
-                .toFixed(2)
-            ),
+            amount: partnerRevenue,
           },
           {
             category: 'Receita de Exames — Tabela Particular Padrão',
             type: 'credit',
-            amount: Number(
-              orders
-                .filter((o) => o.price_table_id !== 'pt-2026-parceiros')
-                .reduce((s, o) => s + Number(o.total_amount), 0)
-                .toFixed(2)
-            ),
+            amount: directRevenue,
           },
           {
             category: 'Insumos, Reagentes Hematológicos e Bioquímicos',

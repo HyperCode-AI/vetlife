@@ -106,6 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_exam_prices_table_exam ON public.exam_prices(pric
 CREATE TABLE IF NOT EXISTS public.exam_references (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     exam_id UUID NOT NULL REFERENCES public.exams(id) ON DELETE CASCADE,
+    parameter_name VARCHAR(150) DEFAULT '',
     species VARCHAR(50) NOT NULL,
     gender VARCHAR(20) NOT NULL DEFAULT 'Ambos' CHECK (gender IN ('M', 'F', 'Ambos')),
     min_age_days INTEGER NOT NULL DEFAULT 0 CHECK (min_age_days >= 0),
@@ -143,14 +144,16 @@ CREATE INDEX IF NOT EXISTS idx_patients_tutor ON public.patients(tutor_name);
 CREATE TABLE IF NOT EXISTS public.vets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(150) NOT NULL,
-    crmv VARCHAR(40) NOT NULL UNIQUE,
-    clinic_name VARCHAR(150) NOT NULL,
+    crmv VARCHAR(40) NOT NULL,
+    clinic_name VARCHAR(150) NOT NULL DEFAULT '',
     email VARCHAR(150) NOT NULL UNIQUE,
     phone VARCHAR(40) NOT NULL,
+    password_hash TEXT DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_vets_email_crmv ON public.vets(email, crmv);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vets_crmv_unique_nonempty ON public.vets(crmv) WHERE crmv IS NOT NULL AND crmv <> '';
 
 -- =============================================================================
 -- 10. TABELA: orders (Atendimentos / Pedidos de Exames — HU-06, HU-12, RN-02, RN-04)
@@ -199,6 +202,7 @@ CREATE INDEX IF NOT EXISTS idx_exam_results_exam_id ON public.exam_results(exam_
 CREATE TABLE IF NOT EXISTS public.collection_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     clinic_or_tutor_name VARCHAR(150) NOT NULL,
+    crmv VARCHAR(40) NOT NULL DEFAULT '',
     phone VARCHAR(40) NOT NULL,
     email VARCHAR(150) DEFAULT '',
     address TEXT NOT NULL,

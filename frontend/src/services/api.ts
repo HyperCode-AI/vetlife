@@ -14,17 +14,6 @@ import {
   FinancialStats,
   ExamAttachment,
 } from '../types';
-import {
-  SEED_USERS,
-  SEED_VETS,
-  SEED_EXAMS,
-  SEED_PRICE_TABLES,
-  SEED_EXAM_REFERENCES,
-  SEED_REPORT_TEMPLATES,
-  SEED_PATIENTS,
-  SEED_ORDERS,
-  SEED_COLLECTION_REQUESTS,
-} from './mockData';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || '/api/v1';
 
@@ -32,36 +21,47 @@ const STORAGE_KEYS = {
   TOKEN: 'vetlife_token',
   USER: 'vetlife_user',
   VET: 'vetlife_vet',
-  EXAMS: 'vetlife_store_exams_v2026',
-  PRICE_TABLES: 'vetlife_store_price_tables_v2026',
-  REFERENCES: 'vetlife_store_references',
-  TEMPLATES: 'vetlife_store_templates',
-  PATIENTS: 'vetlife_store_patients',
-  VETS: 'vetlife_store_vets',
-  USERS: 'vetlife_store_users',
-  ORDERS: 'vetlife_store_orders',
-  COLLECTIONS: 'vetlife_store_collections',
+  COLLECTIONS_CACHE: 'vetlife_collections_cache_v1',
 };
 
-function loadStore<T>(key: string, fallback: T): T {
+type LocalCollectionStore = {
+  overrides: Record<string, Partial<CollectionRequest>>;
+  created: CollectionRequest[];
+  deletedIds: string[];
+};
+
+function readLocalCollectionStore(): LocalCollectionStore {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      localStorage.setItem(key, JSON.stringify(fallback));
-      return fallback;
-    }
-    return JSON.parse(raw) as T;
+    const raw = localStorage.getItem(STORAGE_KEYS.COLLECTIONS_CACHE);
+    if (!raw) return { overrides: {}, created: [], deletedIds: [] };
+    const parsed = JSON.parse(raw);
+    return {
+      overrides: parsed?.overrides && typeof parsed.overrides === 'object' ? parsed.overrides : {},
+      created: Array.isArray(parsed?.created) ? parsed.created : [],
+      deletedIds: Array.isArray(parsed?.deletedIds) ? parsed.deletedIds : [],
+    };
   } catch {
-    return fallback;
+    return { overrides: {}, created: [], deletedIds: [] };
   }
 }
 
-function saveStore<T>(key: string, data: T): void {
+function writeLocalCollectionStore(store: LocalCollectionStore): void {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEYS.COLLECTIONS_CACHE, JSON.stringify(store));
   } catch {
     // ignore storage errors
   }
+}
+
+function mergeCollectionsWithLocalStore(remoteList: CollectionRequest[]): CollectionRequest[] {
+  const store = readLocalCollectionStore();
+  const deletedSet = new Set(store.deletedIds);
+  const remoteIds = new Set(remoteList.map((c) => c.id).filter(Boolean));
+  const localCreatedOnly = store.created.filter((c) => c.id && !remoteIds.has(c.id));
+  const combined = [...localCreatedOnly, ...remoteList];
+  return combined
+    .filter((c) => !c.id || !deletedSet.has(c.id))
+    .map((c) => (c.id && store.overrides[c.id] ? { ...c, ...store.overrides[c.id], id: c.id } : c));
 }
 
 export function calculatePatientAgeDays(birthDate?: string, fallbackDays?: number): number {
@@ -106,6 +106,53 @@ export function resolveReferenceForPatient(
   return speciesMatch || examRefs[0];
 }
 
+export function resolveSideBySideReference(
+  fieldName: string,
+  fieldLabel: string,
+  referenceSnapshot?: string
+): string {
+  const raw = String(referenceSnapshot || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .trim();
+  if (!raw) return 'Conforme faixa da espécie';
+
+  const segments = raw
+    .split(/\||;|\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (segments.length <= 1) {
+    return raw;
+  }
+
+  const normalize = (s: string) =>
+    s
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+  const normLabel = normalize(fieldLabel);
+  const normKey = normalize(fieldName.replace(/_/g, ' '));
+  const labelTokens = normLabel.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+  const keyTokens = normKey.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+
+  for (const seg of segments) {
+    const normSeg = normalize(seg);
+    const colonIdx = seg.indexOf(':');
+    const segHeader = colonIdx !== -1 ? normalize(seg.slice(0, colonIdx)) : normSeg;
+
+    if (
+      (labelTokens.length > 0 && labelTokens.some((tok) => segHeader.includes(tok))) ||
+      (keyTokens.length > 0 && keyTokens.some((tok) => segHeader.includes(tok)))
+    ) {
+      return colonIdx !== -1 ? seg.slice(colonIdx + 1).trim() : seg;
+    }
+  }
+
+  return raw;
+}
+
 export function renderReportWithDynamicTags(
   template: ReportTemplate,
   order: Order
@@ -120,33 +167,42 @@ export function renderReportWithDynamicTags(
   const resultsLines = (order.results || [])
     .map((res) => {
       const entries = Object.entries(res.dynamic_content || {});
-      const fields = res.input_fields || [];
+      const fields = res.input_fields || res.exam?.input_fields || [];
+      const refText =
+        res.reference_snapshot ||
+        res.matched_reference?.reference_text_content ||
+        'Referência padrão da espécie conforme literatura clínica.';
       const formattedParams =
         entries.length === 0
           ? '  - [Parâmetros aguardando lançamento técnico]'
           : entries
-            .map(([k, v]) => {
-              const fieldMeta = fields.find((f) => f.field_name === k);
-              const label = fieldMeta?.field_label || k;
-              const unit = fieldMeta?.unit ? ` ${fieldMeta.unit}` : '';
-              return `  • ${label}: ${v}${unit}`;
-            })
-            .join('\n');
-      return `[${res.exam_code || 'EXAME'}] ${res.exam_name || ''} (${res.section || 'Geral'})\n${formattedParams}`;
+              .map(([k, v]) => {
+                const fieldMeta = fields.find((f) => f.field_name === k);
+                const label = fieldMeta?.field_label || k;
+                const unit = fieldMeta?.unit ? ` ${fieldMeta.unit}` : '';
+                const sideRef = resolveSideBySideReference(k, label, refText);
+                return `  • ${label}: ${v}${unit}   |   Ref.: ${sideRef}`;
+              })
+              .join('\n');
+      return `[${res.exam_code || res.exam?.code || 'EXAME'}] ${
+        res.exam_name || res.exam?.name || ''
+      } (${res.section || res.exam?.section || 'Geral'})\n${formattedParams}`;
     })
     .join('\n\n');
 
   const referencesLines = (order.results || [])
     .map(
       (res) =>
-        `• ${res.exam_name}: ${res.reference_snapshot ||
-        res.matched_reference?.reference_text_content ||
-        'Referência padrão da espécie conforme literatura clínica.'
+        `• ${res.exam_name || res.exam?.name || 'Exame'}: ${
+          res.reference_snapshot ||
+          res.matched_reference?.reference_text_content ||
+          'Referência padrão da espécie conforme literatura clínica.'
         }`
     )
     .join('\n');
 
   const replacements: Record<string, string> = {
+    '{{logo}}': '[VETLIFE DIAGNÓSTICOS VETERINÁRIOS]',
     '{{paciente}}': patient?.name || 'N/D',
     '{{especie}}': `${patient?.species || 'N/D'} (${patient?.breed || 'SRD'}, ${patient?.gender || 'M'})`,
     '{{idade}}': ageLabel,
@@ -186,23 +242,44 @@ export function renderReportHtmlWithDynamicTags(
   const resultsHtml = (order.results || [])
     .map((res) => {
       const entries = Object.entries(res.dynamic_content || {});
-      const fields = res.input_fields || [];
+      const fields = res.input_fields || res.exam?.input_fields || [];
+      const refText =
+        res.reference_snapshot ||
+        res.matched_reference?.reference_text_content ||
+        'Referência padrão da espécie.';
       const rows =
         entries.length === 0
-          ? '<li style="color:#64748b;font-style:italic;">Parâmetros aguardando lançamento técnico</li>'
+          ? '<tr><td colspan="3" style="padding:8px 10px;color:#64748b;font-style:italic;">Parâmetros aguardando lançamento técnico</td></tr>'
           : entries
-            .map(([k, v]) => {
-              const fieldMeta = fields.find((f) => f.field_name === k);
-              const label = escapeHtml(fieldMeta?.field_label || k);
-              const unit = fieldMeta?.unit ? ` ${escapeHtml(fieldMeta.unit)}` : '';
-              return `<li><strong>${label}:</strong> ${escapeHtml(String(v))}${unit}</li>`;
-            })
-            .join('');
-      return `<div style="margin-bottom:10px;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;"><div style="font-weight:700;color:#0b2240;font-size:12px;">[${escapeHtml(
-        res.exam_code || 'EXAME'
-      )}] ${escapeHtml(res.exam_name || '')} <span style="font-weight:400;color:#64748b;">(${escapeHtml(
-        res.section || 'Geral'
-      )})</span></div><ul style="margin:4px 0 0 16px;padding:0;font-size:12px;color:#1e293b;">${rows}</ul></div>`;
+              .map(([k, v]) => {
+                const fieldMeta = fields.find((f) => f.field_name === k);
+                const rawLabel = fieldMeta?.field_label || k;
+                const label = escapeHtml(rawLabel);
+                const unit = fieldMeta?.unit ? ` ${escapeHtml(fieldMeta.unit)}` : '';
+                const sideRef = escapeHtml(resolveSideBySideReference(k, rawLabel, refText));
+                return `<tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:7px 10px;font-weight:600;color:#0f172a;">${label}</td>
+                  <td style="padding:7px 10px;font-weight:700;color:#0f766e;font-family:monospace;">${escapeHtml(String(v))}${unit}</td>
+                  <td style="padding:7px 10px;color:#475569;font-size:11.5px;">${sideRef}</td>
+                </tr>`;
+              })
+              .join('');
+      return `<div style="margin-bottom:14px;background:#ffffff;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;">
+        <div style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700;color:#0b2240;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;">
+          <span>[${escapeHtml(res.exam_code || res.exam?.code || 'EXAME')}] ${escapeHtml(res.exam_name || res.exam?.name || '')}</span>
+          <span style="font-weight:500;color:#64748b;font-size:11px;">${escapeHtml(res.section || res.exam?.section || 'Geral')}</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:#fcfcfd;text-align:left;color:#64748b;font-size:10.5px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;">
+              <th style="padding:6px 10px;width:36%;">Parâmetro Analisado</th>
+              <th style="padding:6px 10px;width:28%;">Resultado Obtido</th>
+              <th style="padding:6px 10px;width:36%;">Valores de Referência (${escapeHtml(patient?.species || 'Espécie')})</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
     })
     .join('');
 
@@ -215,20 +292,31 @@ export function renderReportHtmlWithDynamicTags(
       const isHtmlRef = /<[a-z][\s\S]*>/i.test(rawRef);
       const formattedRef = isHtmlRef ? rawRef : escapeHtml(rawRef);
       return `<div style="margin-bottom:6px;"><div>• <strong>${escapeHtml(
-        res.exam_name || ''
+        res.exam_name || res.exam?.name || 'Exame'
       )}:</strong></div><div style="margin-left:12px;">${formattedRef}</div></div>`;
     })
     .join('');
 
-  const firstExamName = order.results?.[0]?.exam_name || 'Exame Laboratorial';
-  const firstExamSection = order.results?.[0]?.section || 'Geral';
+  const firstExamName =
+    order.results?.[0]?.exam_name || order.results?.[0]?.exam?.name || 'Exame Laboratorial';
+  const firstExamSection =
+    order.results?.[0]?.section || order.results?.[0]?.exam?.section || 'Geral';
+  const logoHtml = `<img src="/images/vetlife-logo.jpg" alt="VetLife" style="height:42px;width:auto;object-fit:contain;border-radius:8px;vertical-align:middle;" />`;
+  const hasLogoInHeader = (template.header_html || '').includes('{{logo}}') || (template.header_html || '').includes('<img');
+  const cleanHeaderHtml = hasLogoInHeader
+    ? template.header_html || ''
+    : `<div style="display:flex;align-items:center;gap:12px;">${logoHtml}<div style="flex:1;">${template.header_html || ''}</div></div>`;
+
   const replacements: Record<string, string> = {
+    '{{logo}}': logoHtml,
     '{{paciente}}': escapeHtml(patient?.name || 'N/D'),
     '{{especie}}': escapeHtml(
       `${patient?.species || 'N/D'} (${patient?.breed || 'SRD'}, ${patient?.gender || 'M'})`
     ),
     '{{raca}}': escapeHtml(patient?.breed || 'SRD'),
-    '{{sexo}}': escapeHtml(patient?.gender === 'F' ? 'Fêmea' : patient?.gender === 'M' ? 'Macho' : patient?.gender || 'N/D'),
+    '{{sexo}}': escapeHtml(
+      patient?.gender === 'F' ? 'Fêmea' : patient?.gender === 'M' ? 'Macho' : patient?.gender || 'N/D'
+    ),
     '{{idade}}': escapeHtml(ageLabel),
     '{{tutor}}': escapeHtml(patient?.tutor_name || 'N/D'),
     '{{veterinario}}': escapeHtml(vet?.name || 'N/D'),
@@ -243,7 +331,7 @@ export function renderReportHtmlWithDynamicTags(
   };
 
   let html = `<div style="font-family:Inter,system-ui,sans-serif;color:#0f172a;line-height:1.5;">
-    <div>${template.header_html || ''}</div>
+    <div>${cleanHeaderHtml}</div>
     <div style="margin:14px 0;">${template.body_template || ''}</div>
     <div>${template.footer_html || ''}</div>
   </div>`;
@@ -266,10 +354,6 @@ function clearAuthStorage(): void {
 
 function decodeTokenPayload(token: string): { exp?: number; role?: string } | null {
   try {
-    if (token.startsWith('local-')) {
-      const raw = token.slice('local-'.length);
-      return JSON.parse(atob(raw));
-    }
     const parts = token.split('.');
     if (parts.length !== 3) return null;
     const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
@@ -353,10 +437,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new Error(
+      'Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.'
+    );
+  }
 
   if (!response.ok) {
     if (response.status === 401 && token) {
@@ -367,7 +458,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
     const errBody = await response.json().catch(() => ({}));
     throw new Error(
-      extractErrorMessage(errBody, `Falha na requisição (HTTP ${response.status}).`, response.status)
+      extractErrorMessage(
+        errBody,
+        'Não foi possível concluir sua solicitação. Tente novamente em instantes.',
+        response.status
+      )
     );
   }
 
@@ -378,145 +473,99 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return json as T;
 }
 
+function normalizeExam(ex: any): Exam {
+  const days = Number(ex.delivery_days) || 1;
+  const resolvedPrice = Number(ex.price ?? ex.base_price ?? ex.active_price ?? 0);
+  return {
+    ...ex,
+    delivery_days: days,
+    delivery_time_label:
+      ex.delivery_time_label || (days === 1 ? '1 dia útil' : `${days} dias úteis`),
+    tube_type: ex.tube_type || ex.material || 'Tubo EDTA (Tampa Roxa)',
+    material: ex.material || ex.tube_type || 'Tubo EDTA (Tampa Roxa)',
+    label_qty: Number(ex.label_qty) || 1,
+    base_price: resolvedPrice,
+    price: resolvedPrice,
+  };
+}
+
 export const api = {
   // ==========================================
   // 1. AUTENTICAÇÃO INTERNA (Admin / Biomédico)
   // ==========================================
   async loginInternal(email: string, password: string): Promise<{ token: string; user: User }> {
-    let networkFailed = false;
+    let res: Response;
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(
-          extractErrorMessage(
-            errBody,
-            'E-mail ou senha inválidos. Verifique suas credenciais.',
-            res.status
-          )
-        );
-      }
-      const json = await res.json();
-      const payload = json.data || json;
-      const token = payload.token || json.token;
-      const user = payload.user || json.user;
-      if (!token || !user) {
-        throw new Error('Resposta de autenticação inválida do servidor.');
-      }
-      clearAuthStorage();
-      localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
-      return { token, user };
-    } catch (err: any) {
-      if (err instanceof TypeError) {
-        networkFailed = true;
-      } else {
-        throw err;
-      }
+    } catch {
+      throw new Error(
+        'Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.'
+      );
     }
-
-    if (!networkFailed) {
-      throw new Error('Falha na autenticação.');
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(
+        extractErrorMessage(
+          errBody,
+          'E-mail ou senha inválidos. Verifique suas credenciais.',
+          res.status
+        )
+      );
     }
-
-    // Fallback offline apenas quando o servidor está inacessível (preview estático), validando senha estritamente
-    const normalizedEmail = email.trim().toLowerCase();
-    const matched = SEED_USERS.find((u) => u.email.toLowerCase() === normalizedEmail);
-    const trimmedPassword = password.trim();
-    const validAdminPasswords = ['admin123', 'Admin@2026', 'VetLife@2026'];
-    const validBioPasswords = ['bio123', 'biomed123', 'Bio@2026', 'VetLife@2026'];
-    const isPasswordValid = matched
-      ? matched.role === 'admin'
-        ? validAdminPasswords.includes(trimmedPassword)
-        : validBioPasswords.includes(trimmedPassword)
-      : false;
-
-    if (!matched || !isPasswordValid) {
-      throw new Error('E-mail ou senha inválidos. Verifique suas credenciais corporativas.');
+    const json = await res.json();
+    const payload = json.data || json;
+    const token = payload.token || json.token;
+    const user = payload.user || json.user;
+    if (!token || !user) {
+      throw new Error('Não foi possível iniciar sua sessão. Tente novamente em instantes.');
     }
-
-    const exp = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
-    const token = `local-${btoa(JSON.stringify({ sub: matched.id, role: matched.role, exp }))}`;
     clearAuthStorage();
     localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(matched));
-    return { token, user: matched };
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+    return { token, user };
   },
 
   // ==========================================
-  // 2. AUTENTICAÇÃO VETERINÁRIO (E-mail + Senha)
+  // 2. AUTENTICAÇÃO VETERINÁRIO (E-mail + Senha Obrigatória)
   // ==========================================
-  async loginVet(email: string, credential: string): Promise<{ token: string; vet: Vet }> {
-    let networkFailed = false;
+  async loginVet(email: string, password: string): Promise<{ token: string; vet: Vet }> {
+    let res: Response;
     try {
-      const res = await fetch(`${API_BASE}/auth/vet-login`, {
+      res = await fetch(`${API_BASE}/auth/vet-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: credential, crmv: credential }),
+        body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(
-          extractErrorMessage(
-            errBody,
-            'Médico Veterinário não localizado ou senha incorreta.',
-            res.status
-          )
-        );
-      }
-      const json = await res.json();
-      const payload = json.data || json;
-      const token = payload.token || json.token;
-      const vet = payload.vet || json.vet || payload.user;
-      if (!token || !vet) {
-        throw new Error('Resposta de autenticação inválida do servidor.');
-      }
-      clearAuthStorage();
-      localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-      localStorage.setItem(STORAGE_KEYS.VET, JSON.stringify(vet));
-      return { token, vet };
-    } catch (err: any) {
-      if (err instanceof TypeError) {
-        networkFailed = true;
-      } else {
-        throw err;
-      }
-    }
-
-    if (!networkFailed) {
-      throw new Error('Falha na autenticação do veterinário.');
-    }
-
-    const vets = loadStore<Array<Vet & { password_hash?: string }>>(STORAGE_KEYS.VETS, SEED_VETS);
-    const cleanEmail = email.trim().toLowerCase();
-    const secret = credential.trim();
-    const cleanCrmv = secret.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-    const matched = vets.find((v) => {
-      if (v.email.toLowerCase() !== cleanEmail) return false;
-      if (v.password_hash) {
-        return v.password_hash === secret || (v.crmv && v.crmv.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanCrmv);
-      }
-      return (
-        (v.crmv && v.crmv.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanCrmv) ||
-        ['vet123', 'Vet@2026', 'VetLife@2026'].includes(secret)
+    } catch {
+      throw new Error(
+        'Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.'
       );
-    });
-
-    if (!matched) {
-      throw new Error('Médico Veterinário não localizado com este E-mail e CRMV.');
     }
-
-    const exp = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
-    const token = `local-${btoa(JSON.stringify({ sub: matched.id, role: 'vet', exp }))}`;
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(
+        extractErrorMessage(
+          errBody,
+          'Médico Veterinário não localizado ou senha incorreta.',
+          res.status
+        )
+      );
+    }
+    const json = await res.json();
+    const payload = json.data || json;
+    const token = payload.token || json.token;
+    const vet = payload.vet || json.vet || payload.user;
+    if (!token || !vet) {
+      throw new Error('Não foi possível iniciar sua sessão. Tente novamente em instantes.');
+    }
     clearAuthStorage();
     localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-    localStorage.setItem(STORAGE_KEYS.VET, JSON.stringify(matched));
-    return { token, vet: matched };
+    localStorage.setItem(STORAGE_KEYS.VET, JSON.stringify(vet));
+    return { token, vet };
   },
 
   logout(): void {
@@ -547,25 +596,19 @@ export const api = {
     const token = this.getToken();
     if (!token) return { authenticated: false };
 
-    try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        clearAuthStorage();
-        return { authenticated: false };
-      }
-      const json = await res.json();
-      const authUser = json.user || json.data;
-      return { authenticated: Boolean(authUser?.role), role: authUser?.role };
-    } catch {
-      // Se backend offline, valida token local não expirado
-      const payload = decodeTokenPayload(token);
-      return { authenticated: Boolean(payload?.role), role: payload?.role };
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) {
+      clearAuthStorage();
+      return { authenticated: false };
     }
+    const json = await res.json();
+    const authUser = json.user || json.data;
+    return { authenticated: Boolean(authUser?.role), role: authUser?.role };
   },
 
   getCurrentUser(): User | null {
@@ -595,34 +638,16 @@ export const api = {
   // ==========================================
   async getPublicProtocol(protocolCode: string): Promise<Order> {
     const cleanCode = protocolCode.trim().toUpperCase();
-    try {
-      const data = await request<any>(`/public/protocol/${encodeURIComponent(cleanCode)}`);
-      if (data) {
-        const order: Order = data.order ? { ...data.order, ...data } : data;
-        if (order.protocol_code) return order;
-      }
-    } catch {
-      // Fallback local
+    const data = await request<any>(`/public/protocol/${encodeURIComponent(cleanCode)}`);
+    const order: Order = data?.order ? { ...data.order, ...data } : data;
+    if (!order || !order.protocol_code) {
+      throw new Error(`Protocolo "${cleanCode}" não encontrado.`);
     }
-
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    const found = orders.find((o) => o.protocol_code.toUpperCase() === cleanCode);
-    if (!found) {
-      throw new Error(
-        `Protocolo "${cleanCode}" não encontrado. Experimente VET-2026-0001, VET-2026-0002 ou VET-2026-0003.`
-      );
-    }
-    const templates = loadStore<ReportTemplate[]>(STORAGE_KEYS.TEMPLATES, SEED_REPORT_TEMPLATES);
-    const tpl = found.template || templates.find((t) => t.is_default) || templates[0];
-    return {
-      ...found,
-      template: tpl,
-      rendered_report: renderReportWithDynamicTags(tpl, found),
-    };
+    return order;
   },
 
   // ==========================================
-  // 4. SOLICITAÇÃO DE COLETA (LANDING PAGE)
+  // 4. SOLICITAÇÃO DE COLETA / AGENDAMENTO (BANCO DE DADOS + FALLBACK RESILIENTE)
   // ==========================================
   async createCollectionRequest(payload: CollectionRequest): Promise<CollectionRequest> {
     try {
@@ -630,78 +655,136 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      const list = loadStore<CollectionRequest[]>(STORAGE_KEYS.COLLECTIONS, SEED_COLLECTION_REQUESTS);
-      saveStore(STORAGE_KEYS.COLLECTIONS, [
-        created,
-        ...list.filter((c) => c.id !== created.id),
-      ]);
-      return created;
+      if (created?.id) {
+        const store = readLocalCollectionStore();
+        store.overrides[created.id] = {
+          ...store.overrides[created.id],
+          ...(payload.crmv ? { crmv: payload.crmv.trim().toUpperCase() } : {}),
+          ...(payload.scheduled_date ? { scheduled_date: payload.scheduled_date } : {}),
+          ...(payload.scheduled_time ? { scheduled_time: payload.scheduled_time } : {}),
+          ...(payload.status ? { status: payload.status } : {}),
+        };
+        writeLocalCollectionStore(store);
+      }
+      return {
+        ...created,
+        crmv: created?.crmv || payload.crmv?.trim().toUpperCase(),
+        scheduled_date: created?.scheduled_date || payload.scheduled_date,
+        scheduled_time: created?.scheduled_time || payload.scheduled_time,
+        status: created?.status || payload.status || 'pendente',
+      };
     } catch {
-      const list = loadStore<CollectionRequest[]>(STORAGE_KEYS.COLLECTIONS, SEED_COLLECTION_REQUESTS);
-      const created: CollectionRequest = {
+      const fallbackItem: CollectionRequest = {
         ...payload,
-        id: `col-${Date.now()}`,
-        status: 'pendente',
+        id: payload.id || `col-${Date.now()}`,
+        crmv: (payload.crmv || '').trim().toUpperCase(),
+        status: payload.status || (payload.scheduled_date ? 'agendada' : 'pendente'),
         created_at: new Date().toISOString(),
       };
-      list.unshift(created);
-      saveStore(STORAGE_KEYS.COLLECTIONS, list);
-      return created;
+      const store = readLocalCollectionStore();
+      store.created = [fallbackItem, ...store.created];
+      writeLocalCollectionStore(store);
+      return fallbackItem;
     }
   },
 
   async getCollectionRequests(): Promise<CollectionRequest[]> {
-    const local = loadStore<CollectionRequest[]>(STORAGE_KEYS.COLLECTIONS, SEED_COLLECTION_REQUESTS);
     try {
       const remote = await request<CollectionRequest[]>('/collection-requests');
-      if (Array.isArray(remote) && remote.length > 0) {
-        const remoteIds = new Set(remote.map((r) => r.id));
-        const localOnly = local.filter((l) => l.id && !remoteIds.has(l.id) && l.id.startsWith('col-17'));
-        const merged = [...localOnly, ...remote];
-        saveStore(STORAGE_KEYS.COLLECTIONS, merged);
-        return merged;
-      }
+      const list = Array.isArray(remote) ? remote : [];
+      return mergeCollectionsWithLocalStore(list);
     } catch {
-      // fallback
+      return mergeCollectionsWithLocalStore([]);
     }
-    return local;
   },
 
   async updateCollectionRequestStatus(
     id: string,
     status: 'pendente' | 'agendada' | 'concluida' | 'cancelada',
     scheduledDate?: string,
-    scheduledTime?: string,
+    scheduledTime?: string
   ): Promise<CollectionRequest> {
-    const local = loadStore<CollectionRequest[]>(STORAGE_KEYS.COLLECTIONS, SEED_COLLECTION_REQUESTS);
-    let localUpdated: CollectionRequest | null = null;
-    const nextLocal = local.map((item) => {
-      if (item.id === id) {
-        localUpdated = {
-          ...item,
-          status,
-          ...(scheduledDate !== undefined ? { scheduled_date: scheduledDate } : {}),
-          ...(scheduledTime !== undefined ? { scheduled_time: scheduledTime } : {}),
-        };
-        return localUpdated;
-      }
-      return item;
-    });
-    saveStore(STORAGE_KEYS.COLLECTIONS, nextLocal);
-
+    const patchPayload: Partial<CollectionRequest> = {
+      status,
+      ...(scheduledDate !== undefined ? { scheduled_date: scheduledDate } : {}),
+      ...(scheduledTime !== undefined ? { scheduled_time: scheduledTime } : {}),
+    };
     try {
-      const remote = await request<CollectionRequest>(`/collection-requests/${id}/status`, {
+      const updated = await request<CollectionRequest>(`/collection-requests/${id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          status,
-          ...(scheduledDate !== undefined ? { scheduled_date: scheduledDate } : {}),
-          ...(scheduledTime !== undefined ? { scheduled_time: scheduledTime } : {}),
-        }),
+        body: JSON.stringify(patchPayload),
       });
-      return remote;
+      const store = readLocalCollectionStore();
+      store.overrides[id] = { ...(store.overrides[id] || {}), ...patchPayload };
+      writeLocalCollectionStore(store);
+      return { ...updated, ...patchPayload };
     } catch {
-      if (!localUpdated) throw new Error('Solicitação de coleta não encontrada.');
-      return localUpdated;
+      const store = readLocalCollectionStore();
+      store.overrides[id] = { ...(store.overrides[id] || {}), ...patchPayload };
+      writeLocalCollectionStore(store);
+      const currentList = await this.getCollectionRequests();
+      const matched = currentList.find((c) => c.id === id);
+      return (
+        matched || {
+          id,
+          clinic_or_tutor_name: 'Solicitação de Coleta',
+          crmv: '',
+          phone: '',
+          email: '',
+          address: '',
+          notes: '',
+          ...patchPayload,
+        }
+      );
+    }
+  },
+
+  async updateCollectionRequest(
+    id: string,
+    payload: Partial<CollectionRequest>
+  ): Promise<CollectionRequest> {
+    try {
+      const updated = await request<CollectionRequest>(`/collection-requests/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      const store = readLocalCollectionStore();
+      store.overrides[id] = { ...(store.overrides[id] || {}), ...payload };
+      writeLocalCollectionStore(store);
+      return { ...updated, ...payload };
+    } catch {
+      const store = readLocalCollectionStore();
+      store.overrides[id] = { ...(store.overrides[id] || {}), ...payload };
+      writeLocalCollectionStore(store);
+      const currentList = await this.getCollectionRequests();
+      const matched = currentList.find((c) => c.id === id);
+      return (
+        matched || {
+          id,
+          clinic_or_tutor_name: payload.clinic_or_tutor_name || 'Solicitação de Coleta',
+          crmv: payload.crmv || '',
+          phone: payload.phone || '',
+          email: payload.email || '',
+          address: payload.address || '',
+          notes: payload.notes || '',
+          ...payload,
+        }
+      );
+    }
+  },
+
+  async deleteCollectionRequest(id: string): Promise<void> {
+    const store = readLocalCollectionStore();
+    if (!store.deletedIds.includes(id)) {
+      store.deletedIds.push(id);
+    }
+    delete store.overrides[id];
+    store.created = store.created.filter((c) => c.id !== id);
+    writeLocalCollectionStore(store);
+    try {
+      await request(`/collection-requests/${id}`, { method: 'DELETE' });
+    } catch {
+      // handled locally if old server instance does not have DELETE route
     }
   },
 
@@ -709,34 +792,8 @@ export const api = {
   // 5. CATÁLOGO DE EXAMES E CAMPOS DINÂMICOS
   // ==========================================
   async getExams(): Promise<Exam[]> {
-    const localExams = loadStore<Exam[]>(STORAGE_KEYS.EXAMS, SEED_EXAMS);
-    const normalizeExam = (ex: any): Exam => {
-      const days = Number(ex.delivery_days) || 1;
-      const resolvedPrice = Number(ex.price ?? ex.base_price ?? 75);
-      return {
-        ...ex,
-        delivery_days: days,
-        delivery_time_label:
-          ex.delivery_time_label || (days === 1 ? '1 dia útil' : `${days} dias úteis`),
-        tube_type: ex.tube_type || ex.material || 'Tubo EDTA (Tampa Roxa)',
-        material: ex.material || ex.tube_type || 'Tubo EDTA (Tampa Roxa)',
-        label_qty: Number(ex.label_qty) || 1,
-        base_price: resolvedPrice,
-        price: resolvedPrice,
-      };
-    };
-
-    try {
-      const remote = await request<Exam[]>('/exams');
-      if (Array.isArray(remote) && remote.length > 0) {
-        const normalized = remote.map(normalizeExam);
-        saveStore(STORAGE_KEYS.EXAMS, normalized);
-        return normalized;
-      }
-    } catch {
-      // use local
-    }
-    return localExams.map(normalizeExam);
+    const remote = await request<Exam[]>('/exams');
+    return Array.isArray(remote) ? remote.map(normalizeExam) : [];
   },
 
   async getExamsPaginated(params: {
@@ -758,47 +815,21 @@ export const api = {
     if (params.search?.trim()) qs.set('search', params.search.trim());
     if (params.section && params.section !== 'todos') qs.set('section', params.section);
 
-    try {
-      const remote = await request<{
-        items: Exam[];
-        total: number;
-        page: number;
-        limit: number;
-        totalPages: number;
-      }>(`/exams?${qs.toString()}`);
-      if (remote && Array.isArray(remote.items)) {
-        return remote;
-      }
-    } catch {
-      // fallback to local store pagination
-    }
+    const remote = await request<{
+      items: Exam[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>(`/exams?${qs.toString()}`);
 
-    const all = await this.getExams();
-    const q = (params.search || '').trim().toLowerCase();
-    const sec = params.section || 'todos';
-    const filtered = all.filter((ex) => {
-      if (sec !== 'todos' && ex.section !== sec) return false;
-      if (!q) return true;
-      return (
-        ex.code.toLowerCase().includes(q) ||
-        ex.name.toLowerCase().includes(q) ||
-        ex.section.toLowerCase().includes(q)
-      );
-    });
-    const total = filtered.length;
-    const totalPages = Math.max(1, Math.ceil(total / params.limit));
-    const page = Math.min(Math.max(1, params.page), totalPages);
     return {
-      items: filtered.slice((page - 1) * params.limit, page * params.limit),
-      total,
-      page,
-      limit: params.limit,
-      totalPages,
+      ...remote,
+      items: Array.isArray(remote.items) ? remote.items.map(normalizeExam) : [],
     };
   },
 
   async saveExam(exam: Partial<Exam>, tablePrices?: Record<string, number>): Promise<Exam> {
-    const exams = loadStore<Exam[]>(STORAGE_KEYS.EXAMS, SEED_EXAMS);
     const days = Number(exam.delivery_days) || 1;
     const label =
       exam.delivery_time_label?.trim() || (days === 1 ? '1 dia útil' : `${days} dias úteis`);
@@ -815,377 +846,157 @@ export const api = {
       price: resolvedPrice,
     };
 
-    const syncExamPriceToActiveTables = (savedExam: Exam) => {
-      try {
-        const tables = loadStore<PriceTable[]>(STORAGE_KEYS.PRICE_TABLES, SEED_PRICE_TABLES);
-        const updatedTables = tables.map((pt) => {
-          const hasExplicitPrice = tablePrices && tablePrices[pt.id] !== undefined;
-          if (!hasExplicitPrice && !pt.is_active) return pt;
-          const targetPrice = hasExplicitPrice ? Number(tablePrices![pt.id]) : resolvedPrice;
-          const list = pt.prices || pt.items || [];
-          const exists = list.some((p) => p.exam_id === savedExam.id || p.exam_code === savedExam.code);
-          const nextPrices = exists
-            ? list.map((p) =>
-              p.exam_id === savedExam.id || p.exam_code === savedExam.code
-                ? { ...p, exam_id: savedExam.id, exam_code: savedExam.code, exam_name: savedExam.name, price: targetPrice }
-                : p
-            )
-            : [
-              ...list,
-              {
-                exam_id: savedExam.id,
-                exam_code: savedExam.code,
-                exam_name: savedExam.name,
-                price: targetPrice,
-              },
-            ];
-          return { ...pt, prices: nextPrices };
-        });
-        saveStore(STORAGE_KEYS.PRICE_TABLES, updatedTables);
-      } catch {
-        // ignore
-      }
-    };
-
-    try {
-      if (exam.id) {
-        const updated = await request<Exam>(`/exams/${exam.id}`, {
+    const saved = exam.id
+      ? await request<Exam>(`/exams/${exam.id}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
-        });
-        const merged: Exam = {
-          ...(exams.find((e) => e.id === exam.id) || ({} as Exam)),
-          ...payload,
-          ...updated,
-          delivery_time_label: updated.delivery_time_label || label,
-          base_price: Number(updated.price ?? updated.base_price ?? resolvedPrice),
-          price: Number(updated.price ?? updated.base_price ?? resolvedPrice),
-        };
-        const next = exams.map((e) => (e.id === exam.id ? merged : e));
-        saveStore(STORAGE_KEYS.EXAMS, next);
-        syncExamPriceToActiveTables(merged);
-        return merged;
-      } else {
-        const created = await request<Exam>('/exams', {
+        })
+      : await request<Exam>('/exams', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        const merged: Exam = {
-          ...payload,
-          ...created,
-          id: created.id || `exam-${Date.now()}`,
-          delivery_time_label: created.delivery_time_label || label,
-          base_price: Number(created.price ?? created.base_price ?? resolvedPrice),
-          price: Number(created.price ?? created.base_price ?? resolvedPrice),
-        } as Exam;
-        const next = [merged, ...exams];
-        saveStore(STORAGE_KEYS.EXAMS, next);
-        syncExamPriceToActiveTables(merged);
-        return merged;
-      }
-    } catch {
-      if (exam.id) {
-        const next = exams.map((e) => (e.id === exam.id ? ({ ...e, ...payload } as Exam) : e));
-        saveStore(STORAGE_KEYS.EXAMS, next);
-        const found = next.find((e) => e.id === exam.id)!;
-        syncExamPriceToActiveTables(found);
-        return found;
-      }
-      const created: Exam = {
-        id: `exam-${Date.now()}`,
-        code: (payload.code || 'EXM-NEW').toUpperCase(),
-        name: payload.name || 'Novo Exame Laboratorial',
-        section: payload.section || 'Bioquímica',
-        delivery_days: days,
-        delivery_time_label: label,
-        tube_type: payload.tube_type || 'Tubo EDTA (Tampa Roxa)',
-        material: payload.material || payload.tube_type || 'Tubo EDTA (Tampa Roxa)',
-        label_qty: Number(payload.label_qty) || 1,
-        reference_template_id: payload.reference_template_id || 'tpl-default-01',
-        base_price: resolvedPrice,
-        price: resolvedPrice,
-        input_fields: payload.input_fields || [],
-      };
-      const next = [created, ...exams];
-      saveStore(STORAGE_KEYS.EXAMS, next);
-      syncExamPriceToActiveTables(created);
-      return created;
+
+    if (tablePrices && Object.keys(tablePrices).length > 0) {
+      const tables = await this.getPriceTables();
+      await Promise.all(
+        tables
+          .filter((pt) => tablePrices[pt.id] !== undefined)
+          .map((pt) => {
+            const existingPrices = pt.prices || pt.items || [];
+            const hasExam = existingPrices.some((p) => p.exam_id === saved.id);
+            const nextPrices = hasExam
+              ? existingPrices.map((p) =>
+                  p.exam_id === saved.id
+                    ? { exam_id: p.exam_id, price: Number(tablePrices[pt.id]) }
+                    : { exam_id: p.exam_id, price: Number(p.price) }
+                )
+              : [
+                  ...existingPrices.map((p) => ({ exam_id: p.exam_id, price: Number(p.price) })),
+                  { exam_id: saved.id, price: Number(tablePrices[pt.id]) },
+                ];
+            return request<PriceTable>(`/price-tables/${pt.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ prices: nextPrices }),
+            });
+          })
+      );
     }
+
+    return normalizeExam(saved);
   },
 
   async deleteExam(examId: string): Promise<void> {
-    const exams = loadStore<Exam[]>(STORAGE_KEYS.EXAMS, SEED_EXAMS).filter((e) => e.id !== examId);
-    saveStore(STORAGE_KEYS.EXAMS, exams);
-    try {
-      await request(`/exams/${examId}`, { method: 'DELETE' });
-    } catch {
-      // ignore
-    }
+    await request(`/exams/${examId}`, { method: 'DELETE' });
   },
 
   async saveExamFields(examId: string, fields: ExamInputField[]): Promise<ExamInputField[]> {
-    const exams = loadStore<Exam[]>(STORAGE_KEYS.EXAMS, SEED_EXAMS);
-    const updatedExams = exams.map((e) =>
-      e.id === examId ? { ...e, input_fields: fields } : e
-    );
-    saveStore(STORAGE_KEYS.EXAMS, updatedExams);
-
-    try {
-      const res = await request<any>(`/exams/${examId}/fields`, {
-        method: 'PUT',
-        body: JSON.stringify({ fields }),
-      });
-      return Array.isArray(res) ? res : res.fields || fields;
-    } catch {
-      return fields;
-    }
+    const res = await request<any>(`/exams/${examId}/fields`, {
+      method: 'PUT',
+      body: JSON.stringify({ fields }),
+    });
+    return Array.isArray(res) ? res : res.fields || [];
   },
 
   // ==========================================
   // 6. TABELAS DE PREÇOS COM VIGÊNCIA (HU-03, RN-04)
   // ==========================================
   async getPriceTables(): Promise<PriceTable[]> {
-    const local = loadStore<PriceTable[]>(STORAGE_KEYS.PRICE_TABLES, SEED_PRICE_TABLES);
-    try {
-      const remote = await request<PriceTable[]>('/price-tables');
-      if (Array.isArray(remote) && remote.length > 0) {
-        const normalized = remote.map((pt) => ({
-          ...pt,
-          prices: pt.prices || pt.items || [],
-        }));
-        saveStore(STORAGE_KEYS.PRICE_TABLES, normalized);
-        return normalized;
-      }
-    } catch {
-      // fallback
-    }
-    return local;
+    const remote = await request<PriceTable[]>('/price-tables');
+    if (!Array.isArray(remote)) return [];
+    return remote.map((pt) => ({
+      ...pt,
+      prices: pt.prices || pt.items || [],
+    }));
   },
 
   async savePriceTable(
     table: Partial<PriceTable>,
     adjustmentPercent?: number
   ): Promise<PriceTable> {
-    const tables = loadStore<PriceTable[]>(STORAGE_KEYS.PRICE_TABLES, SEED_PRICE_TABLES);
-    const exams = loadStore<Exam[]>(STORAGE_KEYS.EXAMS, SEED_EXAMS);
+    const payload: Record<string, any> = {
+      name: table.name,
+      partner_clinic: table.partner_clinic,
+      start_date: table.start_date,
+      end_date: table.end_date,
+      is_active: table.is_active ?? true,
+      ...(typeof adjustmentPercent === 'number' ? { adjustment_percent: adjustmentPercent } : {}),
+    };
 
-    let prices = table.prices || [];
-    if (prices.length === 0) {
-      prices = exams.map((ex) => ({
-        exam_id: ex.id,
-        exam_code: ex.code,
-        exam_name: ex.name,
-        price: ex.base_price || 75,
+    if (table.prices && table.prices.length > 0 && typeof adjustmentPercent !== 'number') {
+      payload.prices = table.prices.map((p) => ({
+        exam_id: p.exam_id,
+        price: Number(p.price),
       }));
     }
 
-    if (typeof adjustmentPercent === 'number' && adjustmentPercent !== 0) {
-      const factor = 1 + adjustmentPercent / 100;
-      prices = prices.map((p) => ({
-        ...p,
-        price: Number((p.price * factor).toFixed(2)),
-      }));
-    }
-
-    const payload = { ...table, prices, adjustment_percent: adjustmentPercent };
-
-    try {
-      if (table.id) {
-        const res = await request<PriceTable>(`/price-tables/${table.id}`, {
+    const res = table.id
+      ? await request<PriceTable>(`/price-tables/${table.id}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
-        });
-        const merged: PriceTable = {
-          ...(tables.find((t) => t.id === table.id) || ({} as PriceTable)),
-          ...table,
-          ...res,
-          prices: res.prices || res.items || prices,
-        };
-        saveStore(
-          STORAGE_KEYS.PRICE_TABLES,
-          tables.map((t) => (t.id === table.id ? merged : t))
-        );
-        return merged;
-      } else {
-        const res = await request<PriceTable>('/price-tables', {
+        })
+      : await request<PriceTable>('/price-tables', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        const created: PriceTable = {
-          id: res.id || `pt-${Date.now()}`,
-          name: table.name || 'Nova Tabela de Vigência',
-          partner_clinic: table.partner_clinic || 'Clínicas Parceiras',
-          start_date: table.start_date || '2026-01-01',
-          end_date: table.end_date || '2026-12-31',
-          is_active: table.is_active ?? true,
-          prices: res.prices || res.items || prices,
-        };
-        saveStore(STORAGE_KEYS.PRICE_TABLES, [created, ...tables]);
-        return created;
-      }
-    } catch {
-      if (table.id) {
-        const updated: PriceTable = {
-          ...(tables.find((t) => t.id === table.id) as PriceTable),
-          ...table,
-          prices,
-        };
-        saveStore(
-          STORAGE_KEYS.PRICE_TABLES,
-          tables.map((t) => (t.id === table.id ? updated : t))
-        );
-        return updated;
-      }
-      const created: PriceTable = {
-        id: `pt-${Date.now()}`,
-        name: table.name || 'Nova Tabela de Vigência',
-        partner_clinic: table.partner_clinic || 'Convênio Geral',
-        start_date: table.start_date || '2026-01-01',
-        end_date: table.end_date || '2026-12-31',
-        is_active: table.is_active ?? true,
-        prices,
-      };
-      saveStore(STORAGE_KEYS.PRICE_TABLES, [created, ...tables]);
-      return created;
-    }
+
+    return {
+      ...res,
+      prices: res.prices || res.items || [],
+    };
   },
 
   // ==========================================
   // 7. VALORES DE REFERÊNCIA E MODELOS DE LAUDOS (HU-04, HU-05)
   // ==========================================
   async getExamReferences(): Promise<ExamReference[]> {
-    const local = loadStore<ExamReference[]>(STORAGE_KEYS.REFERENCES, SEED_EXAM_REFERENCES);
-    try {
-      const remote = await request<ExamReference[]>('/exam-references');
-      if (Array.isArray(remote) && remote.length > 0) {
-        saveStore(STORAGE_KEYS.REFERENCES, remote);
-        return remote;
-      }
-    } catch {
-      // use local
-    }
-    return local;
+    const remote = await request<ExamReference[]>('/exam-references');
+    return Array.isArray(remote) ? remote : [];
   },
 
   async saveExamReference(ref: Partial<ExamReference>): Promise<ExamReference> {
-    const refs = loadStore<ExamReference[]>(STORAGE_KEYS.REFERENCES, SEED_EXAM_REFERENCES);
-    try {
-      if (ref.id) {
-        const updated = await request<ExamReference>(`/exam-references/${ref.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(ref),
-        });
-        const next = refs.map((r) => (r.id === ref.id ? { ...r, ...updated } : r));
-        saveStore(STORAGE_KEYS.REFERENCES, next);
-        return updated;
-      } else {
-        const created = await request<ExamReference>('/exam-references', {
-          method: 'POST',
-          body: JSON.stringify(ref),
-        });
-        saveStore(STORAGE_KEYS.REFERENCES, [...refs, created]);
-        return created;
-      }
-    } catch {
-      const created: ExamReference = {
-        id: ref.id || `ref-${Date.now()}`,
-        exam_id: ref.exam_id || 'exam-hemo-01',
-        exam_name: ref.exam_name,
-        species: ref.species || 'Canino',
-        gender: ref.gender || 'Ambos',
-        min_age_days: Number(ref.min_age_days) || 1,
-        max_age_days: Number(ref.max_age_days) || 3650,
-        reference_text_content: ref.reference_text_content || '',
-      };
-      const next = ref.id
-        ? refs.map((r) => (r.id === ref.id ? created : r))
-        : [...refs, created];
-      saveStore(STORAGE_KEYS.REFERENCES, next);
-      return created;
+    if (ref.id) {
+      return request<ExamReference>(`/exam-references/${ref.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(ref),
+      });
     }
+    return request<ExamReference>('/exam-references', {
+      method: 'POST',
+      body: JSON.stringify(ref),
+    });
   },
 
   async deleteExamReference(id: string): Promise<void> {
-    const refs = loadStore<ExamReference[]>(STORAGE_KEYS.REFERENCES, SEED_EXAM_REFERENCES).filter(
-      (r) => r.id !== id
-    );
-    saveStore(STORAGE_KEYS.REFERENCES, refs);
-    try {
-      await request(`/exam-references/${id}`, { method: 'DELETE' });
-    } catch {
-      // ignore
-    }
+    await request(`/exam-references/${id}`, { method: 'DELETE' });
   },
 
   async getReportTemplates(): Promise<ReportTemplate[]> {
-    const local = loadStore<ReportTemplate[]>(STORAGE_KEYS.TEMPLATES, SEED_REPORT_TEMPLATES);
-    try {
-      const remote = await request<ReportTemplate[]>('/report-templates');
-      if (Array.isArray(remote) && remote.length > 0) {
-        saveStore(STORAGE_KEYS.TEMPLATES, remote);
-        return remote;
-      }
-    } catch {
-      // use local
-    }
-    return local;
+    const remote = await request<ReportTemplate[]>('/report-templates');
+    return Array.isArray(remote) ? remote : [];
   },
 
   async saveReportTemplate(tpl: Partial<ReportTemplate>): Promise<ReportTemplate> {
-    const templates = loadStore<ReportTemplate[]>(STORAGE_KEYS.TEMPLATES, SEED_REPORT_TEMPLATES);
-    try {
-      if (tpl.id) {
-        const updated = await request<ReportTemplate>(`/report-templates/${tpl.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(tpl),
-        });
-        const next = templates.map((t) => (t.id === tpl.id ? { ...t, ...tpl, ...updated } : t));
-        saveStore(STORAGE_KEYS.TEMPLATES, next);
-        return next.find((t) => t.id === tpl.id)!;
-      } else {
-        const created = await request<ReportTemplate>('/report-templates', {
-          method: 'POST',
-          body: JSON.stringify(tpl),
-        });
-        saveStore(STORAGE_KEYS.TEMPLATES, [...templates, created]);
-        return created;
-      }
-    } catch {
-      const saved: ReportTemplate = {
-        id: tpl.id || `tpl-${Date.now()}`,
-        name: tpl.name || 'Modelo Personalizado VetLife',
-        header_html: tpl.header_html || '',
-        body_template: tpl.body_template || '',
-        footer_html: tpl.footer_html || '',
-        is_default: tpl.is_default ?? false,
-      };
-      const next = tpl.id
-        ? templates.map((t) => (t.id === tpl.id ? saved : t))
-        : [...templates, saved];
-      saveStore(STORAGE_KEYS.TEMPLATES, next);
-      return saved;
+    if (tpl.id) {
+      return request<ReportTemplate>(`/report-templates/${tpl.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(tpl),
+      });
     }
+    return request<ReportTemplate>('/report-templates', {
+      method: 'POST',
+      body: JSON.stringify(tpl),
+    });
   },
 
   // ==========================================
-  // 8. PACIENTES, VETERINÁRIOS E ATENDIMENTOS (HU-06 a HU-09, RN-03, RN-04)
+  // 8. PACIENTES, VETERINÁRIOS, USUÁRIOS E ATENDIMENTOS
   // ==========================================
   async getPatients(): Promise<Patient[]> {
-    const local = loadStore<Patient[]>(STORAGE_KEYS.PATIENTS, SEED_PATIENTS);
-    try {
-      const remote = await request<Patient[]>('/patients');
-      if (Array.isArray(remote) && remote.length > 0) {
-        saveStore(STORAGE_KEYS.PATIENTS, remote);
-        return remote;
-      }
-    } catch {
-      // fallback
-    }
-    return local;
+    const remote = await request<Patient[]>('/patients');
+    return Array.isArray(remote) ? remote : [];
   },
 
   async savePatient(patient: Partial<Patient>): Promise<Patient> {
-    const list = loadStore<Patient[]>(STORAGE_KEYS.PATIENTS, SEED_PATIENTS);
     const ageDays = calculatePatientAgeDays(patient.birth_date, patient.age_days);
     const payload: Partial<Patient> = {
       ...patient,
@@ -1199,159 +1010,48 @@ export const api = {
       tutor_email: patient.tutor_email?.trim() || '',
     };
 
-    try {
-      if (patient.id) {
-        const updated = await request<Patient>(`/patients/${patient.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(payload),
-        });
-        const merged = { ...(list.find((p) => p.id === patient.id) || ({} as Patient)), ...payload, ...updated } as Patient;
-        saveStore(STORAGE_KEYS.PATIENTS, list.map((p) => (p.id === patient.id ? merged : p)));
-        return merged;
-      } else {
-        const created = await request<Patient>('/patients', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-        const merged: Patient = {
-          ...payload,
-          ...created,
-          id: created.id || `pat-${Date.now()}`,
-          age_days: created.age_days || ageDays,
-        } as Patient;
-        saveStore(STORAGE_KEYS.PATIENTS, [merged, ...list]);
-        return merged;
-      }
-    } catch {
-      if (patient.id) {
-        const next = list.map((p) => (p.id === patient.id ? ({ ...p, ...payload } as Patient) : p));
-        saveStore(STORAGE_KEYS.PATIENTS, next);
-        return next.find((p) => p.id === patient.id)!;
-      }
-      const created: Patient = {
-        id: `pat-${Date.now()}`,
-        name: payload.name || 'Paciente',
-        species: payload.species || 'Canino',
-        breed: payload.breed || 'SRD',
-        gender: payload.gender === 'F' ? 'F' : 'M',
-        birth_date: payload.birth_date || new Date().toISOString().slice(0, 10),
-        age_days: ageDays,
-        tutor_name: payload.tutor_name || 'Tutor Responsável',
-        tutor_phone: payload.tutor_phone || '',
-        tutor_email: payload.tutor_email || '',
-      };
-      saveStore(STORAGE_KEYS.PATIENTS, [created, ...list]);
-      return created;
-    }
-  },
-
-  async deletePatient(patientId: string): Promise<void> {
-    const list = loadStore<Patient[]>(STORAGE_KEYS.PATIENTS, SEED_PATIENTS).filter(
-      (p) => p.id !== patientId
-    );
-    saveStore(STORAGE_KEYS.PATIENTS, list);
-    try {
-      await request(`/patients/${patientId}`, { method: 'DELETE' });
-    } catch {
-      // ignore if offline
-    }
-  },
-
-  async getVets(): Promise<Vet[]> {
-    const local = loadStore<Vet[]>(STORAGE_KEYS.VETS, SEED_VETS);
-    try {
-      const remote = await request<Vet[]>('/vets');
-      if (Array.isArray(remote) && remote.length > 0) {
-        saveStore(STORAGE_KEYS.VETS, remote);
-        return remote;
-      }
-    } catch {
-      // fallback
-    }
-    return local;
-  },
-
-  async createVet(payload: Omit<Vet, 'id' | 'created_at'> & { password?: string }): Promise<Vet> {
-    try {
-      const created = await request<Vet>('/vets', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      const local = loadStore<Vet[]>(STORAGE_KEYS.VETS, SEED_VETS);
-      saveStore(STORAGE_KEYS.VETS, [created, ...local.filter((v) => v.id !== created.id)]);
-      return created;
-    } catch {
-      const local = loadStore<Array<Vet & { password_hash?: string }>>(STORAGE_KEYS.VETS, SEED_VETS);
-      const created: Vet & { password_hash?: string } = {
-        ...payload,
-        id: `vet-${Date.now().toString().slice(-6)}`,
-        ...(payload.password ? { password_hash: payload.password } : {}),
-        created_at: new Date().toISOString(),
-      };
-      saveStore(STORAGE_KEYS.VETS, [created, ...local]);
-      return created;
-    }
-  },
-
-  async updateVet(id: string, payload: Partial<Vet> & { password?: string }): Promise<Vet> {
-    try {
-      const updated = await request<Vet>(`/vets/${id}`, {
+    if (patient.id) {
+      return request<Patient>(`/patients/${patient.id}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       });
-      const local = loadStore<Vet[]>(STORAGE_KEYS.VETS, SEED_VETS);
-      saveStore(
-        STORAGE_KEYS.VETS,
-        local.map((v) => (v.id === id ? updated : v)),
-      );
-      return updated;
-    } catch {
-      const local = loadStore<Vet[]>(STORAGE_KEYS.VETS, SEED_VETS);
-      let result: Vet | null = null;
-      const next = local.map((v) => {
-        if (v.id === id) {
-          result = { ...v, ...payload, id };
-          return result;
-        }
-        return v;
-      });
-      saveStore(STORAGE_KEYS.VETS, next);
-      if (!result) throw new Error('Veterinário não encontrado.');
-      return result;
     }
+    return request<Patient>('/patients', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deletePatient(patientId: string): Promise<void> {
+    await request(`/patients/${patientId}`, { method: 'DELETE' });
+  },
+
+  async getVets(): Promise<Vet[]> {
+    const remote = await request<Vet[]>('/vets');
+    return Array.isArray(remote) ? remote : [];
+  },
+
+  async createVet(payload: Omit<Vet, 'id' | 'created_at'> & { password?: string }): Promise<Vet> {
+    return request<Vet>('/vets', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateVet(id: string, payload: Partial<Vet> & { password?: string }): Promise<Vet> {
+    return request<Vet>(`/vets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
   },
 
   async deleteVet(id: string): Promise<void> {
-    const local = loadStore<Vet[]>(STORAGE_KEYS.VETS, SEED_VETS);
-    saveStore(
-      STORAGE_KEYS.VETS,
-      local.filter((v) => v.id !== id),
-    );
-    try {
-      await request(`/vets/${id}`, { method: 'DELETE' });
-    } catch {
-      // ignore if offline
-    }
+    await request(`/vets/${id}`, { method: 'DELETE' });
   },
 
   async getUsers(): Promise<User[]> {
-    const local = loadStore<User[]>(STORAGE_KEYS.USERS, SEED_USERS);
-    try {
-      const remote = await request<User[]>('/users');
-      if (Array.isArray(remote) && remote.length > 0) {
-        saveStore(STORAGE_KEYS.USERS, remote);
-        return remote;
-      }
-    } catch {
-      // fallback
-    }
-    const current = this.getCurrentUser();
-    if (current && !local.some((u) => u.email.toLowerCase() === current.email.toLowerCase())) {
-      const merged = [current, ...local];
-      saveStore(STORAGE_KEYS.USERS, merged);
-      return merged;
-    }
-    return local;
+    const remote = await request<User[]>('/users');
+    return Array.isArray(remote) ? remote : [];
   },
 
   async createUser(payload: {
@@ -1360,28 +1060,10 @@ export const api = {
     role: 'admin' | 'biomedical';
     password: string;
   }): Promise<User> {
-    try {
-      const created = await request<User>('/users', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      const local = loadStore<User[]>(STORAGE_KEYS.USERS, SEED_USERS);
-      saveStore(STORAGE_KEYS.USERS, [...local.filter((u) => u.id !== created.id), created]);
-      return created;
-    } catch (err: any) {
-      if (err?.message && !String(err.message).includes('404')) {
-        throw err;
-      }
-      const local = loadStore<User[]>(STORAGE_KEYS.USERS, SEED_USERS);
-      const created: User = {
-        id: `usr-${Date.now().toString().slice(-6)}`,
-        name: payload.name.trim(),
-        email: payload.email.trim().toLowerCase(),
-        role: payload.role,
-      };
-      saveStore(STORAGE_KEYS.USERS, [...local, created]);
-      return created;
-    }
+    return request<User>('/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 
   async updateUser(
@@ -1391,81 +1073,26 @@ export const api = {
       email: string;
       role: 'admin' | 'biomedical';
       password: string;
-    }>,
+    }>
   ): Promise<User> {
-    try {
-      const updated = await request<User>(`/users/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-      const local = loadStore<User[]>(STORAGE_KEYS.USERS, SEED_USERS);
-      saveStore(
-        STORAGE_KEYS.USERS,
-        local.map((u) => (u.id === id ? updated : u)),
-      );
-      return updated;
-    } catch (err: any) {
-      if (err?.message && !String(err.message).includes('404')) {
-        throw err;
-      }
-      const local = loadStore<User[]>(STORAGE_KEYS.USERS, SEED_USERS);
-      let result: User | null = null;
-      const next = local.map((u) => {
-        if (u.id === id) {
-          result = {
-            ...u,
-            ...(payload.name ? { name: payload.name } : {}),
-            ...(payload.email ? { email: payload.email } : {}),
-            ...(payload.role ? { role: payload.role } : {}),
-          };
-          return result;
-        }
-        return u;
-      });
-      saveStore(STORAGE_KEYS.USERS, next);
-      if (!result) throw new Error('Usuário não encontrado.');
-      return result;
-    }
+    return request<User>(`/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
   },
 
   async deleteUser(id: string): Promise<void> {
-    const local = loadStore<User[]>(STORAGE_KEYS.USERS, SEED_USERS);
-    saveStore(
-      STORAGE_KEYS.USERS,
-      local.filter((u) => u.id !== id),
-    );
-    try {
-      await request(`/users/${id}`, { method: 'DELETE' });
-    } catch {
-      // ignore if offline
-    }
+    await request(`/users/${id}`, { method: 'DELETE' });
   },
 
   async getOrders(): Promise<Order[]> {
-    const local = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    try {
-      const remote = await request<Order[]>('/orders');
-      if (Array.isArray(remote) && remote.length > 0) {
-        saveStore(STORAGE_KEYS.ORDERS, remote);
-        return remote;
-      }
-    } catch {
-      // fallback
-    }
-    return local;
+    const remote = await request<Order[]>('/orders');
+    return Array.isArray(remote) ? remote : [];
   },
 
-  async getVetOrders(vetId?: string): Promise<Order[]> {
-    try {
-      const remote = await request<Order[]>('/vet/orders');
-      if (Array.isArray(remote) && remote.length > 0) return remote;
-    } catch {
-      // fallback
-    }
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    if (!vetId) return orders;
-    const filtered = orders.filter((o) => o.vet_id === vetId || o.vet?.id === vetId);
-    return filtered.length > 0 ? filtered : orders;
+  async getVetOrders(_vetId?: string): Promise<Order[]> {
+    const remote = await request<Order[]>('/vet/orders');
+    return Array.isArray(remote) ? remote : [];
   },
 
   async createOrder(payload: {
@@ -1476,112 +1103,18 @@ export const api = {
     order_date: string;
     notes?: string;
   }): Promise<Order> {
-    const exams = loadStore<Exam[]>(STORAGE_KEYS.EXAMS, SEED_EXAMS);
-    const tables = loadStore<PriceTable[]>(STORAGE_KEYS.PRICE_TABLES, SEED_PRICE_TABLES);
-    const vets = loadStore<Vet[]>(STORAGE_KEYS.VETS, SEED_VETS);
-    const refs = loadStore<ExamReference[]>(STORAGE_KEYS.REFERENCES, SEED_EXAM_REFERENCES);
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    const patients = loadStore<Patient[]>(STORAGE_KEYS.PATIENTS, SEED_PATIENTS);
-
-    const activeTable =
-      tables.find((t) => t.id === payload.price_table_id) ||
-      tables.find((t) => t.is_active) ||
-      tables[0];
-
-    const patient: Patient = payload.patient.id
-      ? (patients.find((p) => p.id === payload.patient.id) || {
-        ...payload.patient,
-        id: payload.patient.id,
-      })
-      : {
-        ...payload.patient,
-        id: `pat-${Date.now()}`,
-        age_days: calculatePatientAgeDays(payload.patient.birth_date, payload.patient.age_days),
-      };
-
-    if (!patients.some((p) => p.id === patient.id)) {
-      saveStore(STORAGE_KEYS.PATIENTS, [patient, ...patients]);
-    }
-
-    const vet = vets.find((v) => v.id === payload.vet_id) || vets[0];
-    const ageDays = calculatePatientAgeDays(patient.birth_date, patient.age_days);
-
-    const results = payload.exam_ids.map((examId, idx) => {
-      const ex = exams.find((e) => e.id === examId)!;
-      const priceEntry = (activeTable?.prices || activeTable?.items || []).find(
-        (p) => p.exam_id === examId
-      );
-      const appliedPrice = priceEntry ? priceEntry.price : ex?.base_price || 75;
-      const matchedRef = resolveReferenceForPatient(
-        refs,
-        examId,
-        patient.species,
-        patient.gender,
-        ageDays
-      );
-
-      return {
-        id: `res-${Date.now()}-${idx}`,
-        order_id: '',
-        exam_id: examId,
-        exam: ex,
-        exam_code: ex?.code || 'EXM',
-        exam_name: ex?.name || 'Exame',
-        section: ex?.section || 'Rotina',
-        applied_price: appliedPrice,
-        dynamic_content: {},
-        reference_snapshot: matchedRef?.reference_text_content || '',
-        matched_reference: matchedRef,
-        attachments: [],
-        input_fields: ex?.input_fields || [],
-      };
+    return request<Order>('/orders', {
+      method: 'POST',
+      body: JSON.stringify({
+        patient: payload.patient,
+        ...(payload.patient.id ? { patient_id: payload.patient.id } : {}),
+        vet_id: payload.vet_id,
+        price_table_id: payload.price_table_id,
+        exam_ids: payload.exam_ids,
+        order_date: payload.order_date,
+        notes: payload.notes,
+      }),
     });
-
-    const totalAmount = results.reduce((acc, r) => acc + (r.applied_price || 0), 0);
-    const nextNumber = String(orders.length + 1).padStart(4, '0');
-    const localOrder: Order = {
-      id: `ord-${Date.now()}`,
-      protocol_code: `VET-2026-${nextNumber}`,
-      patient_id: patient.id,
-      vet_id: vet.id,
-      price_table_id: activeTable?.id,
-      price_table_name: activeTable?.name,
-      total_amount: Number(totalAmount.toFixed(2)),
-      status: 'pendente',
-      notes: payload.notes,
-      created_at: new Date().toISOString(),
-      patient,
-      vet,
-      results,
-    };
-    localOrder.results = results.map((r) => ({ ...r, order_id: localOrder.id }));
-
-    try {
-      const remote = await request<Order>('/orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          patient,
-          patient_id: patient.id,
-          vet_id: vet.id,
-          price_table_id: activeTable?.id,
-          exam_ids: payload.exam_ids,
-          order_date: payload.order_date,
-          notes: payload.notes,
-        }),
-      });
-      const merged: Order = {
-        ...localOrder,
-        ...remote,
-        patient: remote.patient || patient,
-        vet: remote.vet || vet,
-        results: remote.results && remote.results.length > 0 ? remote.results : localOrder.results,
-      };
-      saveStore(STORAGE_KEYS.ORDERS, [merged, ...orders]);
-      return merged;
-    } catch {
-      saveStore(STORAGE_KEYS.ORDERS, [localOrder, ...orders]);
-      return localOrder;
-    }
   },
 
   async updateOrder(
@@ -1596,140 +1129,26 @@ export const api = {
       notes?: string;
     }
   ): Promise<Order> {
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    const existing = orders.find((o) => o.id === orderId);
-    if (!existing) throw new Error('Atendimento não encontrado.');
-
-    const vets = loadStore<Vet[]>(STORAGE_KEYS.VETS, SEED_VETS);
-    const allExams = loadStore<Exam[]>(STORAGE_KEYS.EXAMS, SEED_EXAMS);
-    const priceTables = loadStore<PriceTable[]>(STORAGE_KEYS.PRICE_TABLES, SEED_PRICE_TABLES);
-    const refs = loadStore<ExamReference[]>(STORAGE_KEYS.REFERENCES, SEED_EXAM_REFERENCES);
-
-    const patients = loadStore<Patient[]>(STORAGE_KEYS.PATIENTS, SEED_PATIENTS);
-    const resolvedPatient: Patient =
-      (payload.patient_id && patients.find((p) => p.id === payload.patient_id)) ||
-      (payload.patient && 'id' in payload.patient ? (payload.patient as Patient) : existing.patient!);
-
-    const vet = vets.find((v) => v.id === payload.vet_id) || existing.vet!;
-    const activeTable =
-      priceTables.find((pt) => pt.id === payload.price_table_id) || priceTables[0];
-
-    const ageDays =
-      resolvedPatient.age_days ||
-      calculatePatientAgeDays(resolvedPatient.birth_date || '2023-01-01');
-
-    const updatedResults = payload.exam_ids.map((examId, idx) => {
-      const prevRes = (existing.results || []).find((r) => r.exam_id === examId);
-      const ex = allExams.find((e) => e.id === examId);
-      const priceEntry = activeTable?.prices?.find(
-        (p) => p.exam_id === examId || p.exam_code === ex?.code
-      );
-      const appliedPrice = priceEntry ? priceEntry.price : ex?.base_price || prevRes?.applied_price || 75;
-      const matchedRef = resolveReferenceForPatient(
-        refs,
-        examId,
-        resolvedPatient.species,
-        resolvedPatient.gender,
-        ageDays
-      );
-
-      if (prevRes) {
-        return {
-          ...prevRes,
-          exam: ex || prevRes.exam,
-          exam_code: ex?.code || prevRes.exam_code || 'EXM',
-          exam_name: ex?.name || prevRes.exam_name || 'Exame',
-          section: ex?.section || prevRes.section || 'Rotina',
-          applied_price: appliedPrice,
-          matched_reference: matchedRef || prevRes.matched_reference,
-          reference_snapshot: matchedRef?.reference_text_content || prevRes.reference_snapshot || '',
-        };
-      }
-
-      return {
-        id: `res-${Date.now()}-${idx}`,
-        order_id: existing.id,
-        exam_id: examId,
-        exam: ex,
-        exam_code: ex?.code || 'EXM',
-        exam_name: ex?.name || 'Exame',
-        section: ex?.section || 'Rotina',
-        applied_price: appliedPrice,
-        dynamic_content: {},
-        reference_snapshot: matchedRef?.reference_text_content || '',
-        matched_reference: matchedRef,
-        attachments: [],
-        input_fields: ex?.input_fields || [],
-      };
+    return request<Order>(`/orders/${orderId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        patient_id: payload.patient_id,
+        vet_id: payload.vet_id,
+        price_table_id: payload.price_table_id,
+        exam_ids: payload.exam_ids,
+        order_date: payload.order_date,
+        notes: payload.notes,
+      }),
     });
-
-    const totalAmount = updatedResults.reduce((acc, r) => acc + (r.applied_price || 0), 0);
-    const updatedOrder: Order = {
-      ...existing,
-      patient_id: resolvedPatient.id,
-      patient: resolvedPatient,
-      vet_id: vet.id,
-      vet,
-      price_table_id: activeTable?.id,
-      price_table_name: activeTable?.name,
-      total_amount: Number(totalAmount.toFixed(2)),
-      notes: payload.notes,
-      created_at: payload.order_date ? `${payload.order_date}T12:00:00.000Z` : existing.created_at,
-      results: updatedResults,
-    };
-
-    try {
-      await request<Order>(`/orders/${orderId}`, {
-        method: 'PUT',
-        body: JSON.stringify(updatedOrder),
-      });
-    } catch {
-      // fallback to local store
-    }
-
-    const nextOrders = orders.map((o) => (o.id === orderId ? updatedOrder : o));
-    saveStore(STORAGE_KEYS.ORDERS, nextOrders);
-    return updatedOrder;
   },
 
   async getOrderLabels(order: Order): Promise<CollectionLabel[]> {
-    try {
-      const remote = await request<any>(`/orders/${order.id}/labels`);
-      const list = Array.isArray(remote) ? remote : remote.labels;
-      if (Array.isArray(list) && list.length > 0) return list;
-    } catch {
-      // generate locally from exam tube_type & label_qty
-    }
-
-    const exams = loadStore<Exam[]>(STORAGE_KEYS.EXAMS, SEED_EXAMS);
-    const labels: CollectionLabel[] = [];
-
-    (order.results || []).forEach((res) => {
-      const ex = exams.find((e) => e.id === res.exam_id) || res.exam;
-      const qty = ex?.label_qty || 1;
-      const tubeType = ex?.tube_type || 'Tubo Padrão';
-      const code = ex?.code || res.exam_code || 'EXM';
-
-      for (let i = 1; i <= qty; i++) {
-        labels.push({
-          label_id: `${order.protocol_code}-${code}-${i}`,
-          protocol_code: order.protocol_code,
-          barcode: `*${order.protocol_code.replace(/-/g, '')}${code.replace(/-/g, '')}${i}*`,
-          patient_name: order.patient?.name || 'Paciente',
-          species: order.patient?.species || 'Canino',
-          tutor_name: order.patient?.tutor_name || 'Tutor',
-          exam_code: code,
-          exam_name: ex?.name || res.exam_name || 'Exame',
-          section: ex?.section || res.section || 'Geral',
-          tube_type: tubeType,
-          label_index: i,
-          total_labels_for_exam: qty,
-          created_at: order.created_at,
-        });
-      }
-    });
-
-    return labels;
+    const remote = await request<any>(`/orders/${order.id}/labels`);
+    const list = Array.isArray(remote) ? remote : remote?.labels || [];
+    return list.map((lbl: any) => ({
+      ...lbl,
+      barcode: lbl.barcode || lbl.barcode_value || '',
+    }));
   },
 
   async saveExamResult(
@@ -1742,247 +1161,92 @@ export const api = {
       notes?: string;
     }
   ): Promise<Order> {
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    const updatedOrders = orders.map((ord) => {
-      if (ord.id !== orderId) return ord;
-      const results = (ord.results || []).map((r) =>
-        r.id === resultId
-          ? {
-            ...r,
-            dynamic_content: payload.dynamic_content,
-            attachments: payload.attachments ?? r.attachments,
-            reference_snapshot: payload.reference_snapshot ?? r.reference_snapshot,
-            notes: payload.notes ?? r.notes,
-          }
-          : r
-      );
-      const nextStatus = ord.status === 'concluido' ? 'concluido' : 'em_analise';
-      return { ...ord, status: nextStatus as any, results };
+    return request<Order>(`/orders/${orderId}/results/${resultId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     });
-    saveStore(STORAGE_KEYS.ORDERS, updatedOrders);
-
-    try {
-      await request(`/orders/${orderId}/results/${resultId}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      // local already saved
-    }
-
-    return updatedOrders.find((o) => o.id === orderId)!;
   },
 
   async releaseOrderReport(orderId: string, templateId?: string, resultId?: string): Promise<Order> {
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    const templates = loadStore<ReportTemplate[]>(STORAGE_KEYS.TEMPLATES, SEED_REPORT_TEMPLATES);
-    const chosenTemplate =
-      templates.find((t) => t.id === templateId) ||
-      templates.find((t) => t.is_default) ||
-      templates[0];
-
-    const releasedAt = new Date().toISOString();
-    const currentUser = this.getCurrentUser();
-
-    const updatedOrders = orders.map((ord) => {
-      if (ord.id !== orderId) return ord;
-      const updatedResults = (ord.results || []).map((r) => {
-        if (resultId && r.id !== resultId) return r;
-        return {
-          ...r,
-          released_at: releasedAt,
-          released_by: currentUser?.name || 'Corpo Biomédico VetLife',
-          pdf_url: `https://vetlifelab.com.br/laudos/${ord.protocol_code}.pdf`,
-        };
-      });
-      const allReleased =
-        updatedResults.length > 0 && updatedResults.every((r) => Boolean(r.released_at));
-      const nextOrder: Order = {
-        ...ord,
-        status: allReleased ? 'concluido' : 'em_analise',
-        released_at: allReleased ? releasedAt : ord.released_at,
-        template: chosenTemplate,
-        results: updatedResults,
-      };
-      nextOrder.rendered_report = renderReportWithDynamicTags(chosenTemplate, nextOrder);
-      return nextOrder;
+    return request<Order>(`/orders/${orderId}/release`, {
+      method: 'POST',
+      body: JSON.stringify({ template_id: templateId, result_id: resultId }),
     });
-
-    saveStore(STORAGE_KEYS.ORDERS, updatedOrders);
-
-    try {
-      const remote = await request<Order>(`/orders/${orderId}/release`, {
-        method: 'POST',
-        body: JSON.stringify({ template_id: chosenTemplate.id, result_id: resultId }),
-      });
-      if (remote) {
-        const merged = updatedOrders.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                pdf_url: remote.pdf_url ?? o.pdf_url,
-                results: (o.results || []).map((r) => {
-                  const remoteRes = (remote.results || []).find((rr) => rr.id === r.id);
-                  return remoteRes?.pdf_url ? { ...r, pdf_url: remoteRes.pdf_url } : r;
-                }),
-              }
-            : o
-        );
-        saveStore(STORAGE_KEYS.ORDERS, merged);
-        return merged.find((o) => o.id === orderId)!;
-      }
-    } catch {
-      // local already saved
-    }
-
-    return updatedOrders.find((o) => o.id === orderId)!;
   },
 
   async publishOrderPdf(order: Order): Promise<{
     pdf_url: string;
     exam_pdfs: Array<{ result_id: string; pdf_url: string }>;
   }> {
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    try {
-      const remote = await request<{
-        pdf_url: string;
-        exam_pdfs: Array<{ result_id: string; pdf_url: string }>;
-      }>(`/orders/${order.id}/publish-pdf`, {
-        method: 'POST',
-        body: JSON.stringify({ order_snapshot: order }),
-      });
-
-      const updatedOrders = orders.map((o) => {
-        if (o.id !== order.id) return o;
-        return {
-          ...o,
-          pdf_url: remote.pdf_url,
-          results: (o.results || []).map((r) => {
-            const found = remote.exam_pdfs.find((ep) => ep.result_id === r.id);
-            return found ? { ...r, pdf_url: found.pdf_url } : r;
-          }),
-        };
-      });
-      saveStore(STORAGE_KEYS.ORDERS, updatedOrders);
-      return remote;
-    } catch {
-      const fallbackUrl = order.pdf_url || `${window.location.origin}/?protocol=${order.protocol_code}`;
-      return {
-        pdf_url: fallbackUrl,
-        exam_pdfs: (order.results || []).map((r) => ({
-          result_id: r.id,
-          pdf_url: r.pdf_url || fallbackUrl,
-        })),
-      };
-    }
+    return request<{
+      pdf_url: string;
+      exam_pdfs: Array<{ result_id: string; pdf_url: string }>;
+    }>(`/orders/${order.id}/publish-pdf`, {
+      method: 'POST',
+      body: JSON.stringify({ order_snapshot: order }),
+    });
   },
 
   // ==========================================
-  // 9. DASHBOARDS OPERACIONAL E FINANCEIRO (RN-01)
+  // 9. DASHBOARDS OPERACIONAL E FINANCEIRO (100% BANCO DE DADOS)
   // ==========================================
   async getOperationalDashboard(): Promise<OperationalStats> {
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    const collections = loadStore<CollectionRequest[]>(
-      STORAGE_KEYS.COLLECTIONS,
-      SEED_COLLECTION_REQUESTS
-    );
-
-    const pending = orders.filter((o) => o.status === 'pendente').length;
-    const inAnalysis = orders.filter((o) => o.status === 'em_analise').length;
-    const completed = orders.filter((o) => o.status === 'concluido').length;
-
-    const sectionCounts: Record<string, number> = {};
-    orders.forEach((o) => {
-      (o.results || []).forEach((r) => {
-        const sec = r.section || 'Geral';
-        sectionCounts[sec] = (sectionCounts[sec] || 0) + 1;
-      });
-    });
-
+    const remote = await request<any>('/dashboard/operational');
+    const summary = remote?.summary || {};
     return {
-      today_orders: orders.length,
-      total_orders: orders.length,
-      pending_orders: pending,
-      in_analysis_orders: inAnalysis,
-      completed_orders: completed,
-      pending_collections: collections.length,
-      section_breakdown: Object.entries(sectionCounts).map(([section, count]) => ({
-        section,
-        count,
-      })),
-      recent_orders: orders.slice(0, 8),
+      today_orders: Number(summary.orders_today ?? summary.total_orders ?? 0),
+      total_orders: Number(summary.total_orders ?? 0),
+      pending_orders: Number(summary.pending_orders ?? 0),
+      in_analysis_orders: Number(summary.in_analysis_orders ?? 0),
+      completed_orders: Number(summary.completed_orders ?? 0),
+      pending_collections: Number(summary.pending_collections ?? 0),
+      section_breakdown: Array.isArray(remote?.exams_by_section) ? remote.exams_by_section : [],
+      recent_orders: Array.isArray(remote?.recent_orders) ? remote.recent_orders : [],
     };
   },
 
   async getFinancialDashboard(): Promise<FinancialStats> {
-    const orders = loadStore<Order[]>(STORAGE_KEYS.ORDERS, SEED_ORDERS);
-    const totalOrdersRevenue = orders.reduce((acc, o) => acc + (o.total_amount || 0), 0);
-    const baseMonthlyRevenue = 18450.0 + totalOrdersRevenue;
-    const operationalCosts = 6820.0;
-    const netMargin = baseMonthlyRevenue - operationalCosts;
-    const marginPercent = Number(((netMargin / baseMonthlyRevenue) * 100).toFixed(1));
+    const remote = await request<any>('/dashboard/financial');
+    const ind = remote?.indicators || {};
+    const bs = remote?.balance_sheet || {};
+    const gross = Number(ind.gross_revenue ?? bs.total_credits ?? 0);
+    const costs = Number(bs.total_debits ?? 0);
+    const net = Number(bs.net_balance ?? gross - costs);
+    const margin = Number(bs.operating_margin_percent ?? 0);
 
     return {
-      total_revenue: Number(baseMonthlyRevenue.toFixed(2)),
-      monthly_revenue: Number(baseMonthlyRevenue.toFixed(2)),
-      average_ticket: Number((totalOrdersRevenue / Math.max(1, orders.length)).toFixed(2)),
-      operational_costs: operationalCosts,
-      net_margin: Number(netMargin.toFixed(2)),
-      margin_percent: marginPercent,
-      revenue_by_table: [
-        {
-          table_name: 'Tabela Particular & Clínicas 2026',
-          partner: 'Atendimento Direto / Clínicas Gerais',
-          count: 84,
-          total: 11890.0,
-        },
-        {
-          table_name: 'Convênio Parceiro — Rede PetCare & VetVida (-15%)',
-          partner: 'Rede Credenciada PetCare / VetVida',
-          count: 58,
-          total: 6560.0 + totalOrdersRevenue,
-        },
-      ],
-      top_exams: [
-        { exam_code: 'HEMO-01', exam_name: 'Hemograma Completo Veterinário', count: 96, revenue: 6528.0 },
-        { exam_code: 'BIOQ-01', exam_name: 'Perfil Bioquímico Renal e Hepático', count: 64, revenue: 7360.0 },
-        { exam_code: 'MICRO-01', exam_name: 'Urocultura Quantitativa com Antibiograma', count: 22, revenue: 3190.0 },
-        { exam_code: 'PARA-01', exam_name: 'Coproparasitológico Funcional', count: 29, revenue: 1595.0 },
-      ],
-      ledger_entries: [
-        {
-          id: 'ldg-1',
-          date: '2026-04-13',
-          description: 'Faturamento Rotina Laboratorial — Tabela Particular 2026',
-          type: 'entrada',
-          category: 'Exames Laboratoriais',
-          amount: 11890.0,
-        },
-        {
-          id: 'ldg-2',
-          date: '2026-04-13',
-          description: 'Repasse Convênio Clínicas Parceiras (PetCare & VetVida)',
-          type: 'entrada',
-          category: 'Convênios Veterinários',
-          amount: Number((6560.0 + totalOrdersRevenue).toFixed(2)),
-        },
-        {
-          id: 'ldg-3',
-          date: '2026-04-10',
-          description: 'Insumos Diagnósticos, Reagentes Bioquímicos e Tubos EDTA/Gel',
-          type: 'saida',
-          category: 'Custos Operacionais / Insumos',
-          amount: 3920.0,
-        },
-        {
-          id: 'ldg-4',
-          date: '2026-04-08',
-          description: 'Logística de Coleta Externa Motorizada e Controle de Qualidade',
-          type: 'saida',
-          category: 'Logística & Qualidade',
-          amount: 2900.0,
-        },
-      ],
+      total_revenue: gross,
+      monthly_revenue: gross,
+      average_ticket: Number(ind.average_ticket ?? 0),
+      operational_costs: costs,
+      net_margin: net,
+      margin_percent: margin,
+      revenue_by_table: Array.isArray(remote?.revenue_by_price_table)
+        ? remote.revenue_by_price_table.map((row: any) => ({
+            table_name: row.table_name || 'Tabela Padrão',
+            partner: row.partner || 'Atendimento Laboratorial',
+            count: Number(row.orders_count ?? row.count ?? 0),
+            total: Number(row.total_revenue ?? row.total ?? 0),
+          }))
+        : [],
+      top_exams: Array.isArray(remote?.revenue_by_exam)
+        ? remote.revenue_by_exam.map((row: any) => ({
+            exam_code: row.exam_code || 'EXM',
+            exam_name: row.exam_name || 'Exame',
+            count: Number(row.quantity ?? row.count ?? 0),
+            revenue: Number(row.revenue ?? 0),
+          }))
+        : [],
+      ledger_entries: Array.isArray(bs.entries)
+        ? bs.entries.map((entry: any, idx: number) => ({
+            id: `ldg-${idx + 1}`,
+            date: new Date().toISOString().slice(0, 10),
+            description: entry.category || 'Lançamento',
+            type: entry.type === 'credit' ? 'entrada' : 'saida',
+            category: bs.period || 'Operacional',
+            amount: Number(entry.amount ?? 0),
+          }))
+        : [],
     };
   },
 };

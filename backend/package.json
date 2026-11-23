@@ -4,11 +4,13 @@
   "description": "Backend API da Plataforma VetLife - Clean Architecture & SOLID",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "tsc && node dist/src/server.js",
+    "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsc && node dist/src/tests/api.spec.js"
+    "test": "tsc && node dist/src/tests/crud.unit.spec.js && node dist/src/tests/api.spec.js",
+    "test:unit": "tsc && node dist/src/tests/crud.unit.spec.js",
+    "test:integration": "tsc && node dist/src/tests/api.spec.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

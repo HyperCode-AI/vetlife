@@ -302,6 +302,22 @@ async function runIntegrationTests(): Promise<void> {
   assert.strictEqual(examsListRes.status, 200);
   const hemogramaExam = examsListRes.json.data.find((e: any) => e.code === '057');
   assert.ok(hemogramaExam);
+  assert.strictEqual(
+    hemogramaExam.price,
+    undefined,
+    'Biomédico não deve visualizar preços de exames (RBAC ocultação de valores)'
+  );
+  const forbiddenPriceTablesBiomed = await invokeApp(
+    'GET',
+    '/price-tables',
+    undefined,
+    biomedToken
+  );
+  assert.strictEqual(
+    forbiddenPriceTablesBiomed.status,
+    403,
+    'Biomédico deve receber 403 ao consultar tabelas de preços'
+  );
 
   const newOrder = await invokeApp(
     'POST',
@@ -325,6 +341,11 @@ async function runIntegrationTests(): Promise<void> {
   assert.strictEqual(newOrder.status, 201);
   const createdOrder = newOrder.json.data;
   assert.ok(createdOrder.protocol_code.startsWith('VET-2026-'));
+  assert.strictEqual(
+    createdOrder.total_amount,
+    0,
+    'Biomédico não deve visualizar valor total do atendimento'
+  );
 
   // Etiquetas de coleta
   const labelsRes = await invokeApp(
@@ -371,10 +392,20 @@ async function runIntegrationTests(): Promise<void> {
     '✅ [7/10] HU-06 a HU-09 (Atendimento, etiquetas, campos dinâmicos, anexos e liberação) validados'
   );
 
-  // 8. HU-10 & HU-11: Portal do Veterinário (Login via E-mail + CRMV e listagem de pedidos)
+  // 8. HU-10 & HU-11: Portal do Veterinário (Login via E-mail + Senha e bloqueio de acesso apenas por CRMV)
+  const vetLoginByCrmvOnly = await invokeApp('POST', '/auth/vet-login', {
+    email: 'carlos.silva@clinicapetcare.com.br',
+    password: 'CRMV-SP 45890',
+  });
+  assert.strictEqual(
+    vetLoginByCrmvOnly.status,
+    401,
+    'Login no Portal do Veterinário apenas com CRMV como senha deve ser bloqueado (401)'
+  );
+
   const vetLogin = await invokeApp('POST', '/auth/vet-login', {
     email: 'carlos.silva@clinicapetcare.com.br',
-    crmv: 'CRMV-SP 45890',
+    password: 'Vet@2026',
   });
   assert.strictEqual(vetLogin.status, 200);
   const vetToken: string = vetLogin.json.token;
@@ -420,16 +451,30 @@ async function runIntegrationTests(): Promise<void> {
     '✅ [9/10] HU-12 & RN-02 (Consulta pública do Tutor por protocolo sem senha) validada'
   );
 
-  // 10. Solicitação de Coleta na Landing Page
+  // 10. Solicitação de Coleta na Landing Page (CRMV obrigatório)
+  const collectionReqNoCrmv = await invokeApp('POST', '/public/collection-requests', {
+    clinic_or_tutor_name: 'Tutor Sem CRMV',
+    phone: '(11) 97711-2233',
+    email: 'tutor@email.com',
+    address: 'Av. Paulista, 1500 - Bela Vista, São Paulo/SP',
+  });
+  assert.strictEqual(
+    collectionReqNoCrmv.status,
+    400,
+    'Solicitação de coleta sem CRMV deve ser bloqueada (400)'
+  );
+
   const collectionReq = await invokeApp('POST', '/public/collection-requests', {
     clinic_or_tutor_name: 'Clínica Amigo Fiel',
+    crmv: 'CRMV-SP 41200',
     phone: '(11) 97711-2233',
     email: 'contato@amigofielvet.com.br',
     address: 'Av. Paulista, 1500 - Bela Vista, São Paulo/SP',
     notes: 'Coleta de 4 amostras urgentes até as 14h.',
   });
   assert.strictEqual(collectionReq.status, 201);
-  console.log('✅ [10/10] Solicitação de coleta pública validada com sucesso!');
+  assert.strictEqual(collectionReq.json.data.crmv, 'CRMV-SP 41200');
+  console.log('✅ [10/10] Solicitação de coleta pública (com CRMV obrigatório) validada com sucesso!');
 
   console.log('\n🎉 TODOS OS TESTES DE INTEGRAÇÃO DO BACKEND PASSARAM COM SUCESSO!');
 }

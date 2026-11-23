@@ -26,17 +26,53 @@ export function createApiV1Router(): Router {
   router.get('/public/protocol/:protocolCode', controller.getPublicProtocolReport);
   router.get('/public/pdfs', controller.downloadPublicPdf);
   router.post('/public/collection-requests', controller.createCollectionRequest);
+  router.post(
+    '/collection-requests',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.createCollectionRequest
+  );
   router.get(
     '/collection-requests',
     authenticate,
     requireRole('admin', 'biomedical'),
     controller.listCollectionRequests
   );
+  router.get(
+    '/collection-requests/:id',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.getCollectionRequestById
+  );
   router.patch(
     '/collection-requests/:id/status',
     authenticate,
     requireRole('admin', 'biomedical'),
     controller.updateCollectionRequestStatus
+  );
+  router.put(
+    '/collection-requests/:id/status',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.updateCollectionRequestStatus
+  );
+  router.patch(
+    '/collection-requests/:id',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.updateCollectionRequest
+  );
+  router.put(
+    '/collection-requests/:id',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.updateCollectionRequest
+  );
+  router.delete(
+    '/collection-requests/:id',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.deleteCollectionRequest
   );
 
   // ===========================================================================
@@ -95,17 +131,17 @@ export function createApiV1Router(): Router {
     controller.deleteExamField
   );
 
-  // Price Tables with Effective Dates (HU-03, RN-04)
+  // Price Tables with Effective Dates (HU-03, RN-04) — Admin Only (RBAC Price Hiding)
   router.get(
     '/price-tables',
     authenticate,
-    requireRole('admin', 'biomedical'),
+    requireRole('admin'),
     controller.listPriceTables
   );
   router.get(
     '/price-tables/active',
     authenticate,
-    requireRole('admin', 'biomedical'),
+    requireRole('admin'),
     controller.getActivePriceTable
   );
   router.post(
@@ -171,6 +207,12 @@ export function createApiV1Router(): Router {
     authenticate,
     requireRole('admin'),
     controller.updateReportTemplate
+  );
+  router.delete(
+    '/report-templates/:id',
+    authenticate,
+    requireRole('admin'),
+    controller.deleteReportTemplate
   );
 
   // ===========================================================================
@@ -270,11 +312,29 @@ export function createApiV1Router(): Router {
     requireRole('admin', 'biomedical'),
     controller.createOrder
   );
+  router.put(
+    '/orders/:id',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.updateOrder
+  );
+  router.delete(
+    '/orders/:id',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.deleteOrder
+  );
   router.get(
     '/orders/:id/labels',
     authenticate,
     requireRole('admin', 'biomedical'),
     controller.getOrderLabels
+  );
+  router.get(
+    '/orders/:id/labels/pdf',
+    authenticate,
+    requireRole('admin', 'biomedical'),
+    controller.getOrderLabelsPdf
   );
 
   router.put(

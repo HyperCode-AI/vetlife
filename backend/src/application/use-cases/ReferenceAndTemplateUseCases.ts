@@ -52,7 +52,7 @@ export class ReferenceAndTemplateUseCases {
   }): Promise<ExamReference> {
     if (!input.exam_id || !input.species || !input.reference_text_content) {
       throw new ValidationError(
-        'Exame, espécie e texto de referência são obrigatórios (HU-04).'
+        'Selecione o exame, a espécie e informe os valores de referência.'
       );
     }
 
@@ -94,7 +94,7 @@ export class ReferenceAndTemplateUseCases {
     is_default?: boolean;
   }): Promise<ReportTemplate> {
     if (!input.name) {
-      throw new ValidationError('O nome do modelo de laudo é obrigatório (HU-05).');
+      throw new ValidationError('Informe um nome para o modelo de laudo.');
     }
 
     return this.templateRepo.createReportTemplate({
@@ -112,5 +112,9 @@ export class ReferenceAndTemplateUseCases {
     input: Partial<Omit<ReportTemplate, 'id' | 'created_at'>>
   ): Promise<ReportTemplate> {
     return this.templateRepo.updateReportTemplate(id, input);
+  }
+
+  public async deleteReportTemplate(id: string): Promise<void> {
+    return this.templateRepo.deleteReportTemplate(id);
   }
 }

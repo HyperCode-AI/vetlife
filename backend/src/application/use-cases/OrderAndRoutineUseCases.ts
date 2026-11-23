@@ -40,7 +40,7 @@ export class OrderAndRoutineUseCases {
   }): Promise<Patient> {
     if (!input.name || !input.species || !input.tutor_name) {
       throw new ValidationError(
-        'Nome do animal, espécie e nome do tutor são obrigatórios (HU-06).'
+        'Preencha o nome do animal, a espécie e o nome do tutor para cadastrar o paciente.'
       );
     }
 
@@ -86,22 +86,37 @@ export class OrderAndRoutineUseCases {
     clinic_name?: string;
     email: string;
     phone?: string;
+    password_hash?: string;
   }): Promise<Vet> {
-    if (!input.name || !input.crmv || !input.email) {
-      throw new ValidationError('Nome, CRMV e e-mail do veterinário são obrigatórios.');
+    if (!input.name || !input.email) {
+      throw new ValidationError('Nome e e-mail do veterinário são obrigatórios.');
+    }
+    if (!input.crmv || input.crmv.trim().length < 3) {
+      throw new ValidationError('O registro CRMV é obrigatório para cadastrar médicos veterinários.');
     }
 
     return this.repo.createVet({
       name: input.name,
-      crmv: input.crmv,
+      crmv: input.crmv.trim().toUpperCase(),
       clinic_name: input.clinic_name || 'Clínica Veterinária Parceira',
       email: input.email,
       phone: input.phone || '(11) 3000-0000',
+      ...(input.password_hash ? { password_hash: input.password_hash } : {}),
     });
   }
 
   public async updateVet(id: string, input: Partial<Vet>): Promise<Vet> {
-    return this.repo.updateVet(id, input);
+    if (input.crmv !== undefined && input.crmv.trim().length < 3) {
+      throw new ValidationError('O registro CRMV não pode ficar vazio.');
+    }
+    return this.repo.updateVet(id, {
+      ...input,
+      ...(input.crmv !== undefined ? { crmv: input.crmv.trim().toUpperCase() } : {}),
+    });
+  }
+
+  public async deleteVet(id: string): Promise<void> {
+    return this.repo.deleteVet(id);
   }
 
   // ===========================================================================
@@ -167,7 +182,7 @@ export class OrderAndRoutineUseCases {
 
     if (!resolvedPatientId) {
       throw new ValidationError(
-        'É necessário informar patient_id ou os dados de cadastro do paciente.'
+        'Selecione um paciente cadastrado ou preencha os dados de um novo paciente para continuar.'
       );
     }
 
@@ -196,7 +211,12 @@ export class OrderAndRoutineUseCases {
       input.price_table_id
     );
 
-    const nextSeq = existingOrders.length + 1;
+    const maxSeq = existingOrders.reduce((max, o) => {
+      const m = String(o.protocol_code || '').match(/(\d+)$/);
+      const num = m ? Number(m[1]) : 0;
+      return num > max ? num : max;
+    }, existingOrders.length);
+    const nextSeq = maxSeq + 1;
     const protocolCode = `VET-2026-${String(nextSeq).padStart(4, '0')}`;
 
     let totalAmount = 0;
@@ -246,6 +266,106 @@ export class OrderAndRoutineUseCases {
     );
   }
 
+  public async updateOrder(
+    orderId: string,
+    input: {
+      patient_id?: string;
+      vet_id?: string;
+      exam_ids?: string[];
+      price_table_id?: string | null;
+      order_date?: string;
+      notes?: string;
+      status?: Order['status'];
+    }
+  ): Promise<Order> {
+    const existing = await this.getOrderById(orderId);
+    const targetPatientId = input.patient_id || existing.patient_id;
+    const patient = await this.repo.findPatientById(targetPatientId);
+    if (!patient) {
+      throw new NotFoundError(`Paciente '${targetPatientId}' não encontrado.`);
+    }
+
+    const vets = await this.repo.listVets();
+    const vet =
+      (input.vet_id ? vets.find((v) => v.id === input.vet_id) : vets.find((v) => v.id === existing.vet_id)) ||
+      vets[0];
+
+    let resultsPayload: Array<Omit<ExamResult, 'id' | 'order_id'>> | undefined;
+    let totalAmount = existing.total_amount;
+    let resolvedTableId = input.price_table_id !== undefined ? input.price_table_id : existing.price_table_id;
+    let resolvedTableName = existing.price_table_name;
+
+    if (Array.isArray(input.exam_ids) && input.exam_ids.length > 0) {
+      const [priceTables, exams, allRefs] = await Promise.all([
+        this.repo.listPriceTables(),
+        this.repo.listExams(),
+        this.repo.listExamReferences(),
+      ]);
+
+      const pricing = this.pricingService.resolveActivePriceTable(
+        priceTables,
+        exams,
+        input.order_date,
+        vet?.clinic_name,
+        resolvedTableId
+      );
+
+      resolvedTableId = pricing.activeTable?.id || null;
+      resolvedTableName = pricing.activeTable?.name || 'Tabela Geral VetLife 2026';
+      totalAmount = 0;
+      resultsPayload = [];
+
+      for (const examId of input.exam_ids) {
+        const exam = exams.find((e) => e.id === examId || e.code === examId);
+        if (!exam) {
+          throw new NotFoundError(`Exame '${examId}' não encontrado no catálogo.`);
+        }
+        const prev = (existing.results || []).find((r) => r.exam_id === exam.id);
+        const appliedPrice = Number(pricing.priceByExamId[exam.id] ?? exam.base_price ?? 68);
+        totalAmount += appliedPrice;
+
+        const matchedRefs = this.referenceResolver.resolveReferencesForPatient(
+          allRefs,
+          exam.id,
+          patient.species,
+          patient.gender,
+          patient.age_days || 365
+        );
+
+        resultsPayload.push({
+          exam_id: exam.id,
+          applied_price: appliedPrice,
+          dynamic_content: prev?.dynamic_content || {},
+          reference_snapshot:
+            prev?.reference_snapshot ||
+            this.referenceResolver.buildReferenceSnapshotText(matchedRefs),
+          attachments: prev?.attachments || [],
+          pdf_url: prev?.pdf_url || null,
+          released_at: prev?.released_at || null,
+          released_by: prev?.released_by || null,
+        });
+      }
+    }
+
+    return this.repo.updateOrder(
+      orderId,
+      {
+        patient_id: patient.id,
+        vet_id: vet?.id || existing.vet_id,
+        price_table_id: resolvedTableId,
+        price_table_name: resolvedTableName,
+        total_amount: Number(totalAmount.toFixed(2)),
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      },
+      resultsPayload
+    );
+  }
+
+  public async deleteOrder(orderId: string): Promise<void> {
+    return this.repo.deleteOrder(orderId);
+  }
+
   public async generateOrderLabels(orderId: string): Promise<{
     order_id: string;
     protocol_code: string;
@@ -275,6 +395,7 @@ export class OrderAndRoutineUseCases {
           exam_code: exam.code,
           exam_name: exam.name,
           section: exam.section,
+          material: exam.material || exam.tube_type,
           tube_type: exam.tube_type,
           label_index: i,
           total_labels_for_exam: qty,

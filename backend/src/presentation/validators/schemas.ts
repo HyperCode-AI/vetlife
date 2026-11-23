@@ -5,20 +5,10 @@ export const internalLoginSchema = z.object({
   password: z.string().min(3, 'Informe a senha de acesso.'),
 });
 
-export const vetLoginSchema = z
-  .object({
-    email: z.string().email('Informe o e-mail cadastrado do médico veterinário.'),
-    password: z.string().optional(),
-    crmv: z.string().optional(),
-  })
-  .refine(
-    (data) =>
-      (data.password && data.password.trim().length >= 3) ||
-      (data.crmv && data.crmv.trim().length >= 3),
-    {
-      message: 'Informe a senha de acesso ou o número do CRMV.',
-    }
-  );
+export const vetLoginSchema = z.object({
+  email: z.string().email('Informe o e-mail cadastrado do médico veterinário.'),
+  password: z.string().min(3, 'Informe a senha de acesso do médico veterinário.'),
+});
 
 export const examInputFieldSchema = z.object({
   id: z.string().optional(),
@@ -87,7 +77,8 @@ export const createReportTemplateSchema = z.object({
 });
 
 export const createCollectionRequestSchema = z.object({
-  clinic_or_tutor_name: z.string().min(2, 'Informe o nome da clínica ou tutor.'),
+  clinic_or_tutor_name: z.string().min(2, 'Informe o nome do médico veterinário ou clínica.'),
+  crmv: z.string().min(3, 'O número do CRMV do médico veterinário é obrigatório para solicitar coleta.'),
   phone: z.string().min(6, 'Informe o telefone para contato.'),
   email: z.string().optional().default(''),
   address: z.string().min(5, 'Informe o endereço de coleta.'),

@@ -27,7 +27,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
   const token = extractTokenFromHeader(req);
   if (!token) {
     return next(
-      new UnauthorizedError('Token de autenticação ausente. Faça login para continuar.')
+      new UnauthorizedError('Faça login para acessar esta área.')
     );
   }
 
@@ -36,7 +36,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     req.authUser = decoded;
     return next();
   } catch {
-    return next(new UnauthorizedError('Token JWT inválido ou expirado.'));
+    return next(new UnauthorizedError('Sua sessão expirou. Faça login novamente para continuar.'));
   }
 }
 
@@ -66,15 +66,13 @@ export function optionalAuthenticate(
 export function requireRole(...allowedRoles: AuthRole[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.authUser) {
-      return next(new UnauthorizedError('Autenticação necessária para acessar este recurso.'));
+      return next(new UnauthorizedError('Faça login para acessar este recurso.'));
     }
 
     if (!allowedRoles.includes(req.authUser.role)) {
       return next(
         new ForbiddenError(
-          `Acesso restrito ao perfil [${allowedRoles.join(
-            ', '
-          )}]. Seu perfil atual ('${req.authUser.role}') não possui permissão (RN-01).`
+          'Você não tem permissão para realizar esta ação. Caso precise de acesso, fale com um administrador.'
         )
       );
     }

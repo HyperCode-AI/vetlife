@@ -48,7 +48,7 @@ export class PriceTableUseCases {
   }): Promise<PriceTable> {
     if (!input.name || !input.start_date || !input.end_date) {
       throw new ValidationError(
-        'Nome da tabela, data de início e data de término de vigência são obrigatórios (HU-03).'
+        'Informe o nome da tabela e as datas de início e fim da vigência.'
       );
     }
 

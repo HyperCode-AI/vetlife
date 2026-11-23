@@ -173,6 +173,7 @@ export interface SampleLabel {
   exam_code: string;
   exam_name: string;
   section: string;
+  material?: string;
   tube_type: string;
   label_index: number;
   total_labels_for_exam: number;
@@ -184,6 +185,7 @@ export type CollectionRequestStatus = 'pendente' | 'agendada' | 'concluida' | 'c
 export interface CollectionRequest {
   id: string;
   clinic_or_tutor_name: string;
+  crmv: string;
   phone: string;
   email: string;
   address: string;

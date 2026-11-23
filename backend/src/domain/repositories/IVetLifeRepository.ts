@@ -78,6 +78,7 @@ export interface IReportTemplateRepository {
     id: string,
     data: Partial<Omit<ReportTemplate, 'id' | 'created_at'>>
   ): Promise<ReportTemplate>;
+  deleteReportTemplate(id: string): Promise<void>;
 }
 
 export interface IPatientRepository {
@@ -111,6 +112,12 @@ export interface IOrderRepository {
     orderData: Omit<Order, 'id' | 'created_at' | 'results' | 'patient' | 'vet'>,
     resultsData: Array<Omit<ExamResult, 'id' | 'order_id'>>
   ): Promise<Order>;
+  updateOrder(
+    orderId: string,
+    orderData: Partial<Omit<Order, 'id' | 'created_at' | 'results' | 'patient' | 'vet'>>,
+    resultsData?: Array<Omit<ExamResult, 'id' | 'order_id'>>
+  ): Promise<Order>;
+  deleteOrder(orderId: string): Promise<void>;
   updateOrderStatus(
     orderId: string,
     status: Order['status'],
@@ -126,6 +133,7 @@ export interface IOrderRepository {
 
 export interface ICollectionRequestRepository {
   listCollectionRequests(): Promise<CollectionRequest[]>;
+  findCollectionRequestById(id: string): Promise<CollectionRequest | null>;
   createCollectionRequest(
     data: Omit<CollectionRequest, 'id' | 'created_at' | 'status'> & {
       status?: CollectionRequest['status'];
@@ -137,6 +145,11 @@ export interface ICollectionRequestRepository {
     scheduledDate?: string,
     scheduledTime?: string
   ): Promise<CollectionRequest>;
+  updateCollectionRequest(
+    id: string,
+    data: Partial<Omit<CollectionRequest, 'id' | 'created_at'>>
+  ): Promise<CollectionRequest>;
+  deleteCollectionRequest(id: string): Promise<void>;
 }
 
 export interface IVetLifeRepository

@@ -29,6 +29,9 @@ import {
   Calendar,
   RefreshCw,
   ChevronDown,
+  ChevronRight,
+  ArrowLeft,
+  X,
 } from 'lucide-react';
 import { SearchableSelectField } from '../components/SearchablePickerModal';
 import { ExamMultiPicker } from '../components/ExamMultiPicker';
@@ -60,17 +63,96 @@ import {
 import { RichHtmlEditor } from '../components/RichHtmlEditor';
 import {
   downloadOrderPdf,
+  downloadThermalLabelsPdf,
   printCollectionLabelsWindow,
 } from '../utils/pdfGenerator';
 
-type InternalTab = 'operational' | 'patients' | 'routine' | 'launch' | 'settings' | 'financial';
-type SettingsSubTab = 'exams' | 'fields' | 'prices' | 'references' | 'templates' | 'users' | 'vets';
+export type InternalTab =
+  | 'operational'
+  | 'patients'
+  | 'routine'
+  | 'launch'
+  | 'settings'
+  | 'financial';
+export type RoutineSubTab = 'list' | 'new' | 'collections';
+export type SettingsSubTab =
+  | 'exams'
+  | 'fields'
+  | 'prices'
+  | 'references'
+  | 'templates'
+  | 'users'
+  | 'vets';
 
 interface InternalPanelProps {
+  activeTab?: InternalTab;
+  routineSubTab?: RoutineSubTab;
+  settingsTab?: SettingsSubTab;
+  tabChangeNonce?: number;
+  openNewOrderNonce?: number;
+  onTabChange?: (tab: InternalTab) => void;
+  onRoutineSubTabChange?: (sub: RoutineSubTab) => void;
+  onSettingsTabChange?: (sub: SettingsSubTab) => void;
   onLogout?: () => void;
 }
 
-export const InternalPanel: React.FC<InternalPanelProps> = () => {
+const getTodayIsoDate = (): string => {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const resolveFirstActivePriceTableId = (
+  tables: PriceTable[],
+  targetDate: string = getTodayIsoDate()
+): string => {
+  const dateStr = targetDate || getTodayIsoDate();
+  const vigentes = tables.filter(
+    (pt) => pt.is_active && pt.start_date <= dateStr && pt.end_date >= dateStr
+  );
+  if (vigentes.length > 0) {
+    return vigentes[0].id;
+  }
+  const fallback = tables.find((pt) => pt.is_active) || tables[0];
+  return fallback?.id || '';
+};
+
+const createEmptyPatientForm = () => ({
+  name: '',
+  species: '',
+  breed: '',
+  gender: '' as '' | 'M' | 'F',
+  birth_date: '',
+  age_months: '' as number | '',
+  tutor_name: '',
+  tutor_phone: '',
+  tutor_email: '',
+});
+
+const createEmptyPatientCrudForm = () => ({
+  name: '',
+  species: '',
+  breed: '',
+  gender: '' as '' | 'M' | 'F',
+  birth_date: '',
+  age_months: '' as number | '',
+  tutor_name: '',
+  tutor_phone: '',
+  tutor_email: '',
+});
+
+export const InternalPanel: React.FC<InternalPanelProps> = ({
+  activeTab: externalActiveTab,
+  routineSubTab: externalRoutineSubTab,
+  settingsTab: externalSettingsTab,
+  tabChangeNonce,
+  openNewOrderNonce,
+  onTabChange,
+  onRoutineSubTabChange,
+  onSettingsTabChange,
+}) => {
   const [user, setUser] = useState<User | null>(() =>
     api.hasValidSession('internal') ? api.getCurrentUser() : null
   );
@@ -78,9 +160,34 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
   const [loginPassword, setLoginPassword] = useState('admin123');
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<InternalTab>('operational');
-  const [settingsTab, setSettingsTab] = useState<SettingsSubTab>('exams');
+  const [activeTabState, setActiveTabState] = useState<InternalTab>(
+    externalActiveTab || 'operational'
+  );
+  const activeTab = activeTabState;
+  const setActiveTab = (nextTab: InternalTab) => {
+    setActiveTabState(nextTab);
+    onTabChange?.(nextTab);
+  };
+  const [settingsTabState, setSettingsTabState] = useState<SettingsSubTab>(
+    externalSettingsTab || 'exams'
+  );
+  const settingsTab = settingsTabState;
+  const setSettingsTab = (nextSub: SettingsSubTab) => {
+    setSettingsTabState(nextSub);
+    onSettingsTabChange?.(nextSub);
+  };
   const [toast, setToast] = useState<string | null>(null);
+
+  type NavHistorySnapshot = {
+    tab: InternalTab;
+    routineSubTab: 'list' | 'new' | 'collections';
+    launchSubView: 'list' | 'editor';
+    settingsTab: SettingsSubTab;
+    selectedOrderId?: string;
+    selectedResultId?: string;
+    label: string;
+  };
+  const [navHistory, setNavHistory] = useState<NavHistorySnapshot[]>([]);
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [priceTables, setPriceTables] = useState<PriceTable[]>([]);
@@ -111,22 +218,13 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
   const [opStats, setOpStats] = useState<OperationalStats | null>(null);
   const [finStats, setFinStats] = useState<FinancialStats | null>(null);
 
-  const [orderDate, setOrderDate] = useState('2026-04-13');
-  const [selectedTableId, setSelectedTableId] = useState('pt-2026-padrao');
-  const [selectedVetId, setSelectedVetId] = useState('vet-01');
+  const [orderDate, setOrderDate] = useState<string>(() => getTodayIsoDate());
+  const [selectedTableId, setSelectedTableId] = useState('');
+  const [selectedVetId, setSelectedVetId] = useState('');
   const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
-  const [patientForm, setPatientForm] = useState({
-    name: '',
-    species: 'Canino',
-    breed: '',
-    gender: 'M' as 'M' | 'F',
-    birth_date: '2023-05-10',
-    age_months: 35,
-    tutor_name: '',
-    tutor_phone: '',
-    tutor_email: '',
-    notes: '',
-  });
+  const [orderNotes, setOrderNotes] = useState('');
+  const [orderModalResetKey, setOrderModalResetKey] = useState(0);
+  const [patientForm, setPatientForm] = useState(createEmptyPatientForm);
   const [labelsModal, setLabelsModal] = useState<{
     order: Order;
     labels: CollectionLabel[];
@@ -142,7 +240,6 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
 
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const [examSearchQuery, setExamSearchQuery] = useState<string>('');
-  const [routineExamSearch, setRoutineExamSearch] = useState<string>('');
   const [newExamForm, setNewExamForm] = useState({
     code: '',
     name: '',
@@ -216,24 +313,23 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
 
   const [patientSearchQuery, setPatientSearchQuery] = useState('');
   const [patientSpeciesFilter, setPatientSpeciesFilter] = useState('todos');
-  const [patientCrudForm, setPatientCrudForm] = useState({
-    name: '',
-    species: 'Canino',
-    breed: '',
-    gender: 'M' as 'M' | 'F',
-    birth_date: '',
-    age_months: '' as number | '',
-    tutor_name: '',
-    tutor_phone: '',
-    tutor_email: '',
-  });
+  const [patientCrudForm, setPatientCrudForm] = useState(createEmptyPatientCrudForm);
   const [patientIncludeExamOrder, setPatientIncludeExamOrder] = useState(false);
   const [patientSelectedExamIds, setPatientSelectedExamIds] = useState<string[]>([]);
-  const [patientExamSearch, setPatientExamSearch] = useState('');
+  const [patientOrderVetId, setPatientOrderVetId] = useState('');
+  const [patientOrderTableId, setPatientOrderTableId] = useState('');
+  const [patientOrderModalKey, setPatientOrderModalKey] = useState(0);
   const [patientOrderNotes, setPatientOrderNotes] = useState('');
 
   // Estados de Atendimentos / Rotina (Listagem + Novo Atendimento vinculado a paciente + Solicitações de Coleta)
-  const [routineSubTab, setRoutineSubTab] = useState<'list' | 'new' | 'collections'>('list');
+  const [routineSubTabState, setRoutineSubTabState] = useState<RoutineSubTab>(
+    externalRoutineSubTab || 'list'
+  );
+  const routineSubTab = routineSubTabState;
+  const setRoutineSubTab = (nextSub: RoutineSubTab) => {
+    setRoutineSubTabState(nextSub);
+    onRoutineSubTabChange?.(nextSub);
+  };
   const [collectionRequests, setCollectionRequests] = useState<CollectionRequest[]>([]);
   const [collectionSearch, setCollectionSearch] = useState('');
   const [collectionStatusFilter, setCollectionStatusFilter] = useState('todos');
@@ -251,6 +347,19 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
     collection: CollectionRequest;
     date: string;
     time: string;
+  } | null>(null);
+  const [collectionCrudModal, setCollectionCrudModal] = useState<{
+    id?: string;
+    clinic_or_tutor_name: string;
+    crmv: string;
+    phone: string;
+    email: string;
+    address: string;
+    preferred_date: string;
+    scheduled_date: string;
+    scheduled_time: string;
+    status: 'pendente' | 'agendada' | 'concluida' | 'cancelada';
+    notes: string;
   } | null>(null);
   const [openOrderExamsKey, setOpenOrderExamsKey] = useState<string | null>(null);
   const [opPage, setOpPage] = useState(1);
@@ -293,6 +402,137 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
   };
+
+  const isAdmin = user?.role === 'admin';
+
+  const getTabLabel = (tab: InternalTab): string => {
+    switch (tab) {
+      case 'operational':
+        return 'Dashboard Operacional';
+      case 'patients':
+        return 'Pacientes';
+      case 'routine':
+        return 'Atendimentos / Rotina';
+      case 'launch':
+        return 'Lançamento de Laudos';
+      case 'settings':
+        return 'Configurações';
+      case 'financial':
+        return 'Dashboard Financeiro';
+      default:
+        return 'Painel';
+    }
+  };
+
+  const getSubScreenLabel = (
+    tab: InternalTab,
+    rSub: 'list' | 'new' | 'collections',
+    lView: 'list' | 'editor',
+    sTab: SettingsSubTab
+  ): string => {
+    if (tab === 'routine') {
+      if (rSub === 'collections') return 'Solicitações de Coleta';
+      return 'Fila de Atendimentos';
+    }
+    if (tab === 'launch') {
+      return lView === 'editor' ? 'Editor de Laudo' : 'Fila de Bancada';
+    }
+    if (tab === 'settings') {
+      const map: Record<SettingsSubTab, string> = {
+        exams: 'Catálogo de Exames',
+        fields: 'Campos Dinâmicos',
+        prices: 'Tabelas de Preços',
+        references: 'Valores de Referência',
+        templates: 'Modelos de Laudos',
+        users: 'Usuários do Laboratório',
+        vets: 'Veterinários & Clínicas',
+      };
+      return map[sTab] || 'Configurações';
+    }
+    if (tab === 'patients') return 'Cadastro & Listagem';
+    if (tab === 'financial') return 'Visão Financeira';
+    return 'Visão Geral';
+  };
+
+  const pushNavSnapshot = () => {
+    const currentLabel = `${getTabLabel(activeTab)} > ${getSubScreenLabel(
+      activeTab,
+      routineSubTab,
+      launchSubView,
+      settingsTab
+    )}`;
+    setNavHistory((prev) => [
+      ...prev.slice(-14),
+      {
+        tab: activeTab,
+        routineSubTab,
+        launchSubView,
+        settingsTab,
+        selectedOrderId,
+        selectedResultId,
+        label: currentLabel,
+      },
+    ]);
+  };
+
+  const handleGoBack = () => {
+    if (navHistory.length === 0) {
+      if (activeTab === 'launch' && launchSubView === 'editor') {
+        setLaunchSubView('list');
+      } else if (activeTab !== 'operational') {
+        setActiveTab('operational');
+      }
+      return;
+    }
+    const last = navHistory[navHistory.length - 1];
+    setNavHistory((prev) => prev.slice(0, -1));
+    setActiveTab(last.tab);
+    setRoutineSubTab(last.routineSubTab);
+    setLaunchSubView(last.launchSubView);
+    setSettingsTab(last.settingsTab);
+    if (last.selectedOrderId) setSelectedOrderId(last.selectedOrderId);
+    if (last.selectedResultId) setSelectedResultId(last.selectedResultId);
+  };
+
+  useEffect(() => {
+    if (!externalActiveTab) return;
+    const isRestricted =
+      user?.role !== 'admin' &&
+      (externalActiveTab === 'settings' || externalActiveTab === 'financial');
+    const targetTab: InternalTab = isRestricted ? 'operational' : externalActiveTab;
+    const targetRoutineSub: RoutineSubTab = externalRoutineSubTab || 'list';
+    const targetSettingsSub: SettingsSubTab = externalSettingsTab || 'exams';
+
+    if (
+      targetTab !== activeTabState ||
+      (targetTab === 'launch' && launchSubView !== 'list') ||
+      (targetTab === 'routine' && routineSubTabState !== targetRoutineSub) ||
+      (targetTab === 'settings' && settingsTabState !== targetSettingsSub)
+    ) {
+      pushNavSnapshot();
+    }
+    if (targetTab === 'launch') {
+      setLaunchSubView('list');
+    }
+    if (targetTab === 'routine') {
+      setRoutineSubTabState(targetRoutineSub);
+      if (targetRoutineSub === 'collections') {
+        api
+          .getCollectionRequests()
+          .then((fresh) => setCollectionRequests(fresh))
+          .catch(() => {});
+      }
+    }
+    if (targetTab === 'settings') {
+      setSettingsTabState(targetSettingsSub);
+    }
+    setActiveTabState(targetTab);
+  }, [externalActiveTab, externalRoutineSubTab, externalSettingsTab, tabChangeNonce]);
+
+  useEffect(() => {
+    if (!openNewOrderNonce) return;
+    handleOpenNewOrder();
+  }, [openNewOrderNonce]);
 
   useEffect(() => {
     setPatientsPage(1);
@@ -455,6 +695,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     type="button"
                     onClick={() => {
                       setOpenOrderExamsKey(null);
+                      pushNavSnapshot();
                       setSelectedOrderId(ord.id);
                       setSelectedResultId(res.id);
                       setLaunchSubView('editor');
@@ -495,8 +736,64 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
     );
   };
 
+  const resetOrderForm = () => {
+    const today = getTodayIsoDate();
+    const defaultTableId = resolveFirstActivePriceTableId(priceTables, today);
+    setEditingOrderId(null);
+    setConvertingCollection(null);
+    setConvertingVetMatched(false);
+    setRoutinePatientMode('existing');
+    setRoutineSelectedPatientId('');
+    setSelectedVetId('');
+    setSelectedTableId(defaultTableId);
+    setSelectedExamIds([]);
+    setOrderDate(today);
+    setOrderNotes('');
+    setPatientForm(createEmptyPatientForm());
+    setOrderModalResetKey((k) => k + 1);
+  };
+
+  const handleOpenNewOrder = (options?: {
+    patientId?: string;
+    switchToRoutineTab?: boolean;
+  }) => {
+    resetOrderForm();
+    if (options?.patientId) {
+      setRoutinePatientMode('existing');
+      setRoutineSelectedPatientId(options.patientId);
+    }
+    if (options?.switchToRoutineTab) {
+      setRoutineSubTab('list');
+      setActiveTab('routine');
+    }
+    setOrderModalOpen(true);
+  };
+
+  const handleCloseOrderModal = () => {
+    setOrderModalOpen(false);
+    resetOrderForm();
+  };
+
+  const resetPatientModal = () => {
+    const defaultTableId = resolveFirstActivePriceTableId(priceTables, getTodayIsoDate());
+    setEditingPatientId(null);
+    setPatientIncludeExamOrder(false);
+    setPatientSelectedExamIds([]);
+    setPatientOrderVetId('');
+    setPatientOrderTableId(defaultTableId);
+    setPatientOrderNotes('');
+    setPatientCrudForm(createEmptyPatientCrudForm());
+    setPatientOrderModalKey((k) => k + 1);
+  };
+
+  const handleClosePatientModal = () => {
+    setPatientModalOpen(false);
+    resetPatientModal();
+  };
+
   const handleStartEditOrder = (ord: Order) => {
     setOpenOrderExamsKey(null);
+    resetOrderForm();
     setEditingOrderId(ord.id);
     setRoutinePatientMode('existing');
     setRoutineSelectedPatientId(ord.patient_id || ord.patient?.id || '');
@@ -510,11 +807,53 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
     if (ord.created_at) {
       setOrderDate(ord.created_at.slice(0, 10));
     }
-    setPatientForm((prev) => ({ ...prev, notes: ord.notes || '' }));
-    setRoutineSubTab('list');
-    setActiveTab('routine');
+    setOrderNotes(ord.notes || '');
     setOrderModalOpen(true);
     showToast(`Editando atendimento ${ord.protocol_code}`);
+  };
+
+  const handleConvertCollectionToOrder = (col: CollectionRequest) => {
+    const cleanDigits = (s?: string) => (s || '').replace(/\D/g, '');
+    const colDigits = cleanDigits(col.phone);
+    const colEmail = (col.email || '').trim().toLowerCase();
+    const colName = (col.clinic_or_tutor_name || '').trim().toLowerCase();
+
+    const matchedVet = vets.find((v) => {
+      if (colEmail && v.email.toLowerCase() === colEmail) return true;
+      const vDigits = cleanDigits(v.phone);
+      if (
+        colDigits.length >= 8 &&
+        vDigits.length >= 8 &&
+        vDigits.slice(-8) === colDigits.slice(-8)
+      ) {
+        return true;
+      }
+      if (v.clinic_name && colName.includes(v.clinic_name.trim().toLowerCase())) {
+        return true;
+      }
+      return false;
+    });
+
+    resetOrderForm();
+    if (matchedVet) {
+      setSelectedVetId(matchedVet.id);
+      setConvertingVetMatched(true);
+    } else {
+      setConvertingVetMatched(false);
+    }
+    if (col.scheduled_date || col.preferred_date) {
+      setOrderDate(col.scheduled_date || col.preferred_date!);
+    }
+    setOrderNotes(
+      `[Coleta: ${col.clinic_or_tutor_name} | Tel: ${col.phone} | End: ${col.address}] ${col.notes || ''}`.trim()
+    );
+    setConvertingCollection(col);
+    setOrderModalOpen(true);
+    showToast(
+      matchedVet
+        ? `Solicitação carregada e vinculada a ${matchedVet.name}!`
+        : `Solicitação de ${col.clinic_or_tutor_name} carregada! Você pode cadastrar a clínica/veterinário agora ou selecionar um existente.`
+    );
   };
 
   const renderOrderQuickActions = (ord: Order, compact = false) => {
@@ -582,26 +921,29 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
   };
 
   const loadAllData = async () => {
+    const isAdminUser = user?.role === 'admin';
     const [exList, ptList, refList, tplList, vetList, patList, ordList, opData, finData] = await Promise.all([
       api.getExams(),
-      api.getPriceTables(),
+      isAdminUser ? api.getPriceTables().catch(() => []) : Promise.resolve([]),
       api.getExamReferences(),
       api.getReportTemplates(),
       api.getVets(),
       api.getPatients(),
       api.getOrders(),
       api.getOperationalDashboard(),
-      api.getFinancialDashboard(),
+      isAdminUser ? api.getFinancialDashboard().catch(() => null) : Promise.resolve(null),
     ]);
     setExams(exList);
     setPriceTables(ptList);
+    if (ptList.length > 0) {
+      const initialActiveId = resolveFirstActivePriceTableId(ptList, orderDate || getTodayIsoDate());
+      setSelectedTableId((prev) => prev || initialActiveId);
+      setPatientOrderTableId((prev) => prev || initialActiveId);
+    }
     setReferences(refList);
     setTemplates(tplList);
     setVets(vetList);
     setPatients(patList);
-    if (!routineSelectedPatientId && patList.length > 0) {
-      setRoutineSelectedPatientId(patList[0].id);
-    }
     setOrders(ordList);
     setOpStats(opData);
     setFinStats(finData);
@@ -674,20 +1016,27 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
     return null;
   }
 
+  const effectiveOrderDate = orderDate || getTodayIsoDate();
   const validTablesForDate = priceTables.filter(
-    (pt) => pt.is_active && pt.start_date <= orderDate && pt.end_date >= orderDate
+    (pt) =>
+      pt.is_active &&
+      pt.start_date <= effectiveOrderDate &&
+      pt.end_date >= effectiveOrderDate
   );
-  const activePriceTable =
-    priceTables.find((pt) => pt.id === selectedTableId) ||
-    validTablesForDate[0] ||
-    priceTables[0];
+  const defaultActivePriceTable =
+    validTablesForDate[0] || priceTables.find((pt) => pt.is_active) || priceTables[0] || null;
+  const effectiveOrderPriceTable =
+    priceTables.find((pt) => pt.id === selectedTableId) || defaultActivePriceTable;
+  const effectivePatientPriceTable =
+    priceTables.find((pt) => pt.id === patientOrderTableId) || defaultActivePriceTable;
 
-  const getExamPriceInTable = (examId: string): number => {
+  const getExamPriceInTable = (
+    examId: string,
+    table: PriceTable | null = effectiveOrderPriceTable
+  ): number => {
     const ex = exams.find((e) => e.id === examId);
     if (!ex) return 0;
-    const entry = (activePriceTable?.prices || activePriceTable?.items || []).find(
-      (p) => p.exam_id === examId
-    );
+    const entry = (table?.prices || table?.items || []).find((p) => p.exam_id === examId);
     if (entry) return Number(entry.price) || 0;
     return Number(ex.price ?? ex.base_price ?? 0) || 0;
   };
@@ -700,48 +1049,61 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
   );
 
   const calculatedOrderTotal = validSelectedExamIds.reduce(
-    (sum, id) => sum + getExamPriceInTable(id),
+    (sum, id) => sum + getExamPriceInTable(id, effectiveOrderPriceTable),
     0
   );
 
   const calculatedPatientOrderTotal = validPatientSelectedExamIds.reduce(
-    (sum, id) => sum + getExamPriceInTable(id),
+    (sum, id) => sum + getExamPriceInTable(id, effectivePatientPriceTable),
     0
   );
 
   const handleSavePatientCrud = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (
+      !patientCrudForm.species ||
+      (patientCrudForm.gender !== 'M' && patientCrudForm.gender !== 'F')
+    ) {
+      showToast('Selecione espécie e sexo do paciente.');
+      return;
+    }
     if (patientCrudForm.age_months === '' || Number(patientCrudForm.age_months) < 0) {
       showToast('Informe a idade em meses (ou a data de nascimento para cálculo automático).');
       return;
     }
-    if (patientIncludeExamOrder && validPatientSelectedExamIds.length === 0) {
-      showToast('Selecione pelo menos 1 exame ou desmarque a opção de pedido de exames.');
-      return;
+    if (patientIncludeExamOrder) {
+      if (!patientOrderVetId || !vets.some((v) => v.id === patientOrderVetId)) {
+        showToast('Selecione o veterinário solicitante para o atendimento.');
+        return;
+      }
+      if (validPatientSelectedExamIds.length === 0) {
+        showToast('Selecione pelo menos 1 exame ou desmarque a opção de pedido de exames.');
+        return;
+      }
     }
 
     const numericMonths = Number(patientCrudForm.age_months);
     const savedPatient = await api.savePatient({
       ...(editingPatientId ? { id: editingPatientId } : {}),
-      name: patientCrudForm.name,
+      name: patientCrudForm.name.trim(),
       species: patientCrudForm.species,
-      breed: patientCrudForm.breed || 'SRD',
+      breed: patientCrudForm.breed.trim() || 'SRD',
       gender: patientCrudForm.gender,
       birth_date: patientCrudForm.birth_date || calculateBirthDateFromAgeMonths(numericMonths),
       age_days: Math.max(1, numericMonths * 30),
-      tutor_name: patientCrudForm.tutor_name,
-      tutor_phone: patientCrudForm.tutor_phone,
-      tutor_email: patientCrudForm.tutor_email,
+      tutor_name: patientCrudForm.tutor_name.trim(),
+      tutor_phone: patientCrudForm.tutor_phone.trim(),
+      tutor_email: patientCrudForm.tutor_email.trim(),
     });
 
     if (patientIncludeExamOrder && validPatientSelectedExamIds.length > 0) {
       const createdOrder = await api.createOrder({
         patient: savedPatient,
-        vet_id: selectedVetId,
-        price_table_id: activePriceTable?.id || 'pt-2026-padrao',
+        vet_id: patientOrderVetId,
+        price_table_id: effectivePatientPriceTable?.id || '',
         exam_ids: validPatientSelectedExamIds,
-        order_date: orderDate,
-        notes: patientOrderNotes,
+        order_date: getTodayIsoDate(),
+        notes: patientOrderNotes.trim(),
       });
       const labels = await api.getOrderLabels(createdOrder);
       setLabelsModal({ order: createdOrder, labels });
@@ -757,30 +1119,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
     }
 
     await loadAllData();
-    setEditingPatientId(null);
-    setPatientIncludeExamOrder(false);
-    setPatientSelectedExamIds([]);
-    setPatientOrderNotes('');
-    setPatientCrudForm({
-      name: '',
-      species: 'Canino',
-      breed: '',
-      gender: 'M',
-      birth_date: '',
-      age_months: '',
-      tutor_name: '',
-      tutor_phone: '',
-      tutor_email: '',
-    });
-    setPatientModalOpen(false);
+    handleClosePatientModal();
   };
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validSelectedExamIds.length === 0) {
-      showToast('Selecione pelo menos 1 exame para o atendimento.');
-      return;
-    }
 
     const existingPatient =
       routinePatientMode === 'existing'
@@ -788,59 +1131,82 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         : undefined;
 
     if (routinePatientMode === 'existing' && !existingPatient) {
-      showToast('Selecione um paciente cadastrado ou altere para "Cadastrar Novo Paciente".');
+      showToast('Selecione um paciente cadastrado ou altere para "+ Novo".');
       return;
     }
 
+    if (routinePatientMode === 'new') {
+      if (
+        !patientForm.name.trim() ||
+        !patientForm.species ||
+        (patientForm.gender !== 'M' && patientForm.gender !== 'F') ||
+        !patientForm.tutor_name.trim()
+      ) {
+        showToast('Preencha animal, espécie, sexo e tutor do novo paciente.');
+        return;
+      }
+    }
+
+    if (!selectedVetId || !vets.some((v) => v.id === selectedVetId)) {
+      showToast('Selecione o veterinário solicitante.');
+      return;
+    }
+
+    if (validSelectedExamIds.length === 0) {
+      showToast('Selecione pelo menos 1 exame para o atendimento.');
+      return;
+    }
+
+    const hasAgeMonths =
+      patientForm.age_months !== '' && !Number.isNaN(Number(patientForm.age_months));
+    const numericAgeMonths = hasAgeMonths ? Math.max(0, Number(patientForm.age_months)) : undefined;
+    const resolvedBirthDate =
+      patientForm.birth_date ||
+      (numericAgeMonths !== undefined ? calculateBirthDateFromAgeMonths(numericAgeMonths) : '');
+    const resolvedAgeDays =
+      numericAgeMonths !== undefined ? Math.max(1, Math.round(numericAgeMonths * 30)) : undefined;
+
+    const newPatientPayload: Omit<Patient, 'id'> = {
+      name: patientForm.name.trim(),
+      species: patientForm.species,
+      breed: patientForm.breed.trim() || 'SRD',
+      gender: (patientForm.gender === 'F' ? 'F' : 'M') as 'M' | 'F',
+      birth_date: resolvedBirthDate,
+      ...(resolvedAgeDays !== undefined ? { age_days: resolvedAgeDays } : {}),
+      tutor_name: patientForm.tutor_name.trim(),
+      tutor_phone: patientForm.tutor_phone.trim(),
+      tutor_email: patientForm.tutor_email.trim(),
+    };
+
+    const resolvedOrderDate = orderDate || getTodayIsoDate();
+    const resolvedPriceTableId = effectiveOrderPriceTable?.id || '';
+    const trimmedNotes = orderNotes.trim();
+
     if (editingOrderId) {
+      const targetPatient = existingPatient || (await api.savePatient(newPatientPayload));
       await api.updateOrder(editingOrderId, {
-        patient_id: existingPatient?.id,
-        patient: existingPatient
-          ? existingPatient
-          : {
-            name: patientForm.name || 'Rex',
-            species: patientForm.species,
-            breed: patientForm.breed || 'SRD',
-            gender: patientForm.gender,
-            birth_date: patientForm.birth_date,
-            age_days: Math.max(1, Number(patientForm.age_months) * 30),
-            tutor_name: patientForm.tutor_name || 'Tutor Responsável',
-            tutor_phone: patientForm.tutor_phone || '(11) 99999-0000',
-            tutor_email: patientForm.tutor_email || 'tutor@email.com',
-          },
+        patient_id: targetPatient.id,
+        patient: targetPatient,
         vet_id: selectedVetId,
-        price_table_id: activePriceTable.id,
+        price_table_id: resolvedPriceTableId,
         exam_ids: validSelectedExamIds,
-        order_date: orderDate,
-        notes: patientForm.notes,
+        order_date: resolvedOrderDate,
+        notes: trimmedNotes,
       });
-      setEditingOrderId(null);
       await loadAllData();
-      setOrderModalOpen(false);
+      handleCloseOrderModal();
       setRoutineSubTab('list');
       showToast('Atendimento atualizado com sucesso!');
       return;
     }
 
     const created = await api.createOrder({
-      patient: existingPatient
-        ? existingPatient
-        : {
-          name: patientForm.name || 'Rex',
-          species: patientForm.species,
-          breed: patientForm.breed || 'SRD',
-          gender: patientForm.gender,
-          birth_date: patientForm.birth_date,
-          age_days: Math.max(1, Number(patientForm.age_months) * 30),
-          tutor_name: patientForm.tutor_name || 'Tutor Responsável',
-          tutor_phone: patientForm.tutor_phone || '(11) 99999-0000',
-          tutor_email: patientForm.tutor_email || 'tutor@email.com',
-        },
+      patient: existingPatient || newPatientPayload,
       vet_id: selectedVetId,
-      price_table_id: activePriceTable.id,
+      price_table_id: resolvedPriceTableId,
       exam_ids: validSelectedExamIds,
-      order_date: orderDate,
-      notes: patientForm.notes,
+      order_date: resolvedOrderDate,
+      notes: trimmedNotes,
     });
 
     if (convertingCollection?.id) {
@@ -849,27 +1215,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
       } catch {
         // ignore
       }
-      setConvertingCollection(null);
     }
 
     const labels = await api.getOrderLabels(created);
     await loadAllData();
     setLabelsModal({ order: created, labels });
-    setOrderModalOpen(false);
+    handleCloseOrderModal();
     setRoutineSubTab('list');
     showToast(
       `Atendimento ${created.protocol_code} registrado com sucesso! Etiquetas de coleta geradas.`
     );
-    setSelectedExamIds([]);
-    setPatientForm({
-      ...patientForm,
-      name: '',
-      breed: '',
-      tutor_name: '',
-      tutor_phone: '',
-      tutor_email: '',
-      notes: '',
-    });
   };
 
   const currentResultItem = currentOrder?.results?.find((r) => r.id === selectedResultId);
@@ -925,6 +1280,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         ? `Todos os exames finalizados! Laudo Oficial ${released.protocol_code} liberado para o Tutor e Veterinário.`
         : `Exame liberado! O atendimento ${released.protocol_code} segue Em Análise até todos os exames serem finalizados.`
     );
+    if (navHistory.length > 0) {
+      handleGoBack();
+    } else {
+      setLaunchSubView('list');
+    }
   };
 
   const handleFileUploadAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1168,7 +1528,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8 py-6 sm:py-10 pb-20 sm:pb-24">
+    <div className="space-y-5 sm:space-y-6 py-4 sm:py-6 pb-20 sm:pb-24">
       {/* NOTIFICAÇÃO TOAST */}
       {toast && (
         <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:bottom-6 sm:right-6 z-50 max-w-md bg-[#1d1d1f] text-[#f5f5f7] px-4 sm:px-5 py-3.5 rounded-[20px] sm:rounded-[980px] flex items-center gap-3 text-[12px] font-semibold shadow-lg">
@@ -1177,219 +1537,466 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         </div>
       )}
 
-      {/* NAVEGAÇÃO DE ABAS DO PAINEL INTERNO — Pill Navigation */}
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2 bg-white p-2 rounded-[24px] lg:rounded-[980px]">
-        <button
-          onClick={() => setActiveTab('operational')}
-          className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'operational'
-            ? 'bg-[#0071e3] text-white'
-            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+      {/* ASSISTENTE DE NAVEGAÇÃO (BREADCRUMB MÓDULO > SUBTELA > SUBTELA + BOTÃO VOLTAR) */}
+      <div className="bg-white rounded-[20px] px-4 py-2.5 border border-black/5 flex flex-wrap items-center justify-between gap-2.5 text-[12px]">
+        <div className="flex flex-wrap items-center gap-1.5 text-[#5b6675] min-w-0">
+          <button
+            type="button"
+            onClick={handleGoBack}
+            disabled={navHistory.length === 0 && activeTab === 'operational'}
+            className={`px-3 py-1 rounded-full font-semibold inline-flex items-center gap-1.5 transition shrink-0 ${
+              navHistory.length > 0 || (activeTab === 'launch' && launchSubView === 'editor') || activeTab !== 'operational'
+                ? 'bg-[#0b2240] text-white hover:bg-[#13325b] cursor-pointer'
+                : 'bg-[#f5f5f7] text-[#86868b] cursor-not-allowed'
             }`}
-        >
-          <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">Dashboard Operacional</span>
-        </button>
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Voltar</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('patients')}
-          className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'patients'
-            ? 'bg-[#0071e3] text-white'
-            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
-            }`}
-        >
-          <Users className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">Pacientes</span>
-        </button>
+          <span className="text-[#86868b] mx-1 hidden sm:inline">|</span>
 
-        <button
-          onClick={() => setActiveTab('routine')}
-          className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'routine'
-            ? 'bg-[#0071e3] text-white'
-            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
-            }`}
-        >
-          <ClipboardPlus className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">Atendimentos / Rotina</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (activeTab !== 'operational') pushNavSnapshot();
+              setActiveTab('operational');
+            }}
+            className="font-semibold text-[#0b2240] hover:text-[#0071e3] transition"
+          >
+            Painel Laboratorial
+          </button>
 
-        <button
-          onClick={() => {
-            setLaunchSubView('list');
-            setActiveTab('launch');
-          }}
-          className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'launch'
-            ? 'bg-[#0071e3] text-white'
-            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
-            }`}
-        >
-          <FlaskConical className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">Lançamento de Laudos</span>
-        </button>
+          <ChevronRight className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
 
-        {user.role === 'admin' ? (
-          <>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'settings'
-                ? 'bg-[#0071e3] text-white'
-                : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
-                }`}
-            >
-              <Settings className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Configurações</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('financial')}
-              className={`px-3 sm:px-5 py-2.5 rounded-[16px] sm:rounded-[980px] text-[11.5px] sm:text-[12px] font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 transition ${activeTab === 'financial'
-                ? 'bg-[#0071e3] text-white'
-                : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
-                }`}
-            >
-              <DollarSign className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Dashboard Financeiro</span>
-            </button>
-          </>
-        ) : (
-          <div className="col-span-2 sm:ml-auto flex items-center gap-2 px-3.5 py-2 rounded-[16px] sm:rounded-[999px] bg-[#f5f5f7] text-[#707070] text-[11.5px] sm:text-[12px]">
-            <ShieldAlert className="w-3.5 h-3.5 text-[#1d1d1f] shrink-0" />
-            <span>Configurações e Financeiro exclusivos para Administração</span>
+          <button
+            type="button"
+            onClick={() => {
+              if (activeTab === 'launch' && launchSubView === 'editor') {
+                setLaunchSubView('list');
+              } else if (activeTab === 'routine' && routineSubTab !== 'list') {
+                setRoutineSubTab('list');
+              }
+            }}
+            className="font-semibold text-[#0b2240] hover:text-[#0071e3] transition"
+          >
+            {getTabLabel(activeTab)}
+          </button>
+
+          <ChevronRight className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
+
+          <span className="font-semibold text-[#0071e3]">
+            {getSubScreenLabel(activeTab, routineSubTab, launchSubView, settingsTab)}
+          </span>
+
+          {activeTab === 'launch' && launchSubView === 'editor' && currentOrder && (
+            <>
+              <ChevronRight className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
+              <span className="font-mono font-bold text-[#1d1d1f]">
+                {currentOrder.protocol_code} ({currentOrder.patient?.name})
+              </span>
+              {currentResultItem && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-[#86868b] shrink-0" />
+                  <span className="px-2 py-0.5 rounded-full bg-[#e8f2fd] text-[#0071e3] font-mono text-[11px] font-bold">
+                    [{currentResultItem.exam_code || currentExamMeta?.code || 'EXM'}]
+                  </span>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {navHistory.length > 0 && (
+          <div className="text-[11px] text-[#707070] truncate max-w-xs">
+            Anterior: <strong className="text-[#1d1d1f]">{navHistory[navHistory.length - 1].label}</strong>
           </div>
         )}
       </div>
 
       {/* =====================================================================
-          ABA 1: DASHBOARD OPERACIONAL
+          ABA 1: DASHBOARD OPERACIONAL (ATALHOS RÁPIDOS + 70% ROTINA / 30% COLETAS PENDENTES)
          ===================================================================== */}
-      {activeTab === 'operational' && opStats && (
-        <div className="space-y-5 sm:space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
-              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Total de Atendimentos</div>
-              <div className="font-display text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] mt-1 leading-none">
-                {opStats.total_orders}
-              </div>
-              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1.5">Rotina ativa no laboratório</div>
-            </div>
+      {activeTab === 'operational' &&
+        (() => {
+          const pendingCollections = collectionRequests.filter(
+            (c) => (c.status || 'pendente') === 'pendente'
+          );
+          const hasPendingCollections = pendingCollections.length > 0;
 
-            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
-              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Pendentes / Triagem</div>
-              <div className="font-display text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] mt-1 leading-none">
-                {opStats.pending_orders}
-              </div>
-              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1.5">Aguardando entrada em bancada</div>
-            </div>
+          return (
+            <div className="space-y-4 sm:space-y-5">
+              {/* ROW 1: ATALHOS RÁPIDOS DAS TELAS E AÇÕES MAIS USADAS */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleOpenNewOrder()}
+                  className="p-3.5 rounded-[20px] bg-[#0071e3] hover:bg-[#0062c4] text-white text-left transition flex items-center gap-3 shadow-xs cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                    <Plus className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-bold leading-tight truncate">
+                      Novo Atendimento
+                    </div>
+                    <div className="text-[10.5px] text-white/80 truncate mt-0.5">
+                      Registrar ordem
+                    </div>
+                  </div>
+                </button>
 
-            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
-              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Em Análise Técnica</div>
-              <div className="font-display text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] mt-1 leading-none">
-                {opStats.in_analysis_orders}
-              </div>
-              <div className="text-[11px] sm:text-[12px] text-[#707070] mt-1.5">Processamento em bancada</div>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushNavSnapshot();
+                    resetPatientModal();
+                    setActiveTab('patients');
+                    setPatientModalOpen(true);
+                  }}
+                  className="p-3.5 rounded-[20px] bg-white hover:bg-[#f5f5f7] border border-black/5 text-left transition flex items-center gap-3 cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-[#0b2240]/8 text-[#0b2240] flex items-center justify-center shrink-0">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-semibold text-[#1d1d1f] leading-tight truncate">
+                      Novo Paciente
+                    </div>
+                    <div className="text-[10.5px] text-[#707070] truncate mt-0.5">
+                      Cadastrar animal
+                    </div>
+                  </div>
+                </button>
 
-            <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
-              <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Laudos Concluídos (PDF)</div>
-              <div className="font-display text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] mt-1 leading-none">
-                {opStats.completed_orders}
-              </div>
-              <div className="text-[11px] sm:text-[12px] text-[#0066cc] mt-1.5">Disponíveis para Tutor e Vet</div>
-            </div>
-          </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushNavSnapshot();
+                    setLaunchSubView('list');
+                    setActiveTab('launch');
+                  }}
+                  className="p-3.5 rounded-[20px] bg-white hover:bg-[#f5f5f7] border border-black/5 text-left transition flex items-center gap-3 cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center shrink-0">
+                    <FlaskConical className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-semibold text-[#1d1d1f] leading-tight truncate">
+                      Lançar Laudos
+                    </div>
+                    <div className="text-[10.5px] text-[#707070] truncate mt-0.5">
+                      Fila de bancada
+                    </div>
+                  </div>
+                </button>
 
-          <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-5 sm:space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f]">
-                  Fila de Rotina Laboratorial Recente
-                </h2>
-                <p className="text-[12px] text-[#707070]">
-                  Selecione um atendimento para registrar resultados ou imprimir etiquetas de amostras.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setEditingOrderId(null);
-                  setRoutineSubTab('list');
-                  setActiveTab('routine');
-                  setOrderModalOpen(true);
-                }}
-                className="w-full sm:w-auto justify-center px-5 py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold sm:font-normal inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                Novo Atendimento
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushNavSnapshot();
+                    setRoutineSubTab('list');
+                    setActiveTab('routine');
+                  }}
+                  className="p-3.5 rounded-[20px] bg-white hover:bg-[#f5f5f7] border border-black/5 text-left transition flex items-center gap-3 cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center shrink-0">
+                    <ClipboardPlus className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-semibold text-[#1d1d1f] leading-tight truncate">
+                      Atendimentos
+                    </div>
+                    <div className="text-[10.5px] text-[#707070] truncate mt-0.5">
+                      Buscar protocolos
+                    </div>
+                  </div>
+                </button>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-[12px]">
-                <thead>
-                  <tr className="text-[#86868b] uppercase border-b border-[#e8e8ed]">
-                    <th className="py-3 px-4 font-normal">Protocolo</th>
-                    <th className="py-3 px-4 font-normal">Paciente / Espécie</th>
-                    <th className="py-3 px-4 font-normal">Tutor & Veterinário</th>
-                    <th className="py-3 px-4 font-normal">Exames</th>
-                    <th className="py-3 px-4 font-normal">Valor</th>
-                    <th className="py-3 px-4 font-normal">Status</th>
-                    <th className="py-3 px-4 font-normal text-right">Ações Rápidas</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#f5f5f7]">
-                  {orders.slice((opPage - 1) * 10, opPage * 10).map((ord) => (
-                    <tr key={ord.id} className="hover:bg-[#f5f5f7]/60">
-                      <td className="py-3.5 px-4 font-mono font-semibold text-[#1d1d1f] whitespace-nowrap">
-                        {ord.protocol_code}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-[#1d1d1f]">{ord.patient?.name}</div>
-                        <div className="text-[#707070]">
-                          {ord.patient?.species} • {ord.patient?.breed} ({ord.patient?.gender})
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="text-[#1d1d1f]">{ord.patient?.tutor_name}</div>
-                        <div className="text-[#707070]">
-                          {ord.vet?.name} ({ord.vet?.crmv})
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {renderOrderExamsDropdown(ord, `op-${ord.id}`)}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono font-semibold text-[#1d1d1f] whitespace-nowrap">
-                        R$ {(ord.total_amount || 0).toFixed(2)}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`px-[10px] py-[4px] rounded-[999px] font-semibold whitespace-nowrap ${ord.status === 'concluido'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : ord.status === 'em_analise'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-[#f5f5f7] text-[#1d1d1f]'
-                            }`}
-                        >
-                          {ord.status === 'concluido'
-                            ? 'Concluído'
-                            : ord.status === 'em_analise'
-                              ? 'Em Análise'
-                              : 'Pendente'}
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushNavSnapshot();
+                    setRoutineSubTab('collections');
+                    setActiveTab('routine');
+                  }}
+                  className="p-3.5 rounded-[20px] bg-white hover:bg-[#f5f5f7] border border-black/5 text-left transition flex items-center gap-3 cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[12.5px] font-semibold text-[#1d1d1f] leading-tight truncate">
+                        Coletas
+                      </span>
+                      {hasPendingCollections && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-[#0b2240] text-[10px] font-bold shrink-0">
+                          {pendingCollections.length}
                         </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        {renderOrderQuickActions(ord)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      )}
+                    </div>
+                    <div className="text-[10.5px] text-[#707070] truncate mt-0.5">
+                      Solicitações do site
+                    </div>
+                  </div>
+                </button>
+
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushNavSnapshot();
+                      setSettingsTab('exams');
+                      setActiveTab('settings');
+                    }}
+                    className="p-3.5 rounded-[20px] bg-white hover:bg-[#f5f5f7] border border-black/5 text-left transition flex items-center gap-3 cursor-pointer"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-[#0b2240] flex items-center justify-center shrink-0">
+                      <Settings className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[12.5px] font-semibold text-[#1d1d1f] leading-tight truncate">
+                        Catálogo & Preços
+                      </div>
+                      <div className="text-[10.5px] text-[#707070] truncate mt-0.5">
+                        Exames e tabelas
+                      </div>
+                    </div>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushNavSnapshot();
+                      setActiveTab('patients');
+                    }}
+                    className="p-3.5 rounded-[20px] bg-white hover:bg-[#f5f5f7] border border-black/5 text-left transition flex items-center gap-3 cursor-pointer"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-[#0b2240] flex items-center justify-center shrink-0">
+                      <BookOpen className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[12.5px] font-semibold text-[#1d1d1f] leading-tight truncate">
+                        Pacientes
+                      </div>
+                      <div className="text-[10.5px] text-[#707070] truncate mt-0.5">
+                        Histórico de animais
+                      </div>
+                    </div>
+                  </button>
+                )}
+              </div>
+
+              {/* ROW 2: DUAS TABELAS (70% FILA DE ROTINA LABORATORIAL | 30% FILA DE COLETAS PENDENTES) */}
+              <div className="grid grid-cols-1 xl:grid-cols-10 gap-4 sm:gap-5 items-start">
+                {/* 70% (ou 100% se não houver coletas pendentes): Fila de Rotina Laboratorial Recente */}
+                <div
+                  className={`${
+                    hasPendingCollections ? 'xl:col-span-7' : 'xl:col-span-10'
+                  } bg-white rounded-[24px] p-4 sm:p-6 space-y-4 border border-black/5 min-w-0`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display text-[18px] sm:text-[21px] font-semibold text-[#1d1d1f]">
+                        Fila de Rotina Laboratorial Recente
+                      </h2>
+                      <p className="text-[12px] text-[#707070]">
+                        Selecione um atendimento para registrar resultados ou imprimir etiquetas de amostras.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenNewOrder()}
+                      className="px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Novo Atendimento
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-[12px]">
+                      <thead>
+                        <tr className="text-[#86868b] uppercase border-b border-[#e8e8ed] text-[10.5px]">
+                          <th className="py-2.5 px-2.5 font-semibold">Protocolo</th>
+                          <th className="py-2.5 px-2.5 font-semibold">Paciente / Espécie</th>
+                          <th className="py-2.5 px-2.5 font-semibold">Tutor & Veterinário</th>
+                          <th className="py-2.5 px-2.5 font-semibold">Exames</th>
+                          {isAdmin && <th className="py-2.5 px-2.5 font-semibold">Valor</th>}
+                          <th className="py-2.5 px-2.5 font-semibold">Status</th>
+                          <th className="py-2.5 px-2.5 font-semibold text-right">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#f5f5f7]">
+                        {orders.slice((opPage - 1) * 10, opPage * 10).map((ord) => (
+                          <tr key={ord.id} className="hover:bg-[#f5f5f7]/60">
+                            <td className="py-2.5 px-2.5 font-mono font-semibold text-[#1d1d1f] whitespace-nowrap">
+                              {ord.protocol_code}
+                            </td>
+                            <td className="py-2.5 px-2.5">
+                              <div className="font-semibold text-[#1d1d1f] leading-tight">
+                                {ord.patient?.name}
+                              </div>
+                              <div className="text-[11px] text-[#707070] truncate max-w-[140px]">
+                                {ord.patient?.species} • {ord.patient?.breed} ({ord.patient?.gender})
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-2.5">
+                              <div className="text-[#1d1d1f] leading-tight truncate max-w-[170px]">
+                                {ord.patient?.tutor_name}
+                              </div>
+                              <div className="text-[11px] text-[#707070] truncate max-w-[170px]">
+                                {ord.vet?.name} {ord.vet?.crmv ? `(${ord.vet.crmv})` : ''}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-2.5">
+                              {renderOrderExamsDropdown(ord, `op-${ord.id}`)}
+                            </td>
+                            {isAdmin && (
+                              <td className="py-2.5 px-2.5 font-mono font-semibold text-[#1d1d1f] whitespace-nowrap">
+                                R$ {(ord.total_amount || 0).toFixed(2)}
+                              </td>
+                            )}
+                            <td className="py-2.5 px-2.5">
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${
+                                  ord.status === 'concluido'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : ord.status === 'em_analise'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-[#f5f5f7] text-[#1d1d1f]'
+                                }`}
+                              >
+                                {ord.status === 'concluido'
+                                  ? 'Concluído'
+                                  : ord.status === 'em_analise'
+                                    ? 'Em Análise'
+                                    : 'Pendente'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
+                              {renderOrderQuickActions(ord, true)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <PaginationBar
+                    page={opPage}
+                    pageSize={10}
+                    totalItems={orders.length}
+                    onPageChange={setOpPage}
+                  />
+                </div>
+
+                {/* 30%: Fila de Solicitações de Coleta Pendentes (oculta automaticamente se não houver pendentes) */}
+                {hasPendingCollections && (
+                  <div className="xl:col-span-3 bg-white rounded-[24px] p-4 sm:p-5 space-y-3.5 border border-black/5 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-display text-[16px] sm:text-[18px] font-semibold text-[#1d1d1f]">
+                            Coletas Pendentes
+                          </h3>
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold">
+                            {pendingCollections.length}
+                          </span>
+                        </div>
+                        <p className="text-[11.5px] text-[#707070] mt-0.5">
+                          Converta em atendimento com 1 clique.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushNavSnapshot();
+                          setRoutineSubTab('collections');
+                          setActiveTab('routine');
+                        }}
+                        className="text-[11.5px] font-semibold text-[#0071e3] hover:underline shrink-0 cursor-pointer"
+                      >
+                        Ver todas
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-[11.5px]">
+                        <thead>
+                          <tr className="text-[#86868b] uppercase border-b border-[#e8e8ed] text-[10px]">
+                            <th className="py-2 px-2 font-semibold">Solicitante / Local</th>
+                            <th className="py-2 px-2 font-semibold text-right">Ação</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#f5f5f7]">
+                          {pendingCollections.map((col) => (
+                            <tr
+                              key={col.id || `${col.email}-${col.created_at}`}
+                              className="hover:bg-[#f5f5f7]/60 align-top"
+                            >
+                              <td className="py-2.5 px-2 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-[#1d1d1f] truncate max-w-[160px]">
+                                    {col.clinic_or_tutor_name}
+                                  </span>
+                                  {col.crmv && (
+                                    <span className="px-1.5 py-0.2 rounded bg-[#f5f5f7] text-[#0b2240] font-mono text-[9.5px] font-bold border border-black/10">
+                                      {col.crmv}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10.5px] text-[#707070] truncate max-w-[200px] mt-0.5">
+                                  {col.address}
+                                </div>
+                                <div className="text-[10px] text-[#86868b] mt-0.5">
+                                  {col.phone}
+                                  {col.preferred_date ? ` • Data: ${col.preferred_date}` : ''}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-2 text-right whitespace-nowrap">
+                                <div className="inline-flex flex-col items-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleConvertCollectionToOrder(col)}
+                                    className="px-2.5 py-1 rounded-full bg-[#0071e3] text-white text-[10.5px] font-semibold hover:opacity-95 transition inline-flex items-center gap-1 cursor-pointer"
+                                    title="Transformar em Atendimento"
+                                  >
+                                    <ClipboardPlus className="w-3 h-3" />
+                                    Atender
+                                  </button>
+                                  {col.id && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setScheduleModal({
+                                          collection: col,
+                                          date:
+                                            col.scheduled_date ||
+                                            col.preferred_date ||
+                                            new Date().toISOString().slice(0, 10),
+                                          time: col.scheduled_time || '09:00',
+                                        })
+                                      }
+                                      className="px-2.5 py-0.5 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#0b2240] text-[10px] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Calendar className="w-2.5 h-2.5 text-[#0071e3]" />
+                                      Agendar
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            <PaginationBar
-              page={opPage}
-              pageSize={10}
-              totalItems={orders.length}
-              onPageChange={setOpPage}
-            />
-          </div>
-        </div>
-      )}
+          );
+        })()}
 
       {/* =====================================================================
           ABA: CADASTRO & LISTAGEM DE PACIENTES (CRUD COMPLETO + EXAME OPCIONAL)
@@ -1398,289 +2005,339 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         <div className="space-y-6">
           {/* MODAL DE CADASTRO / EDIÇÃO DE PACIENTE */}
           {patientModalOpen && (
-            <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-              <form
-                onSubmit={handleSavePatientCrud}
-                className="bg-white rounded-[24px] sm:rounded-[28px] max-w-2xl w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
+            <div
+              className="fixed inset-0 z-50 bg-[#0b2240]/45 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-5"
+              onClick={handleClosePatientModal}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-[24px] max-w-4xl w-[95vw] min-w-0 max-h-[92vh] flex flex-col overflow-hidden shadow-2xl border border-black/10"
               >
-                <div className="flex items-start justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-                  <div className="min-w-0">
-                    <h2 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
-                      {editingPatientId ? 'Editar Paciente' : 'Cadastrar Paciente'}
+                <form onSubmit={handleSavePatientCrud} className="flex flex-col min-h-0 flex-1">
+                  {/* Header */}
+                  <div className="px-5 py-3.5 border-b border-black/5 flex items-center justify-between gap-2 shrink-0">
+                    <h2 className="font-display text-[16px] sm:text-[17px] font-semibold text-[#1d1d1f]">
+                      {editingPatientId ? 'Editar Paciente' : 'Novo Paciente'}
                     </h2>
-                    <p className="text-[12px] text-[#707070]">
-                      Cadastre o animal e tutor. Se desejar, já inclua pedidos de exames neste cadastro.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPatientModalOpen(false);
-                      setEditingPatientId(null);
-                      setPatientIncludeExamOrder(false);
-                      setPatientSelectedExamIds([]);
-                      setPatientOrderNotes('');
-                      setPatientCrudForm({
-                        name: '',
-                        species: 'Canino',
-                        breed: '',
-                        gender: 'M',
-                        birth_date: '',
-                        age_months: '',
-                        tutor_name: '',
-                        tutor_phone: '',
-                        tutor_email: '',
-                      });
-                    }}
-                    className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
-                  >
-                    Fechar
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Nome do Animal *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={patientCrudForm.name}
-                      onChange={(e) =>
-                        setPatientCrudForm({ ...patientCrudForm, name: e.target.value })
-                      }
-                      placeholder="Ex: Thor"
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">Espécie *</label>
-                    <select
-                      value={patientCrudForm.species}
-                      onChange={(e) =>
-                        setPatientCrudForm({ ...patientCrudForm, species: e.target.value })
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
+                    <button
+                      type="button"
+                      onClick={handleClosePatientModal}
+                      className="p-1.5 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                      aria-label="Fechar"
                     >
-                      <option value="Canino">Canino</option>
-                      <option value="Felino">Felino</option>
-                      <option value="Equino">Equino</option>
-                      <option value="Silvestre">Silvestre / Exótico</option>
-                    </select>
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">Raça</label>
-                    <input
-                      type="text"
-                      value={patientCrudForm.breed}
-                      onChange={(e) =>
-                        setPatientCrudForm({ ...patientCrudForm, breed: e.target.value })
-                      }
-                      placeholder="SRD"
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">Sexo *</label>
-                    <select
-                      value={patientCrudForm.gender}
-                      onChange={(e) =>
-                        setPatientCrudForm({
-                          ...patientCrudForm,
-                          gender: e.target.value as 'M' | 'F',
-                        })
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                    >
-                      <option value="M">Macho (M)</option>
-                      <option value="F">Fêmea (F)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Idade (Meses) *
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      required
-                      placeholder="Ex: 12"
-                      value={patientCrudForm.age_months}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        if (raw === '') {
-                          setPatientCrudForm({
-                            ...patientCrudForm,
-                            age_months: '',
-                            birth_date: '',
-                          });
-                          return;
-                        }
-                        const parsed = Math.max(0, Math.floor(Number(raw)));
-                        if (Number.isNaN(parsed)) return;
-                        setPatientCrudForm({
-                          ...patientCrudForm,
-                          age_months: parsed,
-                          birth_date: calculateBirthDateFromAgeMonths(parsed),
-                        });
-                      }}
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Data de Nascimento
-                    </label>
-                    <input
-                      type="date"
-                      value={patientCrudForm.birth_date}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const computedMonths = calculateAgeMonthsFromBirthDate(val);
-                        setPatientCrudForm({
-                          ...patientCrudForm,
-                          birth_date: val,
-                          age_months:
-                            computedMonths !== '' ? computedMonths : patientCrudForm.age_months,
-                        });
-                      }}
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Nome do Tutor (Proprietário) *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={patientCrudForm.tutor_name}
-                      onChange={(e) =>
-                        setPatientCrudForm({ ...patientCrudForm, tutor_name: e.target.value })
-                      }
-                      placeholder="Nome do tutor"
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">
-                      Telefone / WhatsApp
-                    </label>
-                    <input
-                      type="text"
-                      value={patientCrudForm.tutor_phone}
-                      onChange={(e) =>
-                        setPatientCrudForm({ ...patientCrudForm, tutor_phone: e.target.value })
-                      }
-                      placeholder="(16) 99999-0000"
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[12px] text-[#707070] mb-1">E-mail do Tutor</label>
-                    <input
-                      type="email"
-                      value={patientCrudForm.tutor_email}
-                      onChange={(e) =>
-                        setPatientCrudForm({ ...patientCrudForm, tutor_email: e.target.value })
-                      }
-                      placeholder="tutor@email.com"
-                      className="w-full px-3.5 py-2.5 rounded-[16px] bg-[#f5f5f7] text-[14px]"
-                    />
-                  </div>
-                </div>
-
-                {/* Opção de já inserir pedido de exames no cadastro do paciente */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                  <label className="flex items-center gap-2.5 cursor-pointer text-[13px] font-semibold text-[#0b2240]">
-                    <input
-                      type="checkbox"
-                      checked={patientIncludeExamOrder}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setPatientIncludeExamOrder(checked);
-                        if (!checked) setPatientSelectedExamIds([]);
-                      }}
-                      className="w-4 h-4 accent-[#0071e3] rounded"
-                    />
-                    <span>Já inserir pedidos de exames neste cadastro (gerar atendimento)</span>
-                  </label>
-
-                  {patientIncludeExamOrder && (
-                    <div className="space-y-3 pt-2 border-t border-slate-200">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <SearchableSelectField
-                          label="Veterinário Solicitante *"
-                          modalTitle="Selecionar Veterinário Solicitante"
-                          modalSubtitle="Pesquise por nome, CRMV ou clínica parceira"
-                          searchPlaceholder="Buscar por nome, CRMV ou clínica..."
-                          items={vets}
-                          value={selectedVetId}
-                          getId={(v) => v.id}
-                          getPrimaryLabel={(v) => v.name}
-                          getSecondaryLabel={(v) => `${v.crmv}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`}
-                          getSearchText={(v) => `${v.name} ${v.crmv} ${v.clinic_name || ''}`}
-                          onChange={(id) => setSelectedVetId(id)}
-                          triggerClassName="bg-white border border-slate-200"
-                        />
-                        <SearchableSelectField
-                          label="Tabela de Preços"
-                          modalTitle="Selecionar Tabela de Preços / Convênio"
-                          searchPlaceholder="Buscar tabela por nome ou vigência..."
-                          items={priceTables}
-                          value={activePriceTable?.id || ''}
-                          getId={(pt) => pt.id}
-                          getPrimaryLabel={(pt) => pt.name}
-                          getSecondaryLabel={(pt) => `Vigência: ${pt.start_date} a ${pt.end_date}`}
-                          getSearchText={(pt) => `${pt.name} ${pt.start_date} ${pt.end_date}`}
-                          onChange={(id) => setSelectedTableId(id)}
-                          triggerClassName="bg-white border border-slate-200"
+                  {/* Body */}
+                  <div className="px-5 py-4 overflow-y-auto space-y-3 flex-1 min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          Nome do Animal *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={patientCrudForm.name}
+                          onChange={(e) =>
+                            setPatientCrudForm({ ...patientCrudForm, name: e.target.value })
+                          }
+                          placeholder="Ex: Thor"
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
                         />
                       </div>
-
-                      <ExamMultiPicker
-                        exams={exams}
-                        selectedExamIds={patientSelectedExamIds}
-                        onChange={setPatientSelectedExamIds}
-                        activePriceTable={activePriceTable}
-                        title="Exames do Atendimento"
-                        compact
-                      />
-
-                      <input
-                        type="text"
-                        value={patientOrderNotes}
-                        onChange={(e) => setPatientOrderNotes(e.target.value)}
-                        placeholder="Observações clínicas do atendimento (opcional)"
-                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-[12px]"
-                      />
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          Espécie *
+                        </label>
+                        <select
+                          required
+                          value={patientCrudForm.species}
+                          onChange={(e) =>
+                            setPatientCrudForm({ ...patientCrudForm, species: e.target.value })
+                          }
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                        >
+                          <option value="">Selecione...</option>
+                          <option value="Canino">Canino</option>
+                          <option value="Felino">Felino</option>
+                          <option value="Equino">Equino</option>
+                          <option value="Silvestre">Silvestre / Exótico</option>
+                        </select>
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-full bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition"
-                >
-                  {editingPatientId
-                    ? patientIncludeExamOrder
-                      ? 'Atualizar Paciente + Gerar Atendimento'
-                      : 'Salvar Alterações do Paciente'
-                    : patientIncludeExamOrder
-                      ? 'Cadastrar Paciente + Gerar Atendimento'
-                      : 'Cadastrar Paciente'}
-                </button>
-              </form>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          Raça
+                        </label>
+                        <input
+                          type="text"
+                          value={patientCrudForm.breed}
+                          onChange={(e) =>
+                            setPatientCrudForm({ ...patientCrudForm, breed: e.target.value })
+                          }
+                          placeholder="Opcional (SRD)"
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          Sexo *
+                        </label>
+                        <select
+                          required
+                          value={patientCrudForm.gender}
+                          onChange={(e) =>
+                            setPatientCrudForm({
+                              ...patientCrudForm,
+                              gender: e.target.value as '' | 'M' | 'F',
+                            })
+                          }
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                        >
+                          <option value="">Selecione...</option>
+                          <option value="M">Macho (M)</option>
+                          <option value="F">Fêmea (F)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          Idade (Meses) *
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          required
+                          placeholder="Ex: 12"
+                          value={patientCrudForm.age_months}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') {
+                              setPatientCrudForm({
+                                ...patientCrudForm,
+                                age_months: '',
+                                birth_date: '',
+                              });
+                              return;
+                            }
+                            const parsed = Math.max(0, Math.floor(Number(raw)));
+                            if (Number.isNaN(parsed)) return;
+                            setPatientCrudForm({
+                              ...patientCrudForm,
+                              age_months: parsed,
+                              birth_date: calculateBirthDateFromAgeMonths(parsed),
+                            });
+                          }}
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          Data de Nascimento
+                        </label>
+                        <input
+                          type="date"
+                          value={patientCrudForm.birth_date}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const computedMonths = calculateAgeMonthsFromBirthDate(val);
+                            setPatientCrudForm({
+                              ...patientCrudForm,
+                              birth_date: val,
+                              age_months:
+                                computedMonths !== '' ? computedMonths : patientCrudForm.age_months,
+                            });
+                          }}
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          Tutor (Proprietário) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={patientCrudForm.tutor_name}
+                          onChange={(e) =>
+                            setPatientCrudForm({ ...patientCrudForm, tutor_name: e.target.value })
+                          }
+                          placeholder="Nome do tutor"
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          Telefone / WhatsApp
+                        </label>
+                        <input
+                          type="text"
+                          value={patientCrudForm.tutor_phone}
+                          onChange={(e) =>
+                            setPatientCrudForm({ ...patientCrudForm, tutor_phone: e.target.value })
+                          }
+                          placeholder="(00) 00000-0000"
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                          E-mail do Tutor
+                        </label>
+                        <input
+                          type="email"
+                          value={patientCrudForm.tutor_email}
+                          onChange={(e) =>
+                            setPatientCrudForm({ ...patientCrudForm, tutor_email: e.target.value })
+                          }
+                          placeholder="tutor@email.com"
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Opção minimalista de gerar atendimento neste cadastro */}
+                    <div className="p-3 rounded-xl bg-[#f9f9fb] border border-black/8 space-y-2.5">
+                      <label className="flex items-center gap-2 cursor-pointer text-[12.5px] font-semibold text-[#1d1d1f]">
+                        <input
+                          type="checkbox"
+                          checked={patientIncludeExamOrder}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setPatientIncludeExamOrder(checked);
+                            setPatientOrderVetId('');
+                            setPatientOrderTableId(
+                              resolveFirstActivePriceTableId(priceTables, getTodayIsoDate())
+                            );
+                            setPatientSelectedExamIds([]);
+                            setPatientOrderNotes('');
+                            setPatientOrderModalKey((k) => k + 1);
+                          }}
+                          className="w-4 h-4 accent-[#0071e3] rounded"
+                        />
+                        <span>Gerar atendimento agora</span>
+                      </label>
+
+                      {patientIncludeExamOrder && (
+                        <div className="space-y-2.5 pt-2 border-t border-black/5">
+                          <div className={`grid grid-cols-1 ${isAdmin ? 'sm:grid-cols-2' : ''} gap-2.5`}>
+                            <SearchableSelectField
+                              label="Veterinário *"
+                              placeholder="Selecionar veterinário..."
+                              modalTitle="Selecionar Veterinário Solicitante"
+                              modalSubtitle="Pesquise por nome, CRMV ou clínica parceira"
+                              searchPlaceholder="Buscar por nome, CRMV ou clínica..."
+                              items={vets}
+                              value={patientOrderVetId}
+                              getId={(v) => v.id}
+                              getPrimaryLabel={(v) => v.name}
+                              getSecondaryLabel={(v) =>
+                                `${v.crmv || 'Sem CRMV'}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`
+                              }
+                              getBadge={(v) => v.crmv || undefined}
+                              getSearchText={(v) => `${v.name} ${v.crmv || ''} ${v.clinic_name || ''}`}
+                              onChange={(id) => setPatientOrderVetId(id)}
+                              onClear={() => setPatientOrderVetId('')}
+                              variant="minimal"
+                              triggerClassName="bg-white border border-black/10"
+                            />
+                            {isAdmin && (
+                              <SearchableSelectField
+                                label="Tabela"
+                                placeholder="Tabela padrão..."
+                                modalTitle="Selecionar Tabela de Preços / Convênio"
+                                searchPlaceholder="Buscar tabela por nome ou vigência..."
+                                items={priceTables}
+                                value={patientOrderTableId || defaultActivePriceTable?.id || ''}
+                                getId={(pt) => pt.id}
+                                getPrimaryLabel={(pt) => pt.name}
+                                getSecondaryLabel={(pt) => `Vigência: ${pt.start_date} a ${pt.end_date}`}
+                                getSearchText={(pt) => `${pt.name} ${pt.start_date} ${pt.end_date}`}
+                                onChange={(id) => setPatientOrderTableId(id)}
+                                onClear={() =>
+                                  setPatientOrderTableId(
+                                    resolveFirstActivePriceTableId(priceTables, getTodayIsoDate())
+                                  )
+                                }
+                                variant="minimal"
+                                triggerClassName="bg-white border border-black/10"
+                              />
+                            )}
+                          </div>
+
+                          <ExamMultiPicker
+                            key={patientOrderModalKey}
+                            exams={exams}
+                            selectedExamIds={patientSelectedExamIds}
+                            onChange={setPatientSelectedExamIds}
+                            activePriceTable={effectivePatientPriceTable}
+                            minimal
+                            listMaxHeightClass="max-h-[165px]"
+                            hidePrices={!isAdmin}
+                          />
+
+                          <input
+                            type="text"
+                            value={patientOrderNotes}
+                            onChange={(e) => setPatientOrderNotes(e.target.value)}
+                            placeholder="Observações (opcional)"
+                            className="w-full h-[36px] px-3 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="px-5 py-3.5 border-t border-black/5 bg-[#fafafa] flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div className="text-[12px] text-[#707070]">
+                      {patientIncludeExamOrder && (
+                        <span>
+                          {validPatientSelectedExamIds.length} exame(s)
+                          {isAdmin && (
+                            <>
+                              {' '}•{' '}
+                              <strong className="font-mono text-[#1d1d1f]">
+                                R$ {calculatedPatientOrderTotal.toFixed(2)}
+                              </strong>
+                            </>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <button
+                        type="button"
+                        onClick={handleClosePatientModal}
+                        className="px-4 py-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[12px] font-semibold transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12.5px] font-semibold hover:opacity-95 transition cursor-pointer"
+                      >
+                        {editingPatientId
+                          ? patientIncludeExamOrder
+                            ? 'Salvar e Atender'
+                            : 'Salvar'
+                          : patientIncludeExamOrder
+                            ? 'Cadastrar e Atender'
+                            : 'Cadastrar'}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
 
@@ -1700,21 +2357,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    setEditingPatientId(null);
-                    setPatientIncludeExamOrder(false);
-                    setPatientSelectedExamIds([]);
-                    setPatientOrderNotes('');
-                    setPatientCrudForm({
-                      name: '',
-                      species: 'Canino',
-                      breed: '',
-                      gender: 'M',
-                      birth_date: '',
-                      age_months: '',
-                      tutor_name: '',
-                      tutor_phone: '',
-                      tutor_email: '',
-                    });
+                    resetPatientModal();
                     setPatientModalOpen(true);
                   }}
                   className="w-full sm:w-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
@@ -1799,14 +2442,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           <td className="py-3 px-3 text-right space-x-1 whitespace-nowrap">
                             <button
                               type="button"
-                              onClick={() => {
-                                setEditingOrderId(null);
-                                setRoutinePatientMode('existing');
-                                setRoutineSelectedPatientId(p.id);
-                                setRoutineSubTab('list');
-                                setActiveTab('routine');
-                                setOrderModalOpen(true);
-                              }}
+                              onClick={() =>
+                                handleOpenNewOrder({
+                                  patientId: p.id,
+                                  switchToRoutineTab: true,
+                                })
+                              }
                               className="px-2.5 py-1.5 rounded-full bg-[#1d9496] text-white text-[11px] font-semibold hover:opacity-90 transition inline-flex items-center gap-1"
                             >
                               <ClipboardPlus className="w-3 h-3" />
@@ -1816,6 +2457,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                               type="button"
                               title="Editar paciente"
                               onClick={() => {
+                                resetPatientModal();
                                 setEditingPatientId(p.id);
                                 const editBirthDate = p.birth_date || '';
                                 const editAgeMonths = editBirthDate
@@ -1886,64 +2528,30 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
       )}
 
       {/* =====================================================================
-          ABA 2: ATENDIMENTOS / ROTINA (LISTA + CADASTRO DE ATENDIMENTOS)
+          ABA 2: ATENDIMENTOS / ROTINA (LISTA + SOLICITAÇÕES DE COLETA)
          ===================================================================== */}
       {activeTab === 'routine' && (
         <div className="space-y-5 sm:space-y-6">
-          {/* Sub-navegação Atendimentos: Lista vs Novo Atendimento */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:px-5 sm:py-3.5 rounded-[24px]">
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={() => setRoutineSubTab('list')}
-                className={`px-3.5 sm:px-4 py-2 rounded-full text-[11.5px] sm:text-[12px] font-semibold transition ${routineSubTab === 'list'
-                  ? 'bg-[#1d1d1f] text-white'
-                  : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
-                  }`}
-              >
-                Lista de Atendimentos ({orders.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingOrderId(null);
-                  setOrderModalOpen(true);
-                }}
-                className="px-3.5 sm:px-4 py-2 rounded-full text-[11.5px] sm:text-[12px] font-semibold transition bg-[#0071e3] text-white hover:opacity-95 cursor-pointer"
-              >
-                + Novo Atendimento
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setRoutineSubTab('collections');
-                  try {
-                    const fresh = await api.getCollectionRequests();
-                    setCollectionRequests(fresh);
-                  } catch {
-                    // ignore
-                  }
-                }}
-                className={`px-3.5 sm:px-4 py-2 rounded-full text-[11.5px] sm:text-[12px] font-semibold transition inline-flex items-center gap-1.5 ${routineSubTab === 'collections'
-                  ? 'bg-[#0b2240] text-white'
-                  : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
-                  }`}
-              >
-                <span>Solicitações de Coleta</span>
-                {collectionRequests.filter((c) => (c.status || 'pendente') === 'pendente').length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-amber-400 text-[#0b2240] text-[10px] font-bold">
-                    {collectionRequests.filter((c) => (c.status || 'pendente') === 'pendente').length}
-                  </span>
-                )}
-              </button>
-            </div>
-            <div className="text-[12px] text-[#707070]">
-              Os laudos são gerados a partir de cada atendimento e suas solicitações de exames.
-            </div>
-          </div>
-
           {routineSubTab === 'list' && (
             <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-[20px] sm:text-[22px] font-semibold text-[#1d1d1f]">
+                    Lista de Atendimentos ({orders.length})
+                  </h2>
+                  <p className="text-[12px] text-[#707070]">
+                    Os laudos são gerados a partir de cada atendimento e suas solicitações de exames.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenNewOrder()}
+                  className="px-4 py-2 rounded-full text-[12px] font-semibold transition bg-[#0071e3] text-white hover:opacity-95 cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Novo Atendimento
+                </button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
                 <input
                   type="text"
@@ -2135,13 +2743,34 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="font-display text-[20px] sm:text-[22px] font-semibold text-[#1d1d1f]">
-                    Solicitações de Coleta Recebidas pelo Site
+                    Solicitações & Agendamentos de Coleta ({collectionRequests.length})
                   </h2>
                   <p className="text-[12px] text-[#707070]">
-                    Acompanhe os pedidos de retirada programada e converta diretamente em um Atendimento / Ordem de Serviço.
+                    Gerencie pedidos recebidos pelo site ou cadastre novos agendamentos de retirada e converta em Atendimento com 1 clique.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCollectionCrudModal({
+                        clinic_or_tutor_name: '',
+                        crmv: '',
+                        phone: '',
+                        email: '',
+                        address: '',
+                        preferred_date: getTodayIsoDate(),
+                        scheduled_date: getTodayIsoDate(),
+                        scheduled_time: '09:00',
+                        status: 'agendada',
+                        notes: '',
+                      })
+                    }
+                    className="px-4 py-2 rounded-full bg-[#0071e3] hover:opacity-95 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Novo Agendamento
+                  </button>
                   <button
                     type="button"
                     onClick={async () => {
@@ -2149,7 +2778,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       setCollectionRequests(fresh);
                       showToast('Lista de solicitações atualizada!');
                     }}
-                    className="px-3.5 py-2 rounded-full bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5"
+                    className="px-3.5 py-2 rounded-full bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Atualizar
@@ -2158,7 +2787,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                     type="text"
                     value={collectionSearch}
                     onChange={(e) => setCollectionSearch(e.target.value)}
-                    placeholder="Buscar clínica, telefone, endereço..."
+                    placeholder="Buscar clínica, CRMV, telefone, endereço..."
                     className="px-4 py-2 rounded-full bg-[#f5f5f7] text-[12px] flex-1 sm:w-60 min-w-[150px]"
                   />
                   <select
@@ -2213,8 +2842,15 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           <div className="space-y-2">
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <div className="text-[15px] font-semibold text-[#1d1d1f]">
-                                  {col.clinic_or_tutor_name}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="text-[15px] font-semibold text-[#1d1d1f]">
+                                    {col.clinic_or_tutor_name}
+                                  </div>
+                                  {col.crmv && (
+                                    <span className="px-2 py-0.5 rounded-full bg-white text-[#0b2240] font-mono text-[10.5px] font-bold border border-black/10">
+                                      {col.crmv}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[12px] text-[#707070]">
                                   {col.phone} • {col.email}
@@ -2288,29 +2924,99 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                                       date:
                                         col.scheduled_date ||
                                         col.preferred_date ||
-                                        new Date().toISOString().slice(0, 10),
+                                        getTodayIsoDate(),
                                       time: col.scheduled_time || '09:00',
                                     })
                                   }
-                                  className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-[#0b2240] text-[11px] font-semibold inline-flex items-center gap-1"
+                                  className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-[#0b2240] text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
                                 >
                                   <Calendar className="w-3.5 h-3.5 text-[#0071e3]" />
                                   {st === 'agendada' ? 'Reagendar' : 'Agendar'}
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCollectionCrudModal({
+                                    id: col.id,
+                                    clinic_or_tutor_name: col.clinic_or_tutor_name || '',
+                                    crmv: col.crmv || '',
+                                    phone: col.phone || '',
+                                    email: col.email || '',
+                                    address: col.address || '',
+                                    preferred_date: col.preferred_date || getTodayIsoDate(),
+                                    scheduled_date:
+                                      col.scheduled_date || col.preferred_date || getTodayIsoDate(),
+                                    scheduled_time: col.scheduled_time || '09:00',
+                                    status: (st === 'agendada' ||
+                                    st === 'concluida' ||
+                                    st === 'cancelada'
+                                      ? st
+                                      : 'pendente') as
+                                      | 'pendente'
+                                      | 'agendada'
+                                      | 'concluida'
+                                      | 'cancelada',
+                                    notes: col.notes || '',
+                                  })
+                                }
+                                className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-[#0b2240] text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                Editar
+                              </button>
                               {st !== 'concluida' && st !== 'cancelada' && col.id && (
                                 <button
                                   type="button"
                                   onClick={async () => {
                                     const updated = await api.updateCollectionRequestStatus(col.id!, 'cancelada');
                                     setCollectionRequests((prev) =>
-                                      prev.map((item) => (item.id === col.id ? updated : item))
+                                      prev.map((item) =>
+                                        item.id === col.id || item.id === updated.id
+                                          ? { ...item, ...updated }
+                                          : item
+                                      )
                                     );
                                     showToast('Solicitação cancelada.');
                                   }}
-                                  className="px-3 py-1.5 rounded-full bg-white hover:bg-red-50 text-red-600 text-[11px] font-semibold"
+                                  className="px-3 py-1.5 rounded-full bg-white hover:bg-red-50 text-red-600 text-[11px] font-semibold cursor-pointer"
                                 >
                                   Cancelar
+                                </button>
+                              )}
+                              {st === 'cancelada' && col.id && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const updated = await api.updateCollectionRequestStatus(col.id!, 'pendente');
+                                    setCollectionRequests((prev) =>
+                                      prev.map((item) =>
+                                        item.id === col.id || item.id === updated.id
+                                          ? { ...item, ...updated }
+                                          : item
+                                      )
+                                    );
+                                    showToast('Solicitação reaberta como pendente.');
+                                  }}
+                                  className="px-3 py-1.5 rounded-full bg-white hover:bg-slate-100 text-[#0b2240] text-[11px] font-semibold cursor-pointer"
+                                >
+                                  Reabrir
+                                </button>
+                              )}
+                              {col.id && (
+                                <button
+                                  type="button"
+                                  title="Excluir solicitação"
+                                  onClick={async () => {
+                                    await api.deleteCollectionRequest(col.id!);
+                                    setCollectionRequests((prev) =>
+                                      prev.filter((item) => item.id !== col.id)
+                                    );
+                                    showToast('Solicitação de coleta removida.');
+                                  }}
+                                  className="p-1.5 rounded-full bg-white hover:bg-red-50 text-slate-400 hover:text-red-600 transition inline-flex items-center cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
                             </div>
@@ -2318,54 +3024,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                             {st !== 'cancelada' && (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  const cleanDigits = (s?: string) => (s || '').replace(/\D/g, '');
-                                  const colDigits = cleanDigits(col.phone);
-                                  const colEmail = (col.email || '').trim().toLowerCase();
-                                  const colName = (col.clinic_or_tutor_name || '').trim().toLowerCase();
-
-                                  const matchedVet = vets.find((v) => {
-                                    if (colEmail && v.email.toLowerCase() === colEmail) return true;
-                                    const vDigits = cleanDigits(v.phone);
-                                    if (
-                                      colDigits.length >= 8 &&
-                                      vDigits.length >= 8 &&
-                                      vDigits.slice(-8) === colDigits.slice(-8)
-                                    ) {
-                                      return true;
-                                    }
-                                    if (
-                                      v.clinic_name &&
-                                      colName.includes(v.clinic_name.trim().toLowerCase())
-                                    ) {
-                                      return true;
-                                    }
-                                    return false;
-                                  });
-
-                                  if (matchedVet) {
-                                    setSelectedVetId(matchedVet.id);
-                                    setConvertingVetMatched(true);
-                                  } else {
-                                    setConvertingVetMatched(false);
-                                  }
-                                  if (col.scheduled_date || col.preferred_date) {
-                                    setOrderDate(col.scheduled_date || col.preferred_date!);
-                                  }
-                                  setPatientForm((prev) => ({
-                                    ...prev,
-                                    notes: `[Coleta: ${col.clinic_or_tutor_name} | Tel: ${col.phone} | End: ${col.address}] ${col.notes || ''}`.trim(),
-                                  }));
-                                  setConvertingCollection(col);
-                                  setEditingOrderId(null);
-                                  setOrderModalOpen(true);
-                                  showToast(
-                                    matchedVet
-                                      ? `Solicitação carregada e vinculada a ${matchedVet.name}!`
-                                      : `Solicitação de ${col.clinic_or_tutor_name} carregada! Você pode cadastrar a clínica/veterinário agora ou selecionar um existente.`
-                                  );
-                                }}
-                                className="px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition inline-flex items-center gap-1.5"
+                                onClick={() => handleConvertCollectionToOrder(col)}
+                                className="px-4 py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition inline-flex items-center gap-1.5 cursor-pointer"
                               >
                                 <ClipboardPlus className="w-3.5 h-3.5" />
                                 Transformar em Atendimento
@@ -2403,461 +3063,518 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         </div>
       )}
 
-      {orderModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4">
-          <div className="bg-[#f5f5f7] rounded-[24px] sm:rounded-[28px] max-w-6xl w-full min-w-0 max-h-[92vh] overflow-y-auto p-3.5 sm:p-6 space-y-3.5 sm:space-y-4 shadow-2xl border border-black/10">
-            <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
-              <div className="min-w-0">
-                <h3 className="font-display text-[17px] sm:text-[20px] font-semibold text-[#1d1d1f] leading-snug">
-                  {editingOrderId
-                    ? `Editar Atendimento ${orders.find((o) => o.id === editingOrderId)?.protocol_code || ''}`
-                    : 'Novo Atendimento / Ordem de Serviço'}
-                </h3>
-                <p className="text-[11px] sm:text-[12px] text-[#707070]">
-                  Selecione paciente, veterinário, tabela e exames sem sair da tela.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setOrderModalOpen(false);
-                  setEditingOrderId(null);
-                }}
-                className="px-3 py-1.5 rounded-full bg-white text-[12px] font-medium text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
+      {orderModalOpen &&
+        (() => {
+          const totalLabels = validSelectedExamIds.reduce((sum, id) => {
+            const ex = exams.find((e) => e.id === id);
+            return sum + (ex?.label_qty || 0);
+          }, 0);
+
+          return (
+            <div
+              className="fixed inset-0 z-50 bg-[#0b2240]/45 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 lg:p-6"
+              onClick={handleCloseOrderModal}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-[26px] w-[96vw] max-w-[1380px] min-w-0 max-h-[94vh] flex flex-col overflow-hidden shadow-2xl border border-black/10"
               >
-                Fechar
-              </button>
-            </div>
-            <form onSubmit={handleCreateOrder} className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-4 items-start min-w-0">
-              {/* COLUNA PRINCIPAL (ESQUERDA) */}
-              <div className="lg:col-span-8 min-w-0 bg-white rounded-[20px] sm:rounded-[24px] p-3.5 sm:p-5 space-y-3.5 border border-black/5">
-                {convertingCollection && (
-                  <div
-                    className={`px-3.5 py-2.5 rounded-2xl border flex flex-wrap items-center justify-between gap-2 text-[12px] ${convertingVetMatched
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
-                      : 'bg-amber-50 border-amber-200 text-amber-950'
-                      }`}
-                  >
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="break-words">
-                        <strong>Convertendo Solicitação de Coleta:</strong>{' '}
-                        {convertingCollection.clinic_or_tutor_name} ({convertingCollection.phone})
-                      </div>
-                      <div className="text-[11px]">
-                        {convertingVetMatched ? (
-                          <span className="text-emerald-700 font-semibold">
-                            ✓ Veterinário/Clínica localizado por e-mail/telefone e vinculado automaticamente.
-                          </span>
-                        ) : (
-                          <span className="text-amber-800">
-                            Nenhuma clínica/veterinário cadastrado encontrado para este e-mail ou telefone.
-                          </span>
-                        )}
-                      </div>
+                <form onSubmit={handleCreateOrder} className="flex flex-col min-h-0 flex-1">
+                  {/* Header */}
+                  <div className="px-6 sm:px-7 py-4 border-b border-black/5 flex items-center justify-between gap-3 shrink-0">
+                    <div>
+                      <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f] truncate">
+                        {editingOrderId
+                          ? `Editar Atendimento ${orders.find((o) => o.id === editingOrderId)?.protocol_code || ''}`
+                          : 'Novo Atendimento Laboratorial'}
+                      </h3>
+                      <p className="text-[12px] text-[#707070] mt-0.5">
+                        Vincule o paciente, médico veterinário solicitante e selecione os exames da ordem de serviço.
+                      </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {!convertingVetMatched && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setQuickVetModal({
-                              name: convertingCollection.clinic_or_tutor_name,
-                              email: convertingCollection.email || '',
-                              phone: convertingCollection.phone || '',
-                              password: '',
-                              clinic_name: convertingCollection.clinic_or_tutor_name,
-                              crmv: '',
-                            })
-                          }
-                          className="px-3 py-1.5 rounded-full bg-[#0071e3] text-white text-[11px] font-semibold hover:opacity-95 transition"
-                        >
-                          + Cadastrar Veterinário / Clínica
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConvertingCollection(null);
-                          setConvertingVetMatched(false);
-                        }}
-                        className="text-[#0071e3] font-semibold hover:underline"
-                      >
-                        Desvincular
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCloseOrderModal}
+                      className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                      aria-label="Fechar"
+                      title="Fechar"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                )}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[12px] font-semibold uppercase tracking-wider text-[#86868b]">
-                      Dados do Paciente & Solicitação
-                    </span>
-                    {editingOrderId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingOrderId(null);
-                          setOrderModalOpen(false);
-                          setRoutineSubTab('list');
-                        }}
-                        className="px-2.5 py-0.5 rounded-full bg-red-50 text-red-600 text-[11px] font-semibold hover:bg-red-100 transition"
+
+                  {/* Body */}
+                  <div className="px-6 sm:px-7 py-4 sm:py-5 overflow-y-auto space-y-4 flex-1 min-w-0">
+                    {convertingCollection && (
+                      <div
+                        className={`px-3.5 py-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-[11.5px] ${
+                          convertingVetMatched
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                            : 'bg-amber-50 border-amber-200 text-amber-950'
+                        }`}
                       >
-                        Cancelar Edição
-                      </button>
+                        <div className="min-w-0 truncate">
+                          <strong>Coleta:</strong> {convertingCollection.clinic_or_tutor_name} (
+                          {convertingCollection.phone})
+                          {convertingVetMatched && (
+                            <span className="ml-2 text-emerald-700 font-semibold">• Vet vinculado</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {!convertingVetMatched && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setQuickVetModal({
+                                  name: convertingCollection.clinic_or_tutor_name,
+                                  email: convertingCollection.email || '',
+                                  phone: convertingCollection.phone || '',
+                                  password: '',
+                                  clinic_name: convertingCollection.clinic_or_tutor_name,
+                                  crmv: convertingCollection.crmv || '',
+                                })
+                              }
+                              className="px-2.5 py-1 rounded-full bg-[#0071e3] text-white text-[11px] font-semibold hover:opacity-95 transition"
+                            >
+                              + Cadastrar Vet
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConvertingCollection(null);
+                              setConvertingVetMatched(false);
+                            }}
+                            className="text-[#0071e3] font-semibold hover:underline"
+                          >
+                            Desvincular
+                          </button>
+                        </div>
+                      </div>
                     )}
-                  </div>
-                  <div className="grid grid-cols-2 sm:inline-flex rounded-full bg-[#f5f5f7] p-0.5 text-[11px] font-semibold w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={() => setRoutinePatientMode('existing')}
-                      className={`px-3 py-1.5 sm:py-1 rounded-full transition text-center ${routinePatientMode === 'existing'
-                        ? 'bg-[#0b2240] text-white'
-                        : 'text-[#5b6675]'
-                        }`}
-                    >
-                      Paciente Cadastrado
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRoutinePatientMode('new')}
-                      className={`px-3 py-1.5 sm:py-1 rounded-full transition text-center ${routinePatientMode === 'new'
-                        ? 'bg-[#0b2240] text-white'
-                        : 'text-[#5b6675]'
-                        }`}
-                    >
-                      + Novo Paciente
-                    </button>
-                  </div>
-                </div>
 
-                {routinePatientMode === 'existing' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 p-3 rounded-2xl bg-[#f5f5f7] min-w-0">
-                    <div className="md:col-span-4 min-w-0">
-                      <SearchableSelectField
-                        label="Paciente *"
-                        modalTitle="Pesquisar Paciente Cadastrado"
-                        modalSubtitle="Busque por nome do animal, tutor, telefone, raça ou espécie"
-                        searchPlaceholder="Digite o nome do animal, tutor ou raça..."
-                        items={patients}
-                        value={routineSelectedPatientId}
-                        getId={(p) => p.id}
-                        getPrimaryLabel={(p) => `${p.name} (${p.species})`}
-                        getSecondaryLabel={(p) =>
-                          `Tutor: ${p.tutor_name}${p.tutor_phone ? ` • ${p.tutor_phone}` : ''}`
-                        }
-                        getBadge={(p) => p.species}
-                        getSearchText={(p) =>
-                          `${p.name} ${p.species} ${p.breed || ''} ${p.tutor_name} ${p.tutor_phone || ''}`
-                        }
-                        filterChips={[
-                          { id: 'canino', label: 'Caninos', predicate: (p) => p.species === 'Canino' },
-                          { id: 'felino', label: 'Felinos', predicate: (p) => p.species === 'Felino' },
-                        ]}
-                        onChange={(id) => setRoutineSelectedPatientId(id)}
-                        triggerClassName="bg-white border border-black/5 py-2 text-[13px]"
-                      />
-                    </div>
-                    <div className="md:col-span-4 min-w-0">
-                      <SearchableSelectField
-                        label="Veterinário Solicitante *"
-                        modalTitle="Pesquisar Veterinário Solicitante"
-                        modalSubtitle="Busque por nome, CRMV ou clínica parceira"
-                        searchPlaceholder="Digite o nome do veterinário, CRMV ou clínica..."
-                        items={vets}
-                        value={selectedVetId}
-                        getId={(v) => v.id}
-                        getPrimaryLabel={(v) => v.name}
-                        getSecondaryLabel={(v) =>
-                          `${v.crmv || 'Sem CRMV'}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`
-                        }
-                        getBadge={(v) => v.crmv || undefined}
-                        getSearchText={(v) => `${v.name} ${v.crmv || ''} ${v.clinic_name || ''}`}
-                        onChange={(id) => setSelectedVetId(id)}
-                        triggerClassName="bg-white border border-black/5 py-2 text-[13px]"
-                      />
-                    </div>
-                    <div className="md:col-span-2 min-w-0">
-                      <label className="block text-[12px] text-[#707070] mb-1">Data</label>
-                      <input
-                        type="date"
-                        value={orderDate}
-                        onChange={(e) => setOrderDate(e.target.value)}
-                        className="w-full min-w-0 px-3 py-2 rounded-[18px] bg-white border border-black/5 text-[13px]"
-                      />
-                    </div>
-                    <div className="md:col-span-2 min-w-0">
-                      <SearchableSelectField
-                        label="Tabela"
-                        modalTitle="Selecionar Tabela de Preços / Convênio"
-                        searchPlaceholder="Pesquisar tabela por nome ou vigência..."
-                        items={priceTables}
-                        value={activePriceTable?.id || ''}
-                        getId={(pt) => pt.id}
-                        getPrimaryLabel={(pt) => pt.name}
-                        getSecondaryLabel={(pt) => `Vigência: ${pt.start_date} a ${pt.end_date}`}
-                        getSearchText={(pt) => `${pt.name} ${pt.start_date} ${pt.end_date}`}
-                        onChange={(id) => setSelectedTableId(id)}
-                        triggerClassName="bg-white border border-black/5 py-2 text-[13px]"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-3 sm:p-3.5 rounded-2xl bg-[#f5f5f7] space-y-2.5 min-w-0">
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-                      <div className="min-w-0">
-                        <label className="block text-[11px] text-[#707070] mb-0.5">Animal *</label>
-                        <input
-                          type="text"
-                          required
-                          value={patientForm.name}
-                          onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })}
-                          placeholder="Ex: Apollo"
-                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 sm:contents gap-2.5">
-                        <div className="min-w-0">
-                          <label className="block text-[11px] text-[#707070] mb-0.5">Espécie *</label>
-                          <select
-                            value={patientForm.species}
-                            onChange={(e) =>
-                              setPatientForm({ ...patientForm, species: e.target.value })
-                            }
-                            className="w-full px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
-                          >
-                            <option value="Canino">Canino</option>
-                            <option value="Felino">Felino</option>
-                            <option value="Equino">Equino</option>
-                            <option value="Silvestre">Silvestre / Exótico</option>
-                          </select>
-                        </div>
-                        <div className="min-w-0">
-                          <label className="block text-[11px] text-[#707070] mb-0.5">Sexo *</label>
-                          <select
-                            value={patientForm.gender}
-                            onChange={(e) =>
-                              setPatientForm({ ...patientForm, gender: e.target.value as 'M' | 'F' })
-                            }
-                            className="w-full px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
-                          >
-                            <option value="M">Macho (M)</option>
-                            <option value="F">Fêmea (F)</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <label className="block text-[11px] text-[#707070] mb-0.5">Raça *</label>
-                        <input
-                          type="text"
-                          required
-                          value={patientForm.breed}
-                          onChange={(e) => setPatientForm({ ...patientForm, breed: e.target.value })}
-                          placeholder="SRD / Pastor"
-                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <label className="block text-[11px] text-[#707070] mb-0.5">Tutor *</label>
-                        <input
-                          type="text"
-                          required
-                          value={patientForm.tutor_name}
-                          onChange={(e) =>
-                            setPatientForm({ ...patientForm, tutor_name: e.target.value })
-                          }
-                          placeholder="Nome do tutor"
-                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <label className="block text-[11px] text-[#707070] mb-0.5">Telefone *</label>
-                        <input
-                          type="text"
-                          required
-                          value={patientForm.tutor_phone}
-                          onChange={(e) =>
-                            setPatientForm({ ...patientForm, tutor_phone: e.target.value })
-                          }
-                          placeholder="(11) 99999-0000"
-                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <label className="block text-[11px] text-[#707070] mb-0.5">Idade (Meses)</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={patientForm.age_months}
-                          onChange={(e) =>
-                            setPatientForm({ ...patientForm, age_months: Number(e.target.value) })
-                          }
-                          className="w-full px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <label className="block text-[11px] text-[#707070] mb-0.5">Data</label>
-                        <input
-                          type="date"
-                          value={orderDate}
-                          onChange={(e) => setOrderDate(e.target.value)}
-                          className="w-full min-w-0 px-3 py-2 sm:py-1.5 rounded-xl bg-white text-[13px]"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 min-w-0">
-                      <SearchableSelectField
-                        label="Médico Veterinário Solicitante *"
-                        modalTitle="Pesquisar Veterinário Solicitante"
-                        searchPlaceholder="Digite o nome do veterinário, CRMV ou clínica..."
-                        items={vets}
-                        value={selectedVetId}
-                        getId={(v) => v.id}
-                        getPrimaryLabel={(v) => v.name}
-                        getSecondaryLabel={(v) =>
-                          `${v.crmv || 'Sem CRMV'}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`
-                        }
-                        getBadge={(v) => v.crmv || undefined}
-                        getSearchText={(v) => `${v.name} ${v.crmv || ''} ${v.clinic_name || ''}`}
-                        onChange={(id) => setSelectedVetId(id)}
-                        triggerClassName="bg-white border border-black/5 py-1.5 text-[13px]"
-                      />
-                      <SearchableSelectField
-                        label="Tabela de Preços / Convênio"
-                        modalTitle="Selecionar Tabela de Preços / Convênio"
-                        searchPlaceholder="Pesquisar tabela por nome ou vigência..."
-                        items={priceTables}
-                        value={activePriceTable?.id || ''}
-                        getId={(pt) => pt.id}
-                        getPrimaryLabel={(pt) => pt.name}
-                        getSecondaryLabel={(pt) => `Vigência: ${pt.start_date} a ${pt.end_date}`}
-                        getSearchText={(pt) => `${pt.name} ${pt.start_date} ${pt.end_date}`}
-                        onChange={(id) => setSelectedTableId(id)}
-                        triggerClassName="bg-white border border-black/5 py-1.5 text-[13px]"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <ExamMultiPicker
-                  exams={exams}
-                  selectedExamIds={selectedExamIds}
-                  onChange={setSelectedExamIds}
-                  activePriceTable={activePriceTable}
-                  title="Exames Solicitados"
-                  compact
-                  hideHeaderSummary
-                />
-              </div>
-
-              {/* COLUNA DIREITA FIXA (RESUMO + AÇÃO + TUBOS) */}
-              <div className="lg:col-span-4 min-w-0 space-y-3 lg:sticky lg:top-[76px]">
-                <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 sm:p-5 space-y-3 border border-black/5 shadow-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[#86868b]">
-                      Resumo do Atendimento
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#e8f2fd] text-[#0071e3] text-[11px] font-semibold shrink-0">
-                      {validSelectedExamIds.length} exame(s)
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-2xl bg-[#f5f5f7] space-y-1 text-[12px]">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#707070] shrink-0">Paciente:</span>
-                      <span className="font-semibold text-[#1d1d1f] truncate">
-                        {routinePatientMode === 'existing'
-                          ? patients.find((p) => p.id === routineSelectedPatientId)?.name || 'Selecione'
-                          : patientForm.name || 'Novo Paciente'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#707070] shrink-0">Veterinário:</span>
-                      <span className="font-semibold text-[#1d1d1f] truncate">
-                        {vets.find((v) => v.id === selectedVetId)?.name || 'Selecione'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#707070] shrink-0">Tabela:</span>
-                      <span className="font-medium text-[#1d1d1f] truncate">
-                        {activePriceTable?.name || 'Padrão'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-baseline justify-between gap-2 pt-1">
-                    <span className="text-[12px] text-[#707070]">Total Calculado:</span>
-                    <span className="font-display text-[22px] sm:text-[28px] font-bold text-[#1d1d1f] font-mono leading-none">
-                      R$ {calculatedOrderTotal.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-3 px-4 rounded-full bg-[#0071e3] text-white text-[13px] sm:text-[14px] font-semibold inline-flex items-center justify-center gap-2 hover:opacity-95 transition shadow-sm text-center"
-                  >
-                    <Barcode className="w-4 h-4 shrink-0" />
-                    <span>
-                      {editingOrderId
-                        ? 'Salvar Alterações do Atendimento'
-                        : 'Registrar Atendimento e Etiquetas'}
-                    </span>
-                  </button>
-                </div>
-
-                <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 space-y-2.5 border border-black/5">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-display text-[14px] sm:text-[15px] font-semibold text-[#1d1d1f] flex items-center gap-1.5">
-                      <Barcode className="w-4 h-4 text-[#0071e3] shrink-0" />
-                      <span>Tubos & Etiquetas da Coleta</span>
-                    </h3>
-                    <span className="text-[11px] font-mono text-[#707070] shrink-0">
-                      {validSelectedExamIds.reduce((s, id) => {
-                        const ex = exams.find((e) => e.id === id);
-                        return s + (ex?.label_qty || 0);
-                      }, 0)}{' '}
-                      etiq.
-                    </span>
-                  </div>
-
-                  {validSelectedExamIds.length === 0 ? (
-                    <p className="text-[12px] text-[#86868b] py-3 text-center">
-                      Marque os exames para visualizar os tubos e etiquetas necessários.
-                    </p>
-                  ) : (
-                    <div className="space-y-1.5 max-h-[210px] overflow-y-auto pr-1 text-[11px]">
-                      {validSelectedExamIds.map((id) => {
-                        const ex = exams.find((e) => e.id === id);
-                        if (!ex) return null;
-                        return (
-                          <div
-                            key={id}
-                            className="px-3 py-2 rounded-xl bg-[#f5f5f7] flex items-center justify-between gap-2"
-                          >
-                            <div className="min-w-0">
-                              <div className="font-semibold text-[#1d1d1f] truncate">
-                                [{ex.code}] {ex.name}
-                              </div>
-                              <div className="text-[#707070] truncate">{ex.tube_type}</div>
+                    {/* Paciente + Veterinário + Tabela + Data em layout horizontal amplo */}
+                    {routinePatientMode === 'existing' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end min-w-0">
+                        <div className="sm:col-span-2 lg:col-span-4 space-y-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-medium text-[#707070]">Paciente *</span>
+                            <div className="inline-flex rounded-full bg-[#f5f5f7] p-0.5 text-[11px] font-semibold">
+                              <button
+                                type="button"
+                                onClick={() => setRoutinePatientMode('existing')}
+                                className="px-2.5 py-0.5 rounded-full transition cursor-pointer bg-[#1d1d1f] text-white"
+                              >
+                                Cadastrado
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRoutinePatientMode('new')}
+                                className="px-2.5 py-0.5 rounded-full transition cursor-pointer text-[#5b6675] hover:text-[#1d1d1f]"
+                              >
+                                + Novo
+                              </button>
                             </div>
-                            <span className="px-2 py-0.5 rounded-full bg-white text-[#1d1d1f] font-semibold shrink-0">
-                              {ex.label_qty} etiq.
-                            </span>
                           </div>
-                        );
-                      })}
+                          <SearchableSelectField
+                            placeholder="Selecionar paciente..."
+                            modalTitle="Pesquisar Paciente Cadastrado"
+                            modalSubtitle="Busque por nome do animal, tutor, telefone, raça ou espécie"
+                            searchPlaceholder="Digite o nome do animal, tutor ou raça..."
+                            items={patients}
+                            value={routineSelectedPatientId}
+                            getId={(p) => p.id}
+                            getPrimaryLabel={(p) => `${p.name} (${p.species}) • Tutor: ${p.tutor_name}`}
+                            getSecondaryLabel={(p) =>
+                              `Tutor: ${p.tutor_name}${p.tutor_phone ? ` • ${p.tutor_phone}` : ''}`
+                            }
+                            getBadge={(p) => p.species}
+                            getSearchText={(p) =>
+                              `${p.name} ${p.species} ${p.breed || ''} ${p.tutor_name} ${p.tutor_phone || ''}`
+                            }
+                            filterChips={[
+                              { id: 'canino', label: 'Caninos', predicate: (p) => p.species === 'Canino' },
+                              { id: 'felino', label: 'Felinos', predicate: (p) => p.species === 'Felino' },
+                            ]}
+                            onChange={(id) => setRoutineSelectedPatientId(id)}
+                            onClear={() => setRoutineSelectedPatientId('')}
+                            variant="minimal"
+                          />
+                        </div>
+
+                        <div className={`${isAdmin ? 'lg:col-span-3' : 'lg:col-span-5'} min-w-0`}>
+                          <SearchableSelectField
+                            label="Veterinário *"
+                            placeholder="Selecionar veterinário..."
+                            modalTitle="Pesquisar Veterinário Solicitante"
+                            modalSubtitle="Busque por nome, CRMV ou clínica parceira"
+                            searchPlaceholder="Digite o nome do veterinário, CRMV ou clínica..."
+                            items={vets}
+                            value={selectedVetId}
+                            getId={(v) => v.id}
+                            getPrimaryLabel={(v) => v.name}
+                            getSecondaryLabel={(v) =>
+                              `${v.crmv || 'Sem CRMV'}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`
+                            }
+                            getBadge={(v) => v.crmv || undefined}
+                            getSearchText={(v) => `${v.name} ${v.crmv || ''} ${v.clinic_name || ''}`}
+                            onChange={(id) => setSelectedVetId(id)}
+                            onClear={() => setSelectedVetId('')}
+                            variant="minimal"
+                          />
+                        </div>
+
+                        {isAdmin && (
+                          <div className="lg:col-span-3 min-w-0">
+                            <SearchableSelectField
+                              label="Tabela"
+                              placeholder="Tabela vigente..."
+                              modalTitle="Selecionar Tabela de Preços / Convênio"
+                              searchPlaceholder="Pesquisar tabela por nome ou vigência..."
+                              items={priceTables}
+                              value={selectedTableId || defaultActivePriceTable?.id || ''}
+                              getId={(pt) => pt.id}
+                              getPrimaryLabel={(pt) => pt.name}
+                              getSecondaryLabel={(pt) => `Vigência: ${pt.start_date} a ${pt.end_date}`}
+                              getSearchText={(pt) => `${pt.name} ${pt.start_date} ${pt.end_date}`}
+                              onChange={(id) => setSelectedTableId(id)}
+                              onClear={() =>
+                                setSelectedTableId(
+                                  resolveFirstActivePriceTableId(
+                                    priceTables,
+                                    orderDate || getTodayIsoDate()
+                                  )
+                                )
+                              }
+                              variant="minimal"
+                            />
+                          </div>
+                        )}
+
+                        <div className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'} min-w-0`}>
+                          <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                            Data
+                          </label>
+                          <input
+                            type="date"
+                            value={orderDate || getTodayIsoDate()}
+                            onChange={(e) => {
+                              const nextDate = e.target.value;
+                              setOrderDate(nextDate);
+                              if (!editingOrderId && nextDate) {
+                                const cur = priceTables.find((pt) => pt.id === selectedTableId);
+                                if (
+                                  !cur ||
+                                  !cur.is_active ||
+                                  cur.start_date > nextDate ||
+                                  cur.end_date < nextDate
+                                ) {
+                                  setSelectedTableId(
+                                    resolveFirstActivePriceTableId(priceTables, nextDate)
+                                  );
+                                }
+                              }
+                            }}
+                            className="w-full h-[38px] px-2.5 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-medium text-[#707070]">
+                              Novo Paciente *
+                            </span>
+                            <div className="inline-flex rounded-full bg-[#f5f5f7] p-0.5 text-[11px] font-semibold">
+                              <button
+                                type="button"
+                                onClick={() => setRoutinePatientMode('existing')}
+                                className="px-2.5 py-0.5 rounded-full transition cursor-pointer text-[#5b6675] hover:text-[#1d1d1f]"
+                              >
+                                Cadastrado
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRoutinePatientMode('new')}
+                                className="px-2.5 py-0.5 rounded-full transition cursor-pointer bg-[#1d1d1f] text-white"
+                              >
+                                + Novo
+                              </button>
+                            </div>
+                          </div>
+                          <div className="p-3 rounded-xl bg-[#f9f9fb] border border-black/8 grid grid-cols-1 sm:grid-cols-4 lg:grid-cols-12 gap-2.5 min-w-0">
+                            <div className="sm:col-span-2 lg:col-span-2 min-w-0">
+                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
+                                Animal *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={patientForm.name}
+                                onChange={(e) =>
+                                  setPatientForm({ ...patientForm, name: e.target.value })
+                                }
+                                placeholder="Ex: Apollo"
+                                className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                              />
+                            </div>
+                            <div className="sm:col-span-2 lg:col-span-2 min-w-0">
+                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
+                                Espécie *
+                              </label>
+                              <select
+                                required
+                                value={patientForm.species}
+                                onChange={(e) =>
+                                  setPatientForm({ ...patientForm, species: e.target.value })
+                                }
+                                className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                              >
+                                <option value="">Selecione...</option>
+                                <option value="Canino">Canino</option>
+                                <option value="Felino">Felino</option>
+                                <option value="Equino">Equino</option>
+                                <option value="Silvestre">Silvestre / Exótico</option>
+                              </select>
+                            </div>
+                            <div className="sm:col-span-1 lg:col-span-1 min-w-0">
+                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
+                                Sexo *
+                              </label>
+                              <select
+                                required
+                                value={patientForm.gender}
+                                onChange={(e) =>
+                                  setPatientForm({
+                                    ...patientForm,
+                                    gender: e.target.value as '' | 'M' | 'F',
+                                  })
+                                }
+                                className="w-full h-[36px] px-2 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                              >
+                                <option value="">—</option>
+                                <option value="M">M</option>
+                                <option value="F">F</option>
+                              </select>
+                            </div>
+                            <div className="sm:col-span-1 lg:col-span-1 min-w-0">
+                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
+                                Idade (m)
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder="Meses"
+                                value={patientForm.age_months}
+                                onChange={(e) =>
+                                  setPatientForm({
+                                    ...patientForm,
+                                    age_months:
+                                      e.target.value === ''
+                                        ? ''
+                                        : Math.max(0, Math.floor(Number(e.target.value))),
+                                  })
+                                }
+                                className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                              />
+                            </div>
+                            <div className="sm:col-span-2 lg:col-span-2 min-w-0">
+                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
+                                Raça
+                              </label>
+                              <input
+                                type="text"
+                                value={patientForm.breed}
+                                onChange={(e) =>
+                                  setPatientForm({ ...patientForm, breed: e.target.value })
+                                }
+                                placeholder="Opcional (SRD)"
+                                className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                              />
+                            </div>
+                            <div className="sm:col-span-2 lg:col-span-2 min-w-0">
+                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
+                                Tutor *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={patientForm.tutor_name}
+                                onChange={(e) =>
+                                  setPatientForm({ ...patientForm, tutor_name: e.target.value })
+                                }
+                                placeholder="Nome do tutor"
+                                className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                              />
+                            </div>
+                            <div className="sm:col-span-2 lg:col-span-2 min-w-0">
+                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
+                                Telefone
+                              </label>
+                              <input
+                                type="text"
+                                value={patientForm.tutor_phone}
+                                onChange={(e) =>
+                                  setPatientForm({ ...patientForm, tutor_phone: e.target.value })
+                                }
+                                placeholder="(00) 00000-0000"
+                                className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 min-w-0">
+                          <div className={`${isAdmin ? 'sm:col-span-5' : 'sm:col-span-8'} min-w-0`}>
+                            <SearchableSelectField
+                              label="Veterinário *"
+                              placeholder="Selecionar veterinário..."
+                              modalTitle="Pesquisar Veterinário Solicitante"
+                              modalSubtitle="Busque por nome, CRMV ou clínica parceira"
+                              searchPlaceholder="Digite o nome do veterinário, CRMV ou clínica..."
+                              items={vets}
+                              value={selectedVetId}
+                              getId={(v) => v.id}
+                              getPrimaryLabel={(v) => v.name}
+                              getSecondaryLabel={(v) =>
+                                `${v.crmv || 'Sem CRMV'}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`
+                              }
+                              getBadge={(v) => v.crmv || undefined}
+                              getSearchText={(v) => `${v.name} ${v.crmv || ''} ${v.clinic_name || ''}`}
+                              onChange={(id) => setSelectedVetId(id)}
+                              onClear={() => setSelectedVetId('')}
+                              variant="minimal"
+                            />
+                          </div>
+                          {isAdmin && (
+                            <div className="sm:col-span-4 min-w-0">
+                              <SearchableSelectField
+                                label="Tabela"
+                                placeholder="Tabela vigente..."
+                                modalTitle="Selecionar Tabela de Preços / Convênio"
+                                searchPlaceholder="Pesquisar tabela por nome ou vigência..."
+                                items={priceTables}
+                                value={selectedTableId || defaultActivePriceTable?.id || ''}
+                                getId={(pt) => pt.id}
+                                getPrimaryLabel={(pt) => pt.name}
+                                getSecondaryLabel={(pt) => `Vigência: ${pt.start_date} a ${pt.end_date}`}
+                                getSearchText={(pt) => `${pt.name} ${pt.start_date} ${pt.end_date}`}
+                                onChange={(id) => setSelectedTableId(id)}
+                                onClear={() =>
+                                  setSelectedTableId(
+                                    resolveFirstActivePriceTableId(
+                                      priceTables,
+                                      orderDate || getTodayIsoDate()
+                                    )
+                                  )
+                                }
+                                variant="minimal"
+                              />
+                            </div>
+                          )}
+                          <div className={`${isAdmin ? 'sm:col-span-3' : 'sm:col-span-4'} min-w-0`}>
+                            <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                              Data
+                            </label>
+                            <input
+                              type="date"
+                              value={orderDate || getTodayIsoDate()}
+                              onChange={(e) => {
+                                const nextDate = e.target.value;
+                                setOrderDate(nextDate);
+                                if (!editingOrderId && nextDate) {
+                                  const cur = priceTables.find((pt) => pt.id === selectedTableId);
+                                  if (
+                                    !cur ||
+                                    !cur.is_active ||
+                                    cur.start_date > nextDate ||
+                                    cur.end_date < nextDate
+                                  ) {
+                                    setSelectedTableId(
+                                      resolveFirstActivePriceTableId(priceTables, nextDate)
+                                    );
+                                  }
+                                }
+                              }}
+                              className="w-full h-[38px] px-2.5 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Exames */}
+                    <div>
+                      <label className="block text-[12px] font-semibold text-[#1d1d1f] mb-1.5">
+                        Exames Solicitados *
+                      </label>
+                      <ExamMultiPicker
+                        key={orderModalResetKey}
+                        exams={exams}
+                        selectedExamIds={selectedExamIds}
+                        onChange={setSelectedExamIds}
+                        activePriceTable={effectiveOrderPriceTable}
+                        minimal
+                        listMaxHeightClass="max-h-[360px] sm:max-h-[410px]"
+                        hidePrices={!isAdmin}
+                      />
                     </div>
-                  )}
-                </div>
+
+                    {/* Observações */}
+                    <div>
+                      <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                        Observações Clínicas / Amostra (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={orderNotes}
+                        onChange={(e) => setOrderNotes(e.target.value)}
+                        placeholder="Informe suspeita clínica, condições da amostra ou urgência..."
+                        className="w-full h-[40px] px-3.5 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="px-6 py-4 border-t border-black/5 bg-[#fafafa] flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-2.5 text-[12.5px]">
+                      <span className="text-[12.5px] font-medium text-[#5b6675]">
+                        {validSelectedExamIds.length} exame(s) selecionado(s)
+                        {totalLabels > 0 ? ` • ${totalLabels} etiqueta(s)` : ''}
+                      </span>
+                      {isAdmin && (
+                        <span className="font-mono text-[16px] font-bold text-[#1d1d1f]">
+                          • R$ {calculatedOrderTotal.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2.5 ml-auto">
+                      <button
+                        type="button"
+                        onClick={handleCloseOrderModal}
+                        className="px-5 py-2.5 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[12.5px] font-semibold transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-6 py-2.5 rounded-full bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition cursor-pointer shadow-sm"
+                      >
+                        {editingOrderId ? 'Salvar Alterações' : 'Registrar Atendimento'}
+                      </button>
+                    </div>
+                  </div>
+                </form>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+          );
+        })()}
 
       {/* MODAL DE CADASTRO RÁPIDO DE VETERINÁRIO / CLÍNICA NA CONVERSÃO DE COLETA */}
       {quickVetModal && (
         <div
-          className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+          className="fixed inset-0 z-[65] bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
           onClick={() => setQuickVetModal(null)}
         >
           <form
@@ -2884,13 +3601,24 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
             }}
             className="bg-white rounded-[24px] sm:rounded-[28px] max-w-lg w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl"
           >
-            <div>
-              <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
-                Cadastrar Veterinário / Clínica Parceira
-              </h3>
-              <p className="text-[12px] text-[#707070] mt-0.5">
-                Já cria o acesso ao Portal do Veterinário e vincula automaticamente a este atendimento.
-              </p>
+            <div className="flex items-start justify-between gap-3 pb-2 border-b border-[#e5e5ea]">
+              <div>
+                <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
+                  Cadastrar Veterinário / Clínica Parceira
+                </h3>
+                <p className="text-[12px] text-[#707070] mt-0.5">
+                  Já cria o acesso ao Portal do Veterinário e vincula automaticamente a este atendimento.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickVetModal(null)}
+                className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                aria-label="Fechar"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2958,14 +3686,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 />
               </div>
               <div>
-                <label className="block text-[11px] text-[#707070] mb-1">CRMV (Opcional)</label>
+                <label className="block text-[11px] text-[#707070] mb-1">CRMV Obrigatório *</label>
                 <input
                   type="text"
+                  required
                   value={quickVetModal.crmv}
                   onChange={(e) =>
-                    setQuickVetModal((prev) => (prev ? { ...prev, crmv: e.target.value } : null))
+                    setQuickVetModal((prev) => (prev ? { ...prev, crmv: e.target.value.toUpperCase() } : null))
                   }
-                  className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                  placeholder="Ex: CRMV-MG 12345"
+                  className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] font-mono uppercase text-[13px]"
                 />
               </div>
             </div>
@@ -2992,37 +3722,62 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
       {/* MODAL DE AGENDAMENTO DE COLETA (DATA E HORA) */}
       {scheduleModal && (
         <div
-          className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+          className="fixed inset-0 z-50 bg-[#0b2240]/45 backdrop-blur-md flex items-center justify-center p-3 sm:p-4"
           onClick={() => setScheduleModal(null)}
         >
           <form
             onClick={(e) => e.stopPropagation()}
             onSubmit={async (e) => {
               e.preventDefault();
-              if (!scheduleModal.collection.id) return;
-              const updated = await api.updateCollectionRequestStatus(
-                scheduleModal.collection.id,
-                'agendada',
-                scheduleModal.date,
-                scheduleModal.time
-              );
-              setCollectionRequests((prev) =>
-                prev.map((item) => (item.id === updated.id ? updated : item))
-              );
-              showToast(
-                `Coleta agendada para ${scheduleModal.date.split('-').reverse().join('/')} às ${scheduleModal.time}!`
-              );
-              setScheduleModal(null);
+              const targetId = scheduleModal.collection.id || `col-${Date.now()}`;
+              try {
+                const updated = await api.updateCollectionRequestStatus(
+                  targetId,
+                  'agendada',
+                  scheduleModal.date,
+                  scheduleModal.time
+                );
+                setCollectionRequests((prev) =>
+                  prev.map((item) =>
+                    item.id === scheduleModal.collection.id || item.id === updated.id
+                      ? {
+                          ...item,
+                          ...updated,
+                          status: 'agendada',
+                          scheduled_date: scheduleModal.date,
+                          scheduled_time: scheduleModal.time,
+                        }
+                      : item
+                  )
+                );
+                showToast(
+                  `Coleta agendada para ${scheduleModal.date.split('-').reverse().join('/')} às ${scheduleModal.time}!`
+                );
+                setScheduleModal(null);
+              } catch (err: any) {
+                showToast(err?.message || 'Erro ao agendar coleta. Tente novamente.');
+              }
             }}
-            className="bg-white rounded-[24px] sm:rounded-[28px] max-w-md w-full min-w-0 p-4 sm:p-6 space-y-4 shadow-2xl"
+            className="bg-white rounded-[24px] sm:rounded-[28px] max-w-md w-full min-w-0 p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
           >
-            <div>
-              <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
-                Agendar Retirada de Coleta
-              </h3>
-              <p className="text-[12px] text-[#707070] mt-0.5 break-words">
-                {scheduleModal.collection.clinic_or_tutor_name} • {scheduleModal.collection.phone}
-              </p>
+            <div className="flex items-start justify-between gap-3 pb-2 border-b border-[#e5e5ea]">
+              <div className="min-w-0">
+                <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
+                  Agendar Retirada de Coleta
+                </h3>
+                <p className="text-[12px] text-[#707070] mt-0.5 break-words">
+                  {scheduleModal.collection.clinic_or_tutor_name} • {scheduleModal.collection.phone}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScheduleModal(null)}
+                className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                aria-label="Fechar"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3056,13 +3811,13 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               <button
                 type="button"
                 onClick={() => setScheduleModal(null)}
-                className="px-4 py-2.5 sm:py-2 rounded-full bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-semibold"
+                className="px-4 py-2.5 sm:py-2 rounded-full bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-semibold cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 sm:py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition"
+                className="px-5 py-2.5 sm:py-2 rounded-full bg-[#0071e3] text-white text-[12px] font-semibold hover:opacity-95 transition cursor-pointer"
               >
                 Confirmar Agendamento
               </button>
@@ -3071,62 +3826,427 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
         </div>
       )}
 
-      {/* MODAL DE IMPRESSÃO DE ETIQUETAS DE COLETA */}
+      {/* MODAL DE CADASTRO / EDIÇÃO COMPLETA DE AGENDAMENTO DE COLETA */}
+      {collectionCrudModal && (
+        <div
+          className="fixed inset-0 z-50 bg-[#0b2240]/45 backdrop-blur-md flex items-center justify-center p-3 sm:p-4"
+          onClick={() => setCollectionCrudModal(null)}
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!collectionCrudModal.crmv.trim() || collectionCrudModal.crmv.trim().length < 3) {
+                showToast('Informe o CRMV obrigatório do médico veterinário solicitante.');
+                return;
+              }
+              try {
+                if (collectionCrudModal.id) {
+                  const updated = await api.updateCollectionRequest(collectionCrudModal.id, {
+                    clinic_or_tutor_name: collectionCrudModal.clinic_or_tutor_name.trim(),
+                    crmv: collectionCrudModal.crmv.trim().toUpperCase(),
+                    phone: collectionCrudModal.phone.trim(),
+                    email: collectionCrudModal.email.trim(),
+                    address: collectionCrudModal.address.trim(),
+                    preferred_date:
+                      collectionCrudModal.scheduled_date || collectionCrudModal.preferred_date,
+                    scheduled_date: collectionCrudModal.scheduled_date,
+                    scheduled_time: collectionCrudModal.scheduled_time,
+                    status: collectionCrudModal.status,
+                    notes: collectionCrudModal.notes.trim(),
+                  });
+                  setCollectionRequests((prev) =>
+                    prev.map((item) =>
+                      item.id === collectionCrudModal.id || item.id === updated.id
+                        ? { ...item, ...updated }
+                        : item
+                    )
+                  );
+                  showToast('Agendamento de coleta atualizado com sucesso!');
+                } else {
+                  const created = await api.createCollectionRequest({
+                    clinic_or_tutor_name: collectionCrudModal.clinic_or_tutor_name.trim(),
+                    crmv: collectionCrudModal.crmv.trim().toUpperCase(),
+                    phone: collectionCrudModal.phone.trim(),
+                    email: collectionCrudModal.email.trim(),
+                    address: collectionCrudModal.address.trim(),
+                    preferred_date:
+                      collectionCrudModal.scheduled_date || collectionCrudModal.preferred_date,
+                    scheduled_date: collectionCrudModal.scheduled_date,
+                    scheduled_time: collectionCrudModal.scheduled_time,
+                    status: collectionCrudModal.status,
+                    notes: collectionCrudModal.notes.trim(),
+                  });
+                  setCollectionRequests((prev) => [created, ...prev]);
+                  showToast('Novo agendamento de coleta registrado com sucesso!');
+                }
+                setCollectionCrudModal(null);
+              } catch (err: any) {
+                showToast(err?.message || 'Erro ao salvar agendamento de coleta.');
+              }
+            }}
+            className="bg-white rounded-[24px] sm:rounded-[28px] max-w-2xl w-[95vw] min-w-0 max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4 shadow-2xl border border-black/10"
+          >
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-black/5">
+              <div>
+                <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
+                  {collectionCrudModal.id
+                    ? 'Editar Agendamento de Coleta'
+                    : 'Novo Agendamento de Coleta'}
+                </h3>
+                <p className="text-[12px] text-[#707070] mt-0.5">
+                  Vincule um veterinário parceiro ou preencha os dados de retirada e horário programado.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCollectionCrudModal(null)}
+                className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                aria-label="Fechar"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Preenchimento rápido a partir de Veterinário cadastrado */}
+            <div>
+              <SearchableSelectField
+                label="Preencher com Veterinário / Clínica Cadastrada (Opcional)"
+                placeholder="Selecionar veterinário parceiro para preencher automático..."
+                modalTitle="Selecionar Veterinário Parceiro"
+                modalSubtitle="Preenche automaticamente nome, CRMV, telefone e e-mail"
+                searchPlaceholder="Buscar por nome, CRMV ou clínica..."
+                items={vets}
+                value=""
+                getId={(v) => v.id}
+                getPrimaryLabel={(v) => `${v.name}${v.clinic_name ? ` • ${v.clinic_name}` : ''}`}
+                getSecondaryLabel={(v) => `${v.crmv || ''} • ${v.phone || v.email}`}
+                getBadge={(v) => v.crmv || undefined}
+                getSearchText={(v) => `${v.name} ${v.crmv || ''} ${v.clinic_name || ''}`}
+                onChange={(vetId) => {
+                  const found = vets.find((v) => v.id === vetId);
+                  if (found) {
+                    setCollectionCrudModal((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            clinic_or_tutor_name: found.clinic_name
+                              ? `${found.clinic_name} (${found.name})`
+                              : found.name,
+                            crmv: found.crmv || prev.crmv,
+                            phone: found.phone || prev.phone,
+                            email: found.email || prev.email,
+                          }
+                        : null
+                    );
+                  }
+                }}
+                variant="minimal"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+              <div className="sm:col-span-7">
+                <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                  Clínica / Médico Veterinário Solicitante *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={collectionCrudModal.clinic_or_tutor_name}
+                  onChange={(e) =>
+                    setCollectionCrudModal((prev) =>
+                      prev ? { ...prev, clinic_or_tutor_name: e.target.value } : null
+                    )
+                  }
+                  placeholder="Ex: Clínica VetCare (Dr. Carlos)"
+                  className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] text-[13px]"
+                />
+              </div>
+              <div className="sm:col-span-5">
+                <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                  CRMV Obrigatório *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={collectionCrudModal.crmv}
+                  onChange={(e) =>
+                    setCollectionCrudModal((prev) =>
+                      prev ? { ...prev, crmv: e.target.value.toUpperCase() } : null
+                    )
+                  }
+                  placeholder="Ex: CRMV-MG 12345"
+                  className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] font-mono uppercase text-[13px]"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                  Telefone / WhatsApp *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={collectionCrudModal.phone}
+                  onChange={(e) =>
+                    setCollectionCrudModal((prev) =>
+                      prev ? { ...prev, phone: e.target.value } : null
+                    )
+                  }
+                  placeholder="(00) 00000-0000"
+                  className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] text-[13px]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                  E-mail
+                </label>
+                <input
+                  type="email"
+                  value={collectionCrudModal.email}
+                  onChange={(e) =>
+                    setCollectionCrudModal((prev) =>
+                      prev ? { ...prev, email: e.target.value } : null
+                    )
+                  }
+                  placeholder="clinica@email.com.br"
+                  className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] text-[13px]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                Endereço Completo de Retirada *
+              </label>
+              <input
+                type="text"
+                required
+                value={collectionCrudModal.address}
+                onChange={(e) =>
+                  setCollectionCrudModal((prev) =>
+                    prev ? { ...prev, address: e.target.value } : null
+                  )
+                }
+                placeholder="Rua, número, bairro, cidade..."
+                className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] text-[13px]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                  Data Agendada *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={collectionCrudModal.scheduled_date}
+                  onChange={(e) =>
+                    setCollectionCrudModal((prev) =>
+                      prev ? { ...prev, scheduled_date: e.target.value } : null
+                    )
+                  }
+                  className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] text-[13px]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                  Horário *
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={collectionCrudModal.scheduled_time}
+                  onChange={(e) =>
+                    setCollectionCrudModal((prev) =>
+                      prev ? { ...prev, scheduled_time: e.target.value } : null
+                    )
+                  }
+                  className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] text-[13px]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                  Status
+                </label>
+                <select
+                  value={collectionCrudModal.status}
+                  onChange={(e) =>
+                    setCollectionCrudModal((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            status: e.target.value as
+                              | 'pendente'
+                              | 'agendada'
+                              | 'concluida'
+                              | 'cancelada',
+                          }
+                        : null
+                    )
+                  }
+                  className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] text-[13px]"
+                >
+                  <option value="agendada">Agendada</option>
+                  <option value="pendente">Pendente</option>
+                  <option value="concluida">Concluída</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-[#707070] mb-1">
+                Observações / Amostras (Tubos, Urgência, Cuidados)
+              </label>
+              <input
+                type="text"
+                value={collectionCrudModal.notes}
+                onChange={(e) =>
+                  setCollectionCrudModal((prev) =>
+                    prev ? { ...prev, notes: e.target.value } : null
+                  )
+                }
+                placeholder="Ex: 2 tubos EDTA + 1 tubo tampa amarela refrigerados na recepção"
+                className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] text-[13px]"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-black/5">
+              <button
+                type="button"
+                onClick={() => setCollectionCrudModal(null)}
+                className="px-4 py-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[12px] font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-full bg-[#0071e3] text-white text-[12.5px] font-semibold hover:opacity-95 transition cursor-pointer"
+              >
+                {collectionCrudModal.id ? 'Salvar Alterações' : 'Registrar Agendamento'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL DE IMPRESSÃO DE ETIQUETAS DE COLETA — ZEBRA 50mm x 30mm (P&B, SEM CÓDIGO DE BARRAS) */}
       {labelsModal && (
-        <div className="fixed inset-0 z-50 bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white rounded-[24px] sm:rounded-[28px] max-w-3xl w-full min-w-0 max-h-[88vh] overflow-y-auto p-4 sm:p-8 space-y-4 sm:space-y-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+        <div
+          className="fixed inset-0 z-[65] bg-[#1d1d1f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+          onClick={() => setLabelsModal(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-[24px] sm:rounded-[28px] max-w-3xl w-full min-w-0 max-h-[88vh] overflow-y-auto p-4 sm:p-8 space-y-4 sm:space-y-6"
+          >
+            <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <span className="text-[11px] sm:text-[12px] font-mono text-[#86868b] block truncate">
-                  PROTOCOLO GERADO: {labelsModal.order.protocol_code}
+                  PROTOCOLO: {labelsModal.order.protocol_code} • ZEBRA TÉRMICA 50×30mm (P&amp;B)
                 </span>
                 <h3 className="font-display text-[18px] sm:text-[24px] font-semibold text-[#1d1d1f] leading-snug">
                   Etiquetas de Amostra Biológica ({labelsModal.labels.length} unidades)
                 </h3>
               </div>
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                <button
-                  onClick={() => printCollectionLabelsWindow(labelsModal.labels)}
-                  className="flex-1 sm:flex-initial justify-center px-5 py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5"
-                >
-                  <Printer className="w-4 h-4 shrink-0" />
-                  <span>Imprimir Etiquetas</span>
-                </button>
-                <button
-                  onClick={() => setLabelsModal(null)}
-                  className="px-4 py-2 rounded-[980px] bg-[#f5f5f7] text-[12px] font-semibold text-[#1d1d1f]"
-                >
-                  Fechar
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setLabelsModal(null)}
+                className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                aria-label="Fechar"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  downloadThermalLabelsPdf(labelsModal.labels, labelsModal.order.protocol_code)
+                }
+                className="flex-1 sm:flex-initial justify-center px-4 py-2 rounded-[980px] bg-[#1d1d1f] hover:bg-black text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileDown className="w-4 h-4 shrink-0" />
+                <span>Baixar PDF (50×30mm)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => printCollectionLabelsWindow(labelsModal.labels)}
+                className="flex-1 sm:flex-initial justify-center px-4 py-2 rounded-[980px] bg-[#0071e3] hover:opacity-95 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-4 h-4 shrink-0" />
+                <span>Imprimir Térmica</span>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {labelsModal.labels.map((lbl) => (
                 <div
                   key={lbl.label_id}
-                  className="p-4 sm:p-5 rounded-[20px] sm:rounded-[25px] bg-[#f5f5f7] space-y-1.5 text-[12px] min-w-0"
+                  className="rounded-xl border-2 border-black bg-white text-black p-3 space-y-1.5 text-[11.5px] min-w-0 font-sans"
                 >
-                  <div className="flex justify-between gap-2 font-mono font-semibold text-[#707070] text-[11px]">
-                    <span className="truncate">VETLIFE • {lbl.protocol_code}</span>
-                    <span className="shrink-0">
-                      Etiq. {lbl.label_index}/{lbl.total_labels_for_exam}
+                  {/* Cabeçalho Branco com VETLIFE e Código do Protocolo Maior */}
+                  <div className="bg-white text-black border-b-2 border-black pb-1 flex items-baseline justify-between gap-2 font-mono font-bold">
+                    <span className="text-[12px] tracking-tight shrink-0">VETLIFE</span>
+                    <span className="text-[15px] sm:text-[16px] font-extrabold tracking-tight truncate">
+                      {lbl.protocol_code}
+                    </span>
+                    <span className="text-[12px] shrink-0">
+                      {lbl.label_index}/{lbl.total_labels_for_exam}
                     </span>
                   </div>
-                  <div className="font-display text-[16px] sm:text-[19px] font-semibold text-[#1d1d1f] break-words">
-                    {lbl.patient_name} ({lbl.species}) — Tutor: {lbl.tutor_name}
+
+                  {/* Paciente + Data + Espécie na mesma linha com fonte maior e mais visível */}
+                  <div className="flex items-baseline justify-between gap-2 pt-0.5">
+                    <span
+                      className="font-extrabold text-[14px] uppercase leading-tight truncate max-w-[44%]"
+                      title={lbl.patient_name}
+                    >
+                      {lbl.patient_name}
+                    </span>
+                    <span className="text-[11.5px] font-semibold whitespace-nowrap shrink-0">
+                      {lbl.created_at
+                        ? new Date(lbl.created_at).toLocaleString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : ''}
+                    </span>
+                    <span className="text-[11.5px] font-bold whitespace-nowrap shrink-0">
+                      ESP: {lbl.species}
+                    </span>
                   </div>
-                  <div className="text-[#1d1d1f] font-semibold break-words">
-                    [{lbl.exam_code}] {lbl.exam_name}
+
+                  {/* Tutor com linha divisória */}
+                  <div className="text-[12px] font-medium leading-tight truncate border-b border-black pb-1">
+                    <strong>Tutor:</strong> {lbl.tutor_name}
                   </div>
-                  <div className="px-3 py-1 rounded-[999px] bg-white text-[#707070] inline-block max-w-full truncate">
-                    Tubo: {lbl.tube_type} | Setor: {lbl.section}
+
+                  {/* Tubo / Material */}
+                  <div className="text-[11.5px] leading-snug line-clamp-2 break-words">
+                    <strong>Tubo:</strong> {lbl.tube_type}
                   </div>
-                  <div className="pt-2 text-center font-mono text-sm sm:text-lg tracking-wider sm:tracking-widest font-black text-[#1d1d1f] overflow-hidden">
-                    ||| || |||| | ||| |||| || |
-                  </div>
-                  <div className="text-center font-mono text-[10px] text-[#86868b] truncate">
-                    {lbl.barcode}
+
+                  {/* Rodapé focado em: CÓDIGO | NOME/RESUMO DO EXAME (sem repetir protocolo) */}
+                  <div className="border border-black px-2.5 py-1.5 bg-white">
+                    <div className="text-[12px] leading-snug line-clamp-2 break-words">
+                      <span className="font-mono font-extrabold text-[13.5px]">
+                        {lbl.exam_code}
+                      </span>
+                      <span className="mx-1.5 font-bold">|</span>
+                      <span className="font-semibold">{lbl.exam_name}</span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -3304,6 +4424,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                               <button
                                 type="button"
                                 onClick={() => {
+                                  pushNavSnapshot();
                                   setSelectedOrderId(ord.id);
                                   setSelectedResultId(res.id);
                                   setLaunchSubView('editor');
@@ -3318,6 +4439,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                             <button
                               type="button"
                               onClick={() => {
+                                pushNavSnapshot();
                                 setSelectedOrderId(ord.id);
                                 setSelectedResultId(res.id);
                                 setLaunchSubView('editor');
@@ -3331,6 +4453,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                             <button
                               type="button"
                               onClick={() => {
+                                pushNavSnapshot();
                                 setSelectedOrderId(ord.id);
                                 setSelectedResultId(res.id);
                                 setLaunchSubView('editor');
@@ -3366,10 +4489,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
               <div>
                 <button
                   type="button"
-                  onClick={() => setLaunchSubView('list')}
+                  onClick={handleGoBack}
                   className="mb-2 px-3 py-1 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[11px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
                 >
-                  ← Voltar para Fila de Lançamento
+                  ← Voltar para Tela Anterior
                 </button>
                 <span className="block text-[12px] uppercase text-[#86868b]">Bancada Biomédica</span>
                 <h2 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f]">
@@ -3692,79 +4815,6 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
          ===================================================================== */}
       {activeTab === 'settings' && user.role === 'admin' && (
         <div className="space-y-5 sm:space-y-6">
-          <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2 bg-white p-2 rounded-[24px] xl:rounded-[980px]">
-            <button
-              onClick={() => setSettingsTab('exams')}
-              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'exams'
-                ? 'bg-[#1d1d1f] text-white'
-                : 'text-[#707070] hover:text-[#1d1d1f]'
-                }`}
-            >
-              <FlaskConical className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">1. Catálogo de Exames</span>
-            </button>
-            <button
-              onClick={() => setSettingsTab('fields')}
-              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'fields'
-                ? 'bg-[#1d1d1f] text-white'
-                : 'text-[#707070] hover:text-[#1d1d1f]'
-                }`}
-            >
-              <Sliders className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">2. Campos Dinâmicos por Exame</span>
-            </button>
-            <button
-              onClick={() => setSettingsTab('prices')}
-              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'prices'
-                ? 'bg-[#1d1d1f] text-white'
-                : 'text-[#707070] hover:text-[#1d1d1f]'
-                }`}
-            >
-              <Tag className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">3. Tabelas de Preços & Vigência</span>
-            </button>
-            <button
-              onClick={() => setSettingsTab('references')}
-              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'references'
-                ? 'bg-[#1d1d1f] text-white'
-                : 'text-[#707070] hover:text-[#1d1d1f]'
-                }`}
-            >
-              <BookOpen className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">4. Valores de Referência</span>
-            </button>
-            <button
-              onClick={() => setSettingsTab('templates')}
-              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'templates'
-                ? 'bg-[#1d1d1f] text-white'
-                : 'text-[#707070] hover:text-[#1d1d1f]'
-                }`}
-            >
-              <FileText className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">5. Modelos de Laudos & Tags</span>
-            </button>
-            <button
-              onClick={() => setSettingsTab('users')}
-              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'users'
-                ? 'bg-[#1d1d1f] text-white'
-                : 'text-[#707070] hover:text-[#1d1d1f]'
-                }`}
-            >
-              <Users className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">6. Usuários do Laboratório</span>
-            </button>
-            <button
-              onClick={() => setSettingsTab('vets')}
-              className={`px-3.5 sm:px-4 py-2 rounded-[16px] sm:rounded-[980px] text-[12px] font-semibold inline-flex items-center gap-1.5 ${settingsTab === 'vets'
-                ? 'bg-[#1d1d1f] text-white'
-                : 'text-[#707070] hover:text-[#1d1d1f]'
-                }`}
-            >
-              <Users className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">7. Veterinários & Clínicas</span>
-            </button>
-          </div>
-
           {settingsTab === 'exams' && (
             <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-5">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -3906,8 +4956,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
 
               {/* MODAL DE INCLUIR / EDITAR EXAME */}
               {examModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                <div
+                  className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+                  onClick={handleCancelEditExam}
+                >
                   <form
+                    onClick={(e) => e.stopPropagation()}
                     onSubmit={handleAddExam}
                     className="bg-white rounded-[24px] sm:rounded-[28px] max-w-2xl w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
                   >
@@ -3920,9 +4974,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       <button
                         type="button"
                         onClick={handleCancelEditExam}
-                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
+                        className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                        aria-label="Fechar"
+                        title="Fechar"
                       >
-                        Fechar
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
 
@@ -4149,8 +5205,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'fields' && (
             <div className="space-y-6">
               {fieldModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                <div
+                  className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+                  onClick={() => setFieldModalOpen(false)}
+                >
                   <form
+                    onClick={(e) => e.stopPropagation()}
                     onSubmit={handleAddDynamicField}
                     className="bg-white rounded-[24px] sm:rounded-[28px] max-w-xl w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
                   >
@@ -4161,9 +5221,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       <button
                         type="button"
                         onClick={() => setFieldModalOpen(false)}
-                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
+                        className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                        aria-label="Fechar"
+                        title="Fechar"
                       >
-                        Fechar
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                     <SearchableSelectField
@@ -4357,8 +5419,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'prices' && (
             <div className="space-y-6">
               {priceTableModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                <div
+                  className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+                  onClick={() => setPriceTableModalOpen(false)}
+                >
                   <form
+                    onClick={(e) => e.stopPropagation()}
                     onSubmit={handleCreatePriceTable}
                     className="bg-white rounded-[24px] sm:rounded-[28px] max-w-lg w-full min-w-0 max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl border border-black/10"
                   >
@@ -4369,9 +5435,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                       <button
                         type="button"
                         onClick={() => setPriceTableModalOpen(false)}
-                        className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
+                        className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                        aria-label="Fechar"
+                        title="Fechar"
                       >
-                        Fechar
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                     <div>
@@ -4543,8 +5611,18 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
           {settingsTab === 'references' && (
             <div className="space-y-6">
               {referenceModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4">
-                  <div className="bg-[#f5f5f7] rounded-[24px] sm:rounded-[28px] max-w-5xl w-full min-w-0 max-h-[92vh] overflow-y-auto p-3.5 sm:p-6 space-y-4 shadow-2xl border border-black/10">
+                <div
+                  className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4"
+                  onClick={() => {
+                    setReferenceModalOpen(false);
+                    setEditingReferenceId(null);
+                    setNewRefForm({ ...newRefForm, reference_text_content: '' });
+                  }}
+                >
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-[#f5f5f7] rounded-[24px] sm:rounded-[28px] max-w-5xl w-full min-w-0 max-h-[92vh] overflow-y-auto p-3.5 sm:p-6 space-y-4 shadow-2xl border border-black/10"
+                  >
                     <div className="flex items-start sm:items-center justify-between gap-2 pb-2 border-b border-[#e5e5ea]">
                       <h3 className="font-display text-[18px] sm:text-[20px] font-semibold text-[#1d1d1f]">
                         {editingReferenceId
@@ -4558,9 +5636,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           setEditingReferenceId(null);
                           setNewRefForm({ ...newRefForm, reference_text_content: '' });
                         }}
-                        className="px-3 py-1 rounded-full bg-white text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
+                        className="p-2 rounded-full bg-white hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                        aria-label="Fechar"
+                        title="Fechar"
                       >
-                        Fechar
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                     <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6 items-start min-w-0">
@@ -4820,6 +5900,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {[
+                    '{{logo}}',
                     '{{paciente}}',
                     '{{especie}}',
                     '{{idade}}',
@@ -5028,8 +6109,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 ) : (
                   <>
                     {userModalOpen && (
-                      <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                      <div
+                        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+                        onClick={() => {
+                          setUserModalOpen(false);
+                          setEditingLabUserId(null);
+                          setLabUserForm({ name: '', email: '', role: 'biomedical', password: '' });
+                        }}
+                      >
                         <form
+                          onClick={(e) => e.stopPropagation()}
                           onSubmit={async (e) => {
                             e.preventDefault();
                             try {
@@ -5074,9 +6163,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                                 setEditingLabUserId(null);
                                 setLabUserForm({ name: '', email: '', role: 'biomedical', password: '' });
                               }}
-                              className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
+                              className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                              aria-label="Fechar"
+                              title="Fechar"
                             >
-                              Fechar
+                              <X className="w-4 h-4" />
                             </button>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -5290,8 +6381,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                 </div>
 
                 {vetModalOpen && (
-                  <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+                  <div
+                    className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+                    onClick={() => {
+                      setVetModalOpen(false);
+                      setEditingVetId(null);
+                      setVetForm({ name: '', crmv: '', clinic_name: '', email: '', phone: '', password: '' });
+                    }}
+                  >
                     <form
+                      onClick={(e) => e.stopPropagation()}
                       onSubmit={async (e) => {
                         e.preventDefault();
                         try {
@@ -5340,9 +6439,11 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                             setEditingVetId(null);
                             setVetForm({ name: '', crmv: '', clinic_name: '', email: '', phone: '', password: '' });
                           }}
-                          className="px-3 py-1 rounded-full bg-[#f5f5f7] text-[12px] text-[#707070] hover:text-[#1d1d1f] cursor-pointer shrink-0"
+                          className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#707070] hover:text-[#1d1d1f] transition cursor-pointer shrink-0"
+                          aria-label="Fechar"
+                          title="Fechar"
                         >
-                          Fechar
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -5394,13 +6495,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = () => {
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] text-[#707070] mb-1">CRMV (Opcional)</label>
+                          <label className="block text-[11px] text-[#707070] mb-1">CRMV Obrigatório *</label>
                           <input
                             type="text"
+                            required
                             value={vetForm.crmv}
-                            onChange={(e) => setVetForm({ ...vetForm, crmv: e.target.value })}
+                            onChange={(e) => setVetForm({ ...vetForm, crmv: e.target.value.toUpperCase() })}
                             placeholder="Ex: CRMV-MG 12345"
-                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] text-[13px]"
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#f5f5f7] font-mono uppercase text-[13px]"
                           />
                         </div>
                         <div>

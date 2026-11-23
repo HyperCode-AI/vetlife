@@ -178,6 +178,7 @@ export interface CollectionLabel {
 export interface CollectionRequest {
   id?: string;
   clinic_or_tutor_name: string;
+  crmv: string;
   phone: string;
   email: string;
   address: string;

@@ -8,7 +8,7 @@ import { PublicAndPortalUseCases } from '../../application/use-cases/PublicAndPo
 import { ReferenceAndTemplateUseCases } from '../../application/use-cases/ReferenceAndTemplateUseCases';
 import { IVetLifeRepository } from '../../domain/repositories/IVetLifeRepository';
 import { ForbiddenError } from '../../domain/errors/AppError';
-import { getLocalPdfBuffer } from '../../utils/pdfStorage';
+import { buildThermalLabelsPdfBuffer, getLocalPdfBuffer } from '../../utils/pdfStorage';
 import {
   createCollectionRequestSchema,
   createExamReferenceSchema,
@@ -83,8 +83,8 @@ export class VetLifeController {
   ): Promise<void> => {
     try {
       const parsed = vetLoginSchema.parse(req.body);
-      const credential = (parsed.password || parsed.crmv || '').trim();
-      const result = await this.authUseCases.loginVet(parsed.email, credential);
+      const password = parsed.password.trim();
+      const result = await this.authUseCases.loginVet(parsed.email, password);
       res.json({
         success: true,
         token: result.token,
@@ -123,6 +123,30 @@ export class VetLifeController {
     }
   };
 
+  private stripPricesForNonAdminExam = (exam: any, role?: string) => {
+    if (role === 'admin') return exam;
+    const { price: _p, base_price: _bp, active_price: _ap, ...rest } = exam;
+    return rest;
+  };
+
+  private stripPricesForNonAdminOrder = (order: any, role?: string) => {
+    if (role === 'admin') return order;
+    const { total_amount: _ta, price_table_id: _pti, price_table_name: _ptn, ...restOrder } = order;
+    return {
+      ...restOrder,
+      total_amount: 0,
+      results: Array.isArray(order.results)
+        ? order.results.map((r: any) => {
+            const { applied_price: _ap, ...restRes } = r;
+            return {
+              ...restRes,
+              ...(r.exam ? { exam: this.stripPricesForNonAdminExam(r.exam, role) } : {}),
+            };
+          })
+        : [],
+    };
+  };
+
   // ===========================================================================
   // EXAMS & INPUT FIELDS (HU-01, HU-02, RN-01, RN-03)
   // ===========================================================================
@@ -132,6 +156,7 @@ export class VetLifeController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const role = req.authUser?.role;
       if (req.query.page !== undefined || req.query.limit !== undefined) {
         const paginated = await this.examUseCases.listExamsPaginated({
           page: req.query.page ? Number(req.query.page) : 1,
@@ -139,11 +164,20 @@ export class VetLifeController {
           search: req.query.search ? String(req.query.search) : undefined,
           section: req.query.section ? String(req.query.section) : undefined,
         });
-        res.json({ success: true, data: paginated });
+        res.json({
+          success: true,
+          data: {
+            ...paginated,
+            items: paginated.items.map((e) => this.stripPricesForNonAdminExam(e, role)),
+          },
+        });
         return;
       }
       const exams = await this.examUseCases.listExams();
-      res.json({ success: true, data: exams });
+      res.json({
+        success: true,
+        data: exams.map((e) => this.stripPricesForNonAdminExam(e, role)),
+      });
     } catch (err) {
       next(err);
     }
@@ -156,7 +190,10 @@ export class VetLifeController {
   ): Promise<void> => {
     try {
       const exam = await this.examUseCases.getExamById(req.params.id);
-      res.json({ success: true, data: exam });
+      res.json({
+        success: true,
+        data: this.stripPricesForNonAdminExam(exam, req.authUser?.role),
+      });
     } catch (err) {
       next(err);
     }
@@ -546,6 +583,19 @@ export class VetLifeController {
     }
   };
 
+  public deleteReportTemplate = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      await this.refAndTemplateUseCases.deleteReportTemplate(req.params.id);
+      res.json({ success: true, data: { deleted: true, id: req.params.id } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   // ===========================================================================
   // PATIENTS, VETS & ORDERS (HU-06 to HU-09, RN-03, RN-04)
   // ===========================================================================
@@ -641,22 +691,27 @@ export class VetLifeController {
         });
         return;
       }
-      if (!b.password && !b.crmv) {
+      if (!b.crmv || String(b.crmv).trim().length < 3) {
         res.status(400).json({
           success: false,
-          message: 'Informe uma senha de acesso para o veterinário.',
+          message: 'O número do CRMV do médico veterinário é obrigatório.',
+        });
+        return;
+      }
+      if (!b.password || String(b.password).trim().length < 3) {
+        res.status(400).json({
+          success: false,
+          message: 'Informe uma senha de acesso para o médico veterinário.',
         });
         return;
       }
       const created = await this.orderUseCases.createVet({
         name: String(b.name),
-        crmv: b.crmv ? String(b.crmv) : '',
+        crmv: String(b.crmv).trim().toUpperCase(),
         clinic_name: b.clinic_name ?? b.clinicName ?? '',
         email: String(b.email),
         phone: String(b.phone),
-        ...(b.password && String(b.password).trim()
-          ? { password_hash: String(b.password).trim() }
-          : {}),
+        password_hash: String(b.password).trim(),
       });
       const { password_hash: _ph, ...safe } = created;
       res.status(201).json({ success: true, data: safe });
@@ -795,7 +850,11 @@ export class VetLifeController {
         patient_id: (req.query.patient_id as string) || undefined,
         search: (req.query.search as string) || undefined,
       });
-      res.json({ success: true, data: orders });
+      const role = req.authUser?.role;
+      res.json({
+        success: true,
+        data: orders.map((o) => this.stripPricesForNonAdminOrder(o, role)),
+      });
     } catch (err) {
       next(err);
     }
@@ -813,7 +872,10 @@ export class VetLifeController {
           'Você não tem permissão para acessar atendimentos de outro médico veterinário.'
         );
       }
-      res.json({ success: true, data: order });
+      res.json({
+        success: true,
+        data: this.stripPricesForNonAdminOrder(order, req.authUser?.role),
+      });
     } catch (err) {
       next(err);
     }
@@ -835,7 +897,51 @@ export class VetLifeController {
         order_date: b.order_date ?? b.orderDate,
         notes: b.notes,
       });
-      res.status(201).json({ success: true, data: created });
+      res.status(201).json({
+        success: true,
+        data: this.stripPricesForNonAdminOrder(created, req.authUser?.role),
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public updateOrder = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const b = req.body || {};
+      const examIdsFromResults = Array.isArray(b.results)
+        ? b.results.map((r: any) => r.exam_id).filter(Boolean)
+        : undefined;
+      const updated = await this.orderUseCases.updateOrder(req.params.id, {
+        patient_id: b.patient_id ?? b.patientId,
+        vet_id: b.vet_id ?? b.vetId,
+        exam_ids: b.exam_ids ?? b.examIds ?? examIdsFromResults,
+        price_table_id: b.price_table_id ?? b.priceTableId,
+        order_date: b.order_date ?? b.orderDate,
+        notes: b.notes,
+        status: b.status,
+      });
+      res.json({
+        success: true,
+        data: this.stripPricesForNonAdminOrder(updated, req.authUser?.role),
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public deleteOrder = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      await this.orderUseCases.deleteOrder(req.params.id);
+      res.json({ success: true, data: { deleted: true, id: req.params.id } });
     } catch (err) {
       next(err);
     }
@@ -849,6 +955,26 @@ export class VetLifeController {
     try {
       const labelsPayload = await this.orderUseCases.generateOrderLabels(req.params.id);
       res.json({ success: true, data: labelsPayload });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public getOrderLabelsPdf = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const labelsPayload = await this.orderUseCases.generateOrderLabels(req.params.id);
+      const pdfBuffer = buildThermalLabelsPdfBuffer(labelsPayload.labels);
+      const fileName = `etiquetas-zebra-50x30-${labelsPayload.protocol_code}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${fileName}"`
+      );
+      res.send(pdfBuffer);
     } catch (err) {
       next(err);
     }
@@ -984,13 +1110,21 @@ export class VetLifeController {
       const parsed = createCollectionRequestSchema.parse({
         clinic_or_tutor_name:
           b.clinic_or_tutor_name ?? b.clinicOrTutorName ?? b.name ?? b.tutor_name,
+        crmv: b.crmv ?? '',
         phone: b.phone ?? b.tutor_phone,
         email: b.email ?? '',
         address: b.address,
-        preferred_date: b.preferred_date ?? b.preferredDate,
+        preferred_date: b.preferred_date ?? b.preferredDate ?? b.scheduled_date,
         notes: b.notes ?? '',
       });
-      const created = await this.publicUseCases.createCollectionRequest(parsed);
+      const scheduledDate = b.scheduled_date ?? b.scheduledDate;
+      const scheduledTime = b.scheduled_time ?? b.scheduledTime;
+      const created = await this.publicUseCases.createCollectionRequest({
+        ...parsed,
+        ...(scheduledDate ? { scheduled_date: String(scheduledDate).trim() } : {}),
+        ...(scheduledTime ? { scheduled_time: String(scheduledTime).trim() } : {}),
+        ...(b.status ? { status: b.status } : {}),
+      });
       res.status(201).json({ success: true, data: created });
     } catch (err) {
       next(err);
@@ -998,13 +1132,29 @@ export class VetLifeController {
   };
 
   public listCollectionRequests = async (
-    _req: Request,
+    req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
-      const list = await this.publicUseCases.listCollectionRequests();
+      const list = await this.publicUseCases.listCollectionRequests({
+        status: req.query.status ? String(req.query.status) : undefined,
+        search: req.query.search ? String(req.query.search) : undefined,
+      });
       res.json({ success: true, data: list });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public getCollectionRequestById = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const item = await this.publicUseCases.getCollectionRequestById(req.params.id);
+      res.json({ success: true, data: item });
     } catch (err) {
       next(err);
     }
@@ -1016,16 +1166,15 @@ export class VetLifeController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const rawStatus = String(req.body?.status || '').trim();
-      const allowed = ['pendente', 'agendada', 'concluida', 'cancelada'] as const;
-      const status = allowed.includes(rawStatus as any)
-        ? (rawStatus as (typeof allowed)[number])
-        : 'agendada';
-      const scheduledDate = req.body?.scheduled_date ? String(req.body.scheduled_date).trim() : undefined;
-      const scheduledTime = req.body?.scheduled_time ? String(req.body.scheduled_time).trim() : undefined;
-      const updated = await this.repo.updateCollectionRequestStatus(
+      const b = req.body || {};
+      const rawStatus = String(b.status || '').trim();
+      const rawDate = b.scheduled_date ?? b.scheduledDate ?? b.date;
+      const rawTime = b.scheduled_time ?? b.scheduledTime ?? b.time;
+      const scheduledDate = rawDate !== undefined && rawDate !== null ? String(rawDate).trim() : undefined;
+      const scheduledTime = rawTime !== undefined && rawTime !== null ? String(rawTime).trim() : undefined;
+      const updated = await this.publicUseCases.updateCollectionRequestStatus(
         req.params.id,
-        status,
+        rawStatus,
         scheduledDate,
         scheduledTime
       );
@@ -1035,17 +1184,68 @@ export class VetLifeController {
     }
   };
 
+  public updateCollectionRequest = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const b = req.body || {};
+      const updated = await this.publicUseCases.updateCollectionRequest(req.params.id, {
+        ...(b.clinic_or_tutor_name !== undefined ? { clinic_or_tutor_name: String(b.clinic_or_tutor_name) } : {}),
+        ...(b.crmv !== undefined ? { crmv: String(b.crmv).trim().toUpperCase() } : {}),
+        ...(b.phone !== undefined ? { phone: String(b.phone) } : {}),
+        ...(b.email !== undefined ? { email: String(b.email) } : {}),
+        ...(b.address !== undefined ? { address: String(b.address) } : {}),
+        ...(b.preferred_date !== undefined ? { preferred_date: String(b.preferred_date) } : {}),
+        ...(b.scheduled_date ?? b.scheduledDate ?? b.date
+          ? { scheduled_date: String(b.scheduled_date ?? b.scheduledDate ?? b.date).trim() }
+          : {}),
+        ...(b.scheduled_time ?? b.scheduledTime ?? b.time
+          ? { scheduled_time: String(b.scheduled_time ?? b.scheduledTime ?? b.time).trim() }
+          : {}),
+        ...(b.notes !== undefined ? { notes: String(b.notes) } : {}),
+        ...(b.status !== undefined ? { status: b.status } : {}),
+      });
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public deleteCollectionRequest = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      await this.publicUseCases.deleteCollectionRequest(req.params.id);
+      res.json({ success: true, data: { deleted: true, id: req.params.id } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   // ===========================================================================
   // DASHBOARDS (Operacional & Financeiro RN-01)
   // ===========================================================================
   public getOperationalDashboard = async (
-    _req: Request,
+    req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
       const data = await this.dashboardUseCases.getOperationalDashboard();
-      res.json({ success: true, data });
+      const role = req.authUser?.role;
+      res.json({
+        success: true,
+        data: {
+          ...data,
+          recent_orders: Array.isArray(data.recent_orders)
+            ? data.recent_orders.map((o) => this.stripPricesForNonAdminOrder(o, role))
+            : [],
+        },
+      });
     } catch (err) {
       next(err);
     }

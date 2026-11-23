@@ -46,36 +46,36 @@ export function createInitialSeedState(): SeedDatabaseState {
     {
       id: 'tpl-default-001',
       name: 'Laudo Oficial Padrão VetLife (Hematologia & Bioquímica)',
-      header_html: `<div style="border-bottom:2px solid #0d9488;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
-  <div>
-    <h2 style="margin:0;color:#0f766e;font-size:20px;">VETLIFE LABORATÓRIO DE PATOLOGIA CLÍNICA VETERINÁRIA</h2>
-    <p style="margin:2px 0 0;font-size:12px;color:#475569;">vetlifelab.com.br • Registro CRMV-SP PJ 09842 • Qualidade Controlada PNCQ</p>
+      header_html: `<div style="border-bottom:2px solid #0d9488;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:14px;">
+  <div style="display:flex;align-items:center;gap:12px;">
+    {{logo}}
+    <div>
+      <h2 style="margin:0;color:#0b2240;font-size:18px;letter-spacing:-0.01em;">VETLIFE DIAGNÓSTICOS VETERINÁRIOS</h2>
+      <p style="margin:2px 0 0;font-size:11px;color:#475569;">vetlifelab.com.br • Registro CRMV-SP PJ 09842 • Controle de Qualidade PNCQ</p>
+    </div>
   </div>
   <div style="text-align:right;font-size:12px;color:#334155;">
     <strong>Protocolo: {{protocolo}}</strong><br/>
     Emissão: {{data_liberacao}}
   </div>
 </div>`,
-      body_template: `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      body_template: `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12.5px;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
     <div><strong>Paciente:</strong> {{paciente}} ({{especie}} • {{raca}} • {{sexo}} • {{idade}})</div>
     <div><strong>Tutor(a):</strong> {{tutor}}</div>
     <div><strong>Veterinário(a) Solicitante:</strong> {{veterinario}} ({{crmv}})</div>
     <div><strong>Clínica Parceira:</strong> {{clinica}}</div>
   </div>
 </div>
-<h3 style="color:#0f172a;font-size:16px;margin:12px 0 6px;">{{exame}} — Seção: {{secao}}</h3>
+<h3 style="color:#0f172a;font-size:15px;margin:12px 0 6px;">{{exame}} — Seção: {{secao}}</h3>
 {{resultados}}
-<div style="margin-top:12px;padding:10px;background:#f0fdfa;border-left:4px solid #0d9488;font-size:12px;color:#134e4a;">
-  <strong>Valores de Referência (Cruzamento Espécie / Sexo / Faixa Etária):</strong><br/>
-  {{referencias}}
-</div>
 <p style="margin-top:10px;font-size:12px;color:#475569;"><strong>Notas Clínicas:</strong> {{observacoes}}</p>`,
       footer_html: `<div style="border-top:1px solid #cbd5e1;margin-top:20px;padding-top:10px;font-size:11px;color:#64748b;display:flex;justify-content:space-between;">
-  <span>Assinado digitalmente por Dr. Rafael Nogueira — Biomédico Patologista Clínico (CRBM-1 29410)</span>
+  <span>Assinado digitalmente por Dra. Maysa Barbosa de Almeida (RT) & Dra. Kerollyn Passos Silva — VetLife</span>
   <span>Validação pública em vetlifelab.com.br/consulta — Protocolo {{protocolo}}</span>
 </div>`,
       dynamic_tags: [
+        '{{logo}}',
         '{{paciente}}',
         '{{especie}}',
         '{{raca}}',
@@ -100,17 +100,20 @@ export function createInitialSeedState(): SeedDatabaseState {
     {
       id: 'tpl-micro-002',
       name: 'Laudo Especializado Microbiologia & Parasitologia',
-      header_html: `<div style="border-bottom:2px solid #0284c7;padding-bottom:10px;margin-bottom:14px;">
-  <h2 style="margin:0;color:#0369a1;font-size:19px;">VETLIFE — DIVISÃO DE MICROBIOLOGIA E PARASITOLOGIA VETERINÁRIA</h2>
-  <p style="margin:2px 0 0;font-size:12px;color:#475569;">Protocolo: {{protocolo}} | Paciente: {{paciente}} ({{especie}}) | Solicitante: {{veterinario}} ({{crmv}})</p>
+      header_html: `<div style="border-bottom:2px solid #0284c7;padding-bottom:10px;margin-bottom:14px;display:flex;align-items:center;gap:12px;">
+  {{logo}}
+  <div>
+    <h2 style="margin:0;color:#0369a1;font-size:18px;">VETLIFE — DIVISÃO DE MICROBIOLOGIA E PARASITOLOGIA VETERINÁRIA</h2>
+    <p style="margin:2px 0 0;font-size:12px;color:#475569;">Protocolo: {{protocolo}} | Paciente: {{paciente}} ({{especie}}) | Solicitante: {{veterinario}} ({{crmv}})</p>
+  </div>
 </div>`,
       body_template: `<h3 style="color:#0f172a;font-size:15px;">{{exame}}</h3>
-{{resultados}}
-<div style="margin-top:10px;font-size:12px;color:#334155;"><strong>Referência de Interpretação:</strong><br/>{{referencias}}</div>`,
+{{resultados}}`,
       footer_html: `<div style="border-top:1px solid #cbd5e1;margin-top:16px;padding-top:8px;font-size:11px;color:#64748b;">
   Laudo Microbiológico liberado em {{data_liberacao}} • VetLife Diagnósticos Veterinários (vetlifelab.com.br)
 </div>`,
       dynamic_tags: [
+        '{{logo}}',
         '{{paciente}}',
         '{{especie}}',
         '{{veterinario}}',
@@ -850,6 +853,7 @@ export function createInitialSeedState(): SeedDatabaseState {
     {
       id: 'col-001',
       clinic_or_tutor_name: 'Clínica Veterinária PetCare (Dr. Carlos)',
+      crmv: 'CRMV-SP 45890',
       phone: '(11) 3045-8800',
       email: 'carlos.silva@clinicapetcare.com.br',
       address: 'Av. República do Líbano, 1420 - Moema, São Paulo/SP',
@@ -861,6 +865,7 @@ export function createInitialSeedState(): SeedDatabaseState {
     {
       id: 'col-002',
       clinic_or_tutor_name: 'Hospital Veterinário VetVida (Dra. Mariana)',
+      crmv: 'CRMV-SP 51234',
       phone: '(11) 3289-4100',
       email: 'mariana.costa@vetvida.com.br',
       address: 'Rua Oscar Freire, 890 - Jardins, São Paulo/SP',

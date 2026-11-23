@@ -10,8 +10,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { Exam, Order } from '../types';
-import { api, formatAgeLabel } from '../services/api';
-import { SEED_EXAMS } from '../services/mockData';
+import { api, formatAgeLabel, resolveSideBySideReference } from '../services/api';
 import { downloadOrderPdf, printFormattedReportWindow } from '../utils/pdfGenerator';
 
 interface TutorPortalProps {
@@ -89,8 +88,7 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
   };
 
   const resolveExamMeta = (res: NonNullable<Order['results']>[number]) => {
-    const catalogExam: Exam | undefined =
-      res.exam || SEED_EXAMS.find((e) => e.id === res.exam_id || e.code === res.exam_code);
+    const catalogExam: Exam | undefined = res.exam;
     return {
       code: res.exam_code || catalogExam?.code || 'EXM',
       name: res.exam_name || catalogExam?.name || 'Exame Laboratorial',
@@ -170,18 +168,36 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
         </div>
       )}
 
-      {/* VISUALIZAÇÃO COMPACTA DO ATENDIMENTO E EXAMES EM DROPDOWN */}
+      {/* Cabeçalho Institucional no topo do Laudo Público */}
       {order && (
         <div className="bg-white rounded-[24px] p-4 sm:p-6 space-y-5 border border-black/5">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#e5e5ea]">
+            <div className="flex items-center gap-3">
+              <img
+                src="/images/vetlife-logo.jpg"
+                alt="VetLife"
+                className="w-11 h-11 rounded-xl object-contain bg-white p-0.5 border border-slate-200/80 shadow-sm shrink-0"
+              />
+              <div>
+                <div className="font-display text-[17px] sm:text-[19px] font-bold text-[#0b2240]">
+                  VetLife Diagnósticos Veterinários
+                </div>
+                <div className="text-[11.5px] text-[#707070]">
+                  Laudo Laboratorial Oficial • vetlifelab.com.br
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[13px] font-bold text-[#0b2240] bg-[#f5f5f7] px-3 py-1 rounded-full">
+                {order.protocol_code}
+              </span>
+              {renderStatusChip(order.status)}
+            </div>
+          </div>
+
           {/* Cabeçalho Compacto */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#e5e5ea]">
             <div className="space-y-1">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="font-mono text-[14px] font-bold text-[#0b2240]">
-                  {order.protocol_code}
-                </span>
-                {renderStatusChip(order.status)}
-              </div>
               <h2 className="font-display text-[20px] sm:text-[24px] font-semibold leading-tight text-[#1d1d1f]">
                 {order.patient?.name}{' '}
                 <span className="text-[14px] sm:text-[15px] font-normal text-[#707070]">
@@ -368,23 +384,32 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
                                 <thead>
                                   <tr className="text-[10px] uppercase text-[#86868b] border-b border-[#e8e8ed]">
                                     <th className="pb-2 pr-3 font-semibold">Parâmetro Analisado</th>
-                                    <th className="pb-2 px-3 font-semibold">Resultado</th>
-                                    <th className="pb-2 pl-3 font-semibold">Unidade</th>
+                                    <th className="pb-2 px-3 font-semibold">Resultado Obtido</th>
+                                    <th className="pb-2 pl-3 font-semibold">
+                                      Valor de Referência ({order.patient?.species})
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#f0f0f5]">
                                   {entries.map(([key, val]) => {
                                     const fieldMeta = meta.fields.find((f) => f.field_name === key);
+                                    const rawLabel = fieldMeta?.field_label || key;
+                                    const unit = fieldMeta?.unit ? ` ${fieldMeta.unit}` : '';
+                                    const refText =
+                                      res.reference_snapshot ||
+                                      res.matched_reference?.reference_text_content ||
+                                      'Referência padrão da espécie.';
+                                    const sideRef = resolveSideBySideReference(key, rawLabel, refText);
                                     return (
                                       <tr key={key}>
-                                        <td className="py-1.5 pr-3 text-[#1d1d1f] font-medium">
-                                          {fieldMeta?.field_label || key}
+                                        <td className="py-2 pr-3 text-[#1d1d1f] font-medium">
+                                          {rawLabel}
                                         </td>
-                                        <td className="py-1.5 px-3 font-mono font-semibold text-[#1d1d1f]">
-                                          {String(val)}
+                                        <td className="py-2 px-3 font-mono font-bold text-[#0f766e]">
+                                          {String(val)}{unit}
                                         </td>
-                                        <td className="py-1.5 pl-3 text-[11px] text-[#86868b]">
-                                          {fieldMeta?.unit || '-'}
+                                        <td className="py-2 pl-3 text-[11.5px] text-[#5b6675]">
+                                          {sideRef}
                                         </td>
                                       </tr>
                                     );
