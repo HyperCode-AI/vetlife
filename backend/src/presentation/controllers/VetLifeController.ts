@@ -1125,6 +1125,81 @@ export class VetLifeController {
     }
   };
 
+  public listVetPortalCollections = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const vetEmail = (req.authUser?.email || '').trim().toLowerCase();
+      const vetCrmv = (req.authUser?.crmv || '').trim().toUpperCase();
+      const allCollections = await this.publicUseCases.listCollectionRequests({
+        status: req.query.status ? String(req.query.status) : undefined,
+        search: req.query.search ? String(req.query.search) : undefined,
+      });
+
+      const mine = allCollections.filter((c) => {
+        const cEmail = (c.email || '').trim().toLowerCase();
+        const cCrmv = (c.crmv || '').trim().toUpperCase();
+        if (vetEmail && cEmail && cEmail === vetEmail) return true;
+        if (vetCrmv && cCrmv && cCrmv === vetCrmv) return true;
+        return false;
+      });
+
+      res.json({ success: true, data: mine });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public listVetPortalCatalog = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const exams = await this.examUseCases.listExams();
+      const tables = await this.priceTableUseCases.listPriceTables();
+      const today = new Date().toISOString().slice(0, 10);
+      const activeTable =
+        tables.find(
+          (pt) => pt.is_active && pt.start_date <= today && pt.end_date >= today
+        ) ||
+        tables.find((pt) => pt.is_active) ||
+        tables[0];
+
+      const priceMap = new Map<string, number>();
+      if (activeTable?.prices) {
+        for (const p of activeTable.prices) {
+          priceMap.set(p.exam_id, Number(p.price));
+        }
+      }
+
+      const enriched = exams.map((ex) => {
+        const resolvedPrice =
+          priceMap.get(ex.id) ?? Number(ex.price ?? ex.base_price ?? 0);
+        return {
+          ...ex,
+          price: resolvedPrice,
+          base_price: resolvedPrice,
+          price_table_name: activeTable?.name || 'Tabela Vigente',
+        };
+      });
+
+      res.json({
+        success: true,
+        data: {
+          price_table_name: activeTable?.name || 'Tabela Vigente',
+          start_date: activeTable?.start_date || null,
+          end_date: activeTable?.end_date || null,
+          exams: enriched,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   public getPublicProtocolReport = async (
     req: Request,
     res: Response,

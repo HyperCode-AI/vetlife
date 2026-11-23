@@ -1192,6 +1192,27 @@ export const api = {
     return Array.isArray(remote) ? remote : [];
   },
 
+  async getVetCollections(): Promise<CollectionRequest[]> {
+    const remote = await request<CollectionRequest[]>('/vet/collections');
+    return Array.isArray(remote) ? remote : [];
+  },
+
+  async getVetCatalog(): Promise<{
+    price_table_name: string;
+    start_date: string | null;
+    end_date: string | null;
+    exams: Exam[];
+  }> {
+    const remote = await request<any>('/vet/catalog');
+    const rawExams = Array.isArray(remote?.exams) ? remote.exams : Array.isArray(remote) ? remote : [];
+    return {
+      price_table_name: remote?.price_table_name || 'Tabela Vigente',
+      start_date: remote?.start_date || null,
+      end_date: remote?.end_date || null,
+      exams: rawExams.map(normalizeExam),
+    };
+  },
+
   async createOrder(payload: {
     patient: Omit<Patient, 'id'> & { id?: string };
     vet_id: string;

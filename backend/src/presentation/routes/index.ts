@@ -84,6 +84,18 @@ export function createApiV1Router(): Router {
     requireRole('vet'),
     controller.listVetPortalOrders
   );
+  router.get(
+    '/vet/collections',
+    authenticate,
+    requireRole('vet'),
+    controller.listVetPortalCollections
+  );
+  router.get(
+    '/vet/catalog',
+    authenticate,
+    requireRole('vet'),
+    controller.listVetPortalCatalog
+  );
 
   // ===========================================================================
   // 4. Settings & Catalog (Admin Only Write — RN-01, HU-01 to HU-05)

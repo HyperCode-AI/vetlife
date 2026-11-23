@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { LandingPage } from './pages/LandingPage';
 import { TutorPortal } from './pages/TutorPortal';
-import { VetPortal } from './pages/VetPortal';
+import { VetPortal, VetPortalTab } from './pages/VetPortal';
 import {
   InternalPanel,
   InternalTab,
@@ -59,6 +59,7 @@ export const App: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [internalTab, setInternalTab] = useState<InternalTab>('operational');
+  const [vetPortalTab, setVetPortalTab] = useState<VetPortalTab>('orders');
   const [routineSubTab, setRoutineSubTab] = useState<RoutineSubTab>('list');
   const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>('exams');
   const [routineMenuExpanded, setRoutineMenuExpanded] = useState(true);
@@ -981,39 +982,89 @@ export const App: React.FC = () => {
                     <>
                       <button
                         type="button"
-                        title="Meus Exames e Laudos"
+                        title="Atendimentos & Laudos"
                         onClick={() => {
+                          setVetPortalTab('orders');
                           handleNavigate('vet');
                           setMobileSidebarOpen(false);
                         }}
                         className={`w-full flex items-center ${
                           sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
                         } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
-                          currentView === 'vet'
+                          currentView === 'vet' && vetPortalTab === 'orders'
                             ? 'bg-[#0071e3] text-white shadow-xs'
                             : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
                         }`}
                       >
                         <Stethoscope className="w-4 h-4 shrink-0" />
                         <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                          Meus Exames & Laudos
+                          Atendimentos & Laudos
                         </span>
                       </button>
 
                       <button
                         type="button"
-                        title="Solicitar Coleta"
+                        title="Coletas & Agendamentos"
                         onClick={() => {
+                          setVetPortalTab('collections');
+                          handleNavigate('vet');
                           setMobileSidebarOpen(false);
-                          handleScrollToSection('coleta');
                         }}
                         className={`w-full flex items-center ${
                           sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
-                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer text-[#1d1d1f] hover:bg-[#f5f5f7]`}
+                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                          currentView === 'vet' && vetPortalTab === 'collections'
+                            ? 'bg-[#0071e3] text-white shadow-xs'
+                            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                        }`}
                       >
-                        <ClipboardPlus className="w-4 h-4 shrink-0" />
+                        <Calendar className="w-4 h-4 shrink-0" />
                         <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                          Solicitar Coleta
+                          Coletas & Agendamentos
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        title="Catálogo & Valores"
+                        onClick={() => {
+                          setVetPortalTab('catalog');
+                          handleNavigate('vet');
+                          setMobileSidebarOpen(false);
+                        }}
+                        className={`w-full flex items-center ${
+                          sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                          currentView === 'vet' && vetPortalTab === 'catalog'
+                            ? 'bg-[#0071e3] text-white shadow-xs'
+                            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                        }`}
+                      >
+                        <BookOpen className="w-4 h-4 shrink-0" />
+                        <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                          Catálogo & Valores
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        title="Consolidado Financeiro"
+                        onClick={() => {
+                          setVetPortalTab('financial');
+                          handleNavigate('vet');
+                          setMobileSidebarOpen(false);
+                        }}
+                        className={`w-full flex items-center ${
+                          sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                          currentView === 'vet' && vetPortalTab === 'financial'
+                            ? 'bg-[#0071e3] text-white shadow-xs'
+                            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                        }`}
+                      >
+                        <DollarSign className="w-4 h-4 shrink-0" />
+                        <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                          Consolidado Financeiro
                         </span>
                       </button>
                     </>
@@ -1112,7 +1163,11 @@ export const App: React.FC = () => {
               Validando sessão segura...
             </div>
           ) : isVetAuthenticated ? (
-            <VetPortal onLogout={() => handleAuthLogout('vet')} />
+            <VetPortal
+              activeTab={vetPortalTab}
+              onTabChange={setVetPortalTab}
+              onLogout={() => handleAuthLogout('vet')}
+            />
           ) : isLabAuthenticated ? (
             <div className="min-h-[60vh] flex items-center justify-center py-12">
               <div className="max-w-md w-full bg-white rounded-[28px] p-8 shadow-sm border border-slate-200 text-center space-y-4">

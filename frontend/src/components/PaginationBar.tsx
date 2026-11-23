@@ -71,11 +71,10 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
                 key={p}
                 type="button"
                 onClick={() => onPageChange(p)}
-                className={`w-8 h-8 rounded-full text-[12px] font-semibold transition cursor-pointer ${
-                  p === currentPage
+                className={`w-8 h-8 rounded-full text-[12px] font-semibold transition cursor-pointer ${p === currentPage
                     ? 'bg-[#0b2240] text-white shadow-sm'
                     : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea]'
-                }`}
+                  }`}
               >
                 {p}
               </button>
