@@ -673,23 +673,13 @@ export const App: React.FC = () => {
                   : 'hidden md:flex md:sticky md:top-[60px] md:h-[calc(100vh-60px)] md:z-20'
               }`}
             >
-              <div className="p-3 space-y-5 overflow-y-auto flex-1">
-                {/* Perfil / Cabeçalho da Sidebar */}
+              <div className="p-3 space-y-2 overflow-y-auto flex-1">
+                {/* Botão superior de recolher/expandir (somente setinha) */}
                 <div
                   className={`flex items-center ${
-                    sidebarCollapsed ? 'md:justify-center' : 'justify-between'
-                  } px-2 pt-1`}
+                    sidebarCollapsed ? 'md:justify-center' : 'justify-end'
+                  } px-1 pt-0.5`}
                 >
-                  {!sidebarCollapsed && (
-                    <div className="min-w-0">
-                      <div className="text-[10.5px] font-bold uppercase tracking-wider text-[#86868b]">
-                        Módulos do Sistema
-                      </div>
-                      <div className="text-[12px] font-semibold text-[#0b2240] truncate">
-                        {authDisplayRole}
-                      </div>
-                    </div>
-                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -700,6 +690,7 @@ export const App: React.FC = () => {
                       }
                     }}
                     title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+                    aria-label={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
                     className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-[#0b2240] transition cursor-pointer shrink-0"
                   >
                     {mobileSidebarOpen ? (
@@ -712,16 +703,10 @@ export const App: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Atalhos conforme Perfil (Admin vs Biomédico/Técnico vs Veterinário) */}
-                {isLabAuthenticated && !isVetAuthenticated && (
-                  <>
-                    <div className="space-y-1">
-                      {!sidebarCollapsed && (
-                        <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#86868b]">
-                          Operação
-                        </div>
-                      )}
-
+                {/* Lista única de itens conforme permissões do perfil */}
+                <div className="space-y-1">
+                  {isLabAuthenticated && !isVetAuthenticated && (
+                    <>
                       <button
                         type="button"
                         title="Dashboard Operacional"
@@ -879,181 +864,159 @@ export const App: React.FC = () => {
                           Lançamento de Laudos
                         </span>
                       </button>
-                    </div>
 
-                    {/* Exclusivo para perfil Administrador */}
-                    {activeAuthUser?.role === 'admin' && (
-                      <div className="space-y-1 pt-2 border-t border-slate-100">
-                        {!sidebarCollapsed && (
-                          <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#86868b]">
-                            Administração
+                      {/* Itens exclusivos do perfil Administrador (sem subtítulo ou separação) */}
+                      {activeAuthUser?.role === 'admin' && (
+                        <>
+                          <div className="space-y-1">
+                            <button
+                              type="button"
+                              title="Configurações"
+                              onClick={() => {
+                                if (sidebarCollapsed) {
+                                  setSidebarCollapsed(false);
+                                  setSettingsMenuExpanded(true);
+                                } else {
+                                  setSettingsMenuExpanded((prev) => !prev);
+                                }
+                              }}
+                              className={`w-full flex items-center ${
+                                sidebarCollapsed ? 'md:justify-center md:px-0' : 'justify-between px-3.5'
+                              } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-2 transition cursor-pointer ${
+                                (currentView === 'internal' || currentView === 'login') &&
+                                internalTab === 'settings'
+                                  ? 'bg-[#0071e3] text-white shadow-xs'
+                                  : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                              }`}
+                            >
+                              <span className="flex items-center gap-3 min-w-0">
+                                <Settings className="w-4 h-4 shrink-0" />
+                                <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                                  Configurações
+                                </span>
+                              </span>
+                              {!sidebarCollapsed && (
+                                <ChevronDown
+                                  className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                                    settingsMenuExpanded ? 'rotate-180' : ''
+                                  }`}
+                                />
+                              )}
+                            </button>
+
+                            {!sidebarCollapsed && settingsMenuExpanded && (
+                              <div className="pl-5 pr-1 py-1 space-y-1 border-l-2 border-slate-100 ml-5">
+                                {(
+                                  [
+                                    { id: 'exams' as SettingsSubTab, label: 'Catálogo de Exames', icon: FlaskConical },
+                                    { id: 'fields' as SettingsSubTab, label: 'Campos Dinâmicos', icon: Sliders },
+                                    { id: 'prices' as SettingsSubTab, label: 'Tabelas de Preços', icon: Tag },
+                                    { id: 'references' as SettingsSubTab, label: 'Valores de Referência', icon: BookOpen },
+                                    { id: 'templates' as SettingsSubTab, label: 'Modelos de Laudos', icon: FileText },
+                                    { id: 'users' as SettingsSubTab, label: 'Usuários do Lab', icon: Users },
+                                    { id: 'vets' as SettingsSubTab, label: 'Veterinários & Clínicas', icon: Stethoscope },
+                                  ] as const
+                                ).map((sub) => {
+                                  const IconComp = sub.icon;
+                                  const isActiveSub =
+                                    (currentView === 'internal' || currentView === 'login') &&
+                                    internalTab === 'settings' &&
+                                    settingsSubTab === sub.id;
+                                  return (
+                                    <button
+                                      key={sub.id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (currentView !== 'internal') handleNavigate('internal');
+                                        setInternalTab('settings');
+                                        setSettingsSubTab(sub.id);
+                                        setInternalTabNonce((n) => n + 1);
+                                        setMobileSidebarOpen(false);
+                                      }}
+                                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-[11.5px] font-semibold transition cursor-pointer ${
+                                        isActiveSub
+                                          ? 'bg-[#0071e3]/10 text-[#0071e3]'
+                                          : 'text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                                      }`}
+                                    >
+                                      <IconComp className="w-3.5 h-3.5 shrink-0" />
+                                      <span className="truncate">{sub.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        )}
 
-                        {/* Item com Subitens: Configurações */}
-                        <div className="space-y-1">
                           <button
                             type="button"
-                            title="Configurações"
+                            title="Dashboard Financeiro"
                             onClick={() => {
-                              if (sidebarCollapsed) {
-                                setSidebarCollapsed(false);
-                                setSettingsMenuExpanded(true);
-                              } else {
-                                setSettingsMenuExpanded((prev) => !prev);
-                              }
+                              if (currentView !== 'internal') handleNavigate('internal');
+                              setInternalTab('financial');
+                              setInternalTabNonce((n) => n + 1);
+                              setMobileSidebarOpen(false);
                             }}
                             className={`w-full flex items-center ${
-                              sidebarCollapsed ? 'md:justify-center md:px-0' : 'justify-between px-3.5'
-                            } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-2 transition cursor-pointer ${
+                              sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                            } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
                               (currentView === 'internal' || currentView === 'login') &&
-                              internalTab === 'settings'
+                              internalTab === 'financial'
                                 ? 'bg-[#0071e3] text-white shadow-xs'
                                 : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
                             }`}
                           >
-                            <span className="flex items-center gap-3 min-w-0">
-                              <Settings className="w-4 h-4 shrink-0" />
-                              <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                                Configurações
-                              </span>
+                            <DollarSign className="w-4 h-4 shrink-0" />
+                            <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                              Dashboard Financeiro
                             </span>
-                            {!sidebarCollapsed && (
-                              <ChevronDown
-                                className={`w-3.5 h-3.5 shrink-0 transition-transform ${
-                                  settingsMenuExpanded ? 'rotate-180' : ''
-                                }`}
-                              />
-                            )}
                           </button>
+                        </>
+                      )}
+                    </>
+                  )}
 
-                          {!sidebarCollapsed && settingsMenuExpanded && (
-                            <div className="pl-5 pr-1 py-1 space-y-1 border-l-2 border-slate-100 ml-5">
-                              {(
-                                [
-                                  { id: 'exams' as SettingsSubTab, label: 'Catálogo de Exames', icon: FlaskConical },
-                                  { id: 'fields' as SettingsSubTab, label: 'Campos Dinâmicos', icon: Sliders },
-                                  { id: 'prices' as SettingsSubTab, label: 'Tabelas de Preços', icon: Tag },
-                                  { id: 'references' as SettingsSubTab, label: 'Valores de Referência', icon: BookOpen },
-                                  { id: 'templates' as SettingsSubTab, label: 'Modelos de Laudos', icon: FileText },
-                                  { id: 'users' as SettingsSubTab, label: 'Usuários do Lab', icon: Users },
-                                  { id: 'vets' as SettingsSubTab, label: 'Veterinários & Clínicas', icon: Stethoscope },
-                                ] as const
-                              ).map((sub) => {
-                                const IconComp = sub.icon;
-                                const isActiveSub =
-                                  (currentView === 'internal' || currentView === 'login') &&
-                                  internalTab === 'settings' &&
-                                  settingsSubTab === sub.id;
-                                return (
-                                  <button
-                                    key={sub.id}
-                                    type="button"
-                                    onClick={() => {
-                                      if (currentView !== 'internal') handleNavigate('internal');
-                                      setInternalTab('settings');
-                                      setSettingsSubTab(sub.id);
-                                      setInternalTabNonce((n) => n + 1);
-                                      setMobileSidebarOpen(false);
-                                    }}
-                                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-[11.5px] font-semibold transition cursor-pointer ${
-                                      isActiveSub
-                                        ? 'bg-[#0071e3]/10 text-[#0071e3]'
-                                        : 'text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]'
-                                    }`}
-                                  >
-                                    <IconComp className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="truncate">{sub.label}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
+                  {/* Atalhos exclusivos para o Perfil Médico Veterinário */}
+                  {isVetAuthenticated && !isLabAuthenticated && (
+                    <>
+                      <button
+                        type="button"
+                        title="Meus Exames e Laudos"
+                        onClick={() => {
+                          handleNavigate('vet');
+                          setMobileSidebarOpen(false);
+                        }}
+                        className={`w-full flex items-center ${
+                          sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
+                          currentView === 'vet'
+                            ? 'bg-[#0071e3] text-white shadow-xs'
+                            : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                        }`}
+                      >
+                        <Stethoscope className="w-4 h-4 shrink-0" />
+                        <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                          Meus Exames & Laudos
+                        </span>
+                      </button>
 
-                        <button
-                          type="button"
-                          title="Dashboard Financeiro"
-                          onClick={() => {
-                            if (currentView !== 'internal') handleNavigate('internal');
-                            setInternalTab('financial');
-                            setInternalTabNonce((n) => n + 1);
-                            setMobileSidebarOpen(false);
-                          }}
-                          className={`w-full flex items-center ${
-                            sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
-                          } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
-                            (currentView === 'internal' || currentView === 'login') &&
-                            internalTab === 'financial'
-                              ? 'bg-[#0071e3] text-white shadow-xs'
-                              : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
-                          }`}
-                        >
-                          <DollarSign className="w-4 h-4 shrink-0" />
-                          <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                            Dashboard Financeiro
-                          </span>
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Atalhos exclusivos para o Perfil Médico Veterinário */}
-                {isVetAuthenticated && !isLabAuthenticated && (
-                  <div className="space-y-1">
-                    {!sidebarCollapsed && (
-                      <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#86868b]">
-                        Portal do Parceiro
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      title="Meus Exames e Laudos"
-                      onClick={() => {
-                        handleNavigate('vet');
-                        setMobileSidebarOpen(false);
-                      }}
-                      className={`w-full flex items-center ${
-                        sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
-                      } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
-                        currentView === 'vet'
-                          ? 'bg-[#0071e3] text-white shadow-xs'
-                          : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
-                      }`}
-                    >
-                      <Stethoscope className="w-4 h-4 shrink-0" />
-                      <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                        Meus Exames & Laudos
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      title="Solicitar Coleta"
-                      onClick={() => {
-                        setMobileSidebarOpen(false);
-                        handleScrollToSection('coleta');
-                      }}
-                      className={`w-full flex items-center ${
-                        sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
-                      } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer text-[#1d1d1f] hover:bg-[#f5f5f7]`}
-                    >
-                      <ClipboardPlus className="w-4 h-4 shrink-0" />
-                      <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                        Solicitar Coleta
-                      </span>
-                    </button>
-                  </div>
-                )}
-
-                {/* Acessos Rápidos / Externos Comuns */}
-                <div className="space-y-1 pt-2 border-t border-slate-100">
-                  {!sidebarCollapsed && (
-                    <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#86868b]">
-                      Acesso Rápido
-                    </div>
+                      <button
+                        type="button"
+                        title="Solicitar Coleta"
+                        onClick={() => {
+                          setMobileSidebarOpen(false);
+                          handleScrollToSection('coleta');
+                        }}
+                        className={`w-full flex items-center ${
+                          sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
+                        } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer text-[#1d1d1f] hover:bg-[#f5f5f7]`}
+                      >
+                        <ClipboardPlus className="w-4 h-4 shrink-0" />
+                        <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                          Solicitar Coleta
+                        </span>
+                      </button>
+                    </>
                   )}
 
                   <button
@@ -1090,25 +1053,6 @@ export const App: React.FC = () => {
                     </span>
                   </button>
                 </div>
-              </div>
-
-              {/* Rodapé da Sidebar: Botão de Expandir / Recolher */}
-              <div className="p-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setSidebarCollapsed((prev) => !prev)}
-                  title={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
-                  className={`hidden md:flex w-full items-center ${
-                    sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-3.5'
-                  } py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-[#5b6675] hover:text-[#0b2240] text-[12px] font-semibold transition cursor-pointer`}
-                >
-                  {!sidebarCollapsed && <span>Recolher Menu</span>}
-                  {sidebarCollapsed ? (
-                    <PanelLeftOpen className="w-4 h-4 shrink-0" />
-                  ) : (
-                    <PanelLeftClose className="w-4 h-4 shrink-0" />
-                  )}
-                </button>
               </div>
             </aside>
           </>
