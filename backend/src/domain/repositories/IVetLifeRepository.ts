@@ -5,6 +5,7 @@ import {
   ExamPrice,
   ExamReference,
   ExamResult,
+  Invoice,
   Order,
   Patient,
   PriceTable,
@@ -152,6 +153,29 @@ export interface ICollectionRequestRepository {
   deleteCollectionRequest(id: string): Promise<void>;
 }
 
+export interface IInvoiceRepository {
+  listInvoices(filters?: { vet_id?: string; status?: string }): Promise<Invoice[]>;
+  findInvoiceById(id: string): Promise<Invoice | null>;
+  createInvoice(data: {
+    vet_id: string;
+    order_ids: string[];
+    reference_month?: string;
+    period_start?: string | null;
+    period_end?: string | null;
+    due_date?: string | null;
+    boleto_filename?: string;
+    boleto_pdf_url?: string | null;
+    notes?: string;
+  }): Promise<Invoice>;
+  updateInvoiceBoleto(
+    invoiceId: string,
+    boletoFilename: string,
+    boletoPdfUrl: string | null
+  ): Promise<Invoice>;
+  markInvoiceAsPaid(invoiceId: string, paidAt?: string): Promise<Invoice>;
+  cancelInvoice(invoiceId: string): Promise<Invoice>;
+}
+
 export interface IVetLifeRepository
   extends IUserRepository,
     IExamRepository,
@@ -161,6 +185,7 @@ export interface IVetLifeRepository
     IPatientRepository,
     IVetRepository,
     IOrderRepository,
-    ICollectionRequestRepository {
+    ICollectionRequestRepository,
+    IInvoiceRepository {
   getStorageMode(): 'supabase' | 'in-memory-seeded';
 }

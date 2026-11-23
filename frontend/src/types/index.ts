@@ -147,6 +147,29 @@ export interface ExamResultItem {
 }
 
 export type OrderStatus = 'pendente' | 'em_analise' | 'concluido';
+export type PaymentStatus = 'nao_faturado' | 'aguardando_pagamento' | 'pago';
+export type InvoiceStatus = 'aguardando_pagamento' | 'pago' | 'cancelado';
+
+export interface Invoice {
+  id: string;
+  invoice_number: string;
+  vet_id: string;
+  reference_month?: string;
+  period_start?: string | null;
+  period_end?: string | null;
+  due_date?: string | null;
+  total_amount: number;
+  status: InvoiceStatus;
+  boleto_filename?: string;
+  boleto_pdf_url?: string | null;
+  notes?: string;
+  paid_at?: string | null;
+  created_at: string;
+  vet?: Vet;
+  orders?: Order[];
+  order_ids?: string[];
+  orders_count?: number;
+}
 
 export interface Order {
   id: string;
@@ -155,6 +178,8 @@ export interface Order {
   vet_id: string;
   price_table_id?: string;
   price_table_name?: string;
+  invoice_id?: string | null;
+  payment_status?: PaymentStatus;
   total_amount: number;
   status: OrderStatus;
   pdf_url?: string | null;

@@ -9,6 +9,7 @@ import {
   ReportTemplate,
   Patient,
   Order,
+  Invoice,
   CollectionLabel,
   CollectionRequest,
   OperationalStats,
@@ -1211,6 +1212,64 @@ export const api = {
       end_date: remote?.end_date || null,
       exams: rawExams.map(normalizeExam),
     };
+  },
+
+  async getVetInvoices(): Promise<Invoice[]> {
+    const remote = await request<Invoice[]>('/vet/invoices');
+    return Array.isArray(remote) ? remote : [];
+  },
+
+  // ==========================================
+  // 8.1 FATURAMENTO / LOTES DE BOLETOS (ADMIN)
+  // ==========================================
+  async getInvoices(params?: { vet_id?: string; status?: string }): Promise<Invoice[]> {
+    const qs = new URLSearchParams();
+    if (params?.vet_id) qs.set('vet_id', params.vet_id);
+    if (params?.status) qs.set('status', params.status);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    const remote = await request<Invoice[]>(`/invoices${suffix}`);
+    return Array.isArray(remote) ? remote : [];
+  },
+
+  async createInvoice(payload: {
+    vet_id: string;
+    order_ids: string[];
+    reference_month?: string;
+    period_start?: string;
+    period_end?: string;
+    due_date?: string;
+    boleto_filename?: string;
+    boleto_pdf_base64?: string;
+    notes?: string;
+  }): Promise<Invoice> {
+    return request<Invoice>('/invoices', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateInvoiceBoleto(
+    invoiceId: string,
+    payload: { boleto_filename: string; boleto_pdf_base64: string }
+  ): Promise<Invoice> {
+    return request<Invoice>(`/invoices/${invoiceId}/boleto`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async markInvoiceAsPaid(invoiceId: string, paidAt?: string): Promise<Invoice> {
+    return request<Invoice>(`/invoices/${invoiceId}/pay`, {
+      method: 'PATCH',
+      body: JSON.stringify({ paid_at: paidAt }),
+    });
+  },
+
+  async cancelInvoice(invoiceId: string): Promise<Invoice> {
+    return request<Invoice>(`/invoices/${invoiceId}/cancel`, {
+      method: 'PATCH',
+      body: JSON.stringify({}),
+    });
   },
 
   async createOrder(payload: {

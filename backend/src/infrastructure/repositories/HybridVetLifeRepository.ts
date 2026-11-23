@@ -7,6 +7,7 @@ import {
   ExamPrice,
   ExamReference,
   ExamResult,
+  Invoice,
   Order,
   Patient,
   PriceTable,
@@ -2262,6 +2263,251 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       throw new NotFoundError(`Solicitação de coleta '${id}' não encontrada.`);
     }
     this.state.collectionRequests.splice(idx, 1);
+  }
+
+  // ===========================================================================
+  // INVOICES / FATURAMENTO (LOTES DE ATENDIMENTOS POR VETERINÁRIO)
+  // ===========================================================================
+  public async listInvoices(filters?: { vet_id?: string; status?: string }): Promise<Invoice[]> {
+    const sb = getSupabaseClient();
+    const allOrders = await this.listOrders(filters?.vet_id ? { vet_id: filters.vet_id } : undefined);
+    const allVets = await this.listVets();
+    const vetMap = new Map(allVets.map((v) => [v.id, v]));
+
+    if (sb) {
+      let query = sb.from('invoices').select('*').order('created_at', { ascending: false });
+      if (filters?.vet_id) query = query.eq('vet_id', filters.vet_id);
+      if (filters?.status && filters.status !== 'todos') query = query.eq('status', filters.status);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      return ((data || []) as Invoice[]).map((inv) => {
+        const linkedOrders = allOrders.filter((o) => o.invoice_id === inv.id);
+        return {
+          ...inv,
+          total_amount: Number(inv.total_amount || 0),
+          vet: vetMap.get(inv.vet_id),
+          orders: linkedOrders,
+          order_ids: linkedOrders.map((o) => o.id),
+          orders_count: linkedOrders.length,
+        };
+      });
+    }
+
+    let list = [...(this.state.invoices || [])];
+    if (filters?.vet_id) list = list.filter((i) => i.vet_id === filters.vet_id);
+    if (filters?.status && filters.status !== 'todos') list = list.filter((i) => i.status === filters.status);
+
+    return list
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+      .map((inv) => {
+        const linkedOrders = allOrders.filter((o) => o.invoice_id === inv.id);
+        return {
+          ...inv,
+          total_amount: Number(inv.total_amount || 0),
+          vet: vetMap.get(inv.vet_id),
+          orders: linkedOrders,
+          order_ids: linkedOrders.map((o) => o.id),
+          orders_count: linkedOrders.length,
+        };
+      });
+  }
+
+  public async findInvoiceById(id: string): Promise<Invoice | null> {
+    const list = await this.listInvoices();
+    return list.find((inv) => inv.id === id) || null;
+  }
+
+  public async createInvoice(data: {
+    vet_id: string;
+    order_ids: string[];
+    reference_month?: string;
+    period_start?: string | null;
+    period_end?: string | null;
+    due_date?: string | null;
+    boleto_filename?: string;
+    boleto_pdf_url?: string | null;
+    notes?: string;
+  }): Promise<Invoice> {
+    const uniqueOrderIds = Array.from(new Set(data.order_ids || [])).filter(Boolean);
+    if (uniqueOrderIds.length === 0) {
+      throw new Error('Selecione ao menos um atendimento para gerar a fatura.');
+    }
+
+    const vetOrders = await this.listOrders({ vet_id: data.vet_id });
+    const targetOrders = vetOrders.filter((o) => uniqueOrderIds.includes(o.id));
+    if (targetOrders.length === 0) {
+      throw new NotFoundError('Nenhum atendimento válido encontrado para este veterinário.');
+    }
+
+    const alreadyBilled = targetOrders.find(
+      (o) => o.invoice_id && o.payment_status && o.payment_status !== 'nao_faturado'
+    );
+    if (alreadyBilled) {
+      throw new ConflictError(
+        `O atendimento ${alreadyBilled.protocol_code} já está vinculado a uma fatura.`
+      );
+    }
+
+    const totalAmount = targetOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+    const now = new Date();
+    const year = now.getFullYear();
+    const seq = String(Math.floor(1000 + Math.random() * 9000));
+    const invoiceNumber = `FAT-${year}-${seq}`;
+
+    const invoiceRow: Invoice = {
+      id: randomUUID(),
+      invoice_number: invoiceNumber,
+      vet_id: data.vet_id,
+      reference_month: data.reference_month || `${year}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+      period_start: data.period_start || null,
+      period_end: data.period_end || null,
+      due_date: data.due_date || null,
+      total_amount: Number(totalAmount.toFixed(2)),
+      status: 'aguardando_pagamento',
+      boleto_filename: data.boleto_filename || '',
+      boleto_pdf_url: data.boleto_pdf_url || null,
+      notes: data.notes || '',
+      paid_at: null,
+      created_at: now.toISOString(),
+    };
+
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { error: invErr } = await sb.from('invoices').insert({
+        id: invoiceRow.id,
+        invoice_number: invoiceRow.invoice_number,
+        vet_id: invoiceRow.vet_id,
+        reference_month: invoiceRow.reference_month,
+        period_start: invoiceRow.period_start,
+        period_end: invoiceRow.period_end,
+        due_date: invoiceRow.due_date,
+        total_amount: invoiceRow.total_amount,
+        status: invoiceRow.status,
+        boleto_filename: invoiceRow.boleto_filename,
+        boleto_pdf_url: invoiceRow.boleto_pdf_url,
+        notes: invoiceRow.notes,
+        paid_at: null,
+        created_at: invoiceRow.created_at,
+      });
+      if (invErr) throw new Error(invErr.message);
+
+      const { error: ordErr } = await sb
+        .from('orders')
+        .update({ invoice_id: invoiceRow.id, payment_status: 'aguardando_pagamento' })
+        .in('id', targetOrders.map((o) => o.id));
+      if (ordErr) throw new Error(ordErr.message);
+    } else {
+      this.state.invoices = [invoiceRow, ...(this.state.invoices || [])];
+      const idSet = new Set(targetOrders.map((o) => o.id));
+      this.state.orders = this.state.orders.map((o) =>
+        idSet.has(o.id)
+          ? { ...o, invoice_id: invoiceRow.id, payment_status: 'aguardando_pagamento' }
+          : o
+      );
+    }
+
+    const enriched = await this.findInvoiceById(invoiceRow.id);
+    return enriched || invoiceRow;
+  }
+
+  public async updateInvoiceBoleto(
+    invoiceId: string,
+    boletoFilename: string,
+    boletoPdfUrl: string | null
+  ): Promise<Invoice> {
+    const existing = await this.findInvoiceById(invoiceId);
+    if (!existing) {
+      throw new NotFoundError(`Fatura '${invoiceId}' não encontrada.`);
+    }
+
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { error } = await sb
+        .from('invoices')
+        .update({ boleto_filename: boletoFilename, boleto_pdf_url: boletoPdfUrl })
+        .eq('id', invoiceId);
+      if (error) throw new Error(error.message);
+    } else {
+      this.state.invoices = (this.state.invoices || []).map((inv) =>
+        inv.id === invoiceId
+          ? { ...inv, boleto_filename: boletoFilename, boleto_pdf_url: boletoPdfUrl }
+          : inv
+      );
+    }
+
+    const refreshed = await this.findInvoiceById(invoiceId);
+    if (!refreshed) throw new NotFoundError(`Fatura '${invoiceId}' não encontrada.`);
+    return refreshed;
+  }
+
+  public async markInvoiceAsPaid(invoiceId: string, paidAt?: string): Promise<Invoice> {
+    const existing = await this.findInvoiceById(invoiceId);
+    if (!existing) {
+      throw new NotFoundError(`Fatura '${invoiceId}' não encontrada.`);
+    }
+    const resolvedPaidAt = paidAt || new Date().toISOString();
+
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { error: invErr } = await sb
+        .from('invoices')
+        .update({ status: 'pago', paid_at: resolvedPaidAt })
+        .eq('id', invoiceId);
+      if (invErr) throw new Error(invErr.message);
+
+      const { error: ordErr } = await sb
+        .from('orders')
+        .update({ payment_status: 'pago' })
+        .eq('invoice_id', invoiceId);
+      if (ordErr) throw new Error(ordErr.message);
+    } else {
+      this.state.invoices = (this.state.invoices || []).map((inv) =>
+        inv.id === invoiceId ? { ...inv, status: 'pago', paid_at: resolvedPaidAt } : inv
+      );
+      this.state.orders = this.state.orders.map((o) =>
+        o.invoice_id === invoiceId ? { ...o, payment_status: 'pago' } : o
+      );
+    }
+
+    const refreshed = await this.findInvoiceById(invoiceId);
+    if (!refreshed) throw new NotFoundError(`Fatura '${invoiceId}' não encontrada.`);
+    return refreshed;
+  }
+
+  public async cancelInvoice(invoiceId: string): Promise<Invoice> {
+    const existing = await this.findInvoiceById(invoiceId);
+    if (!existing) {
+      throw new NotFoundError(`Fatura '${invoiceId}' não encontrada.`);
+    }
+
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { error: ordErr } = await sb
+        .from('orders')
+        .update({ invoice_id: null, payment_status: 'nao_faturado' })
+        .eq('invoice_id', invoiceId);
+      if (ordErr) throw new Error(ordErr.message);
+
+      const { error: invErr } = await sb
+        .from('invoices')
+        .update({ status: 'cancelado' })
+        .eq('id', invoiceId);
+      if (invErr) throw new Error(invErr.message);
+    } else {
+      this.state.orders = this.state.orders.map((o) =>
+        o.invoice_id === invoiceId
+          ? { ...o, invoice_id: null, payment_status: 'nao_faturado' }
+          : o
+      );
+      this.state.invoices = (this.state.invoices || []).map((inv) =>
+        inv.id === invoiceId ? { ...inv, status: 'cancelado' } : inv
+      );
+    }
+
+    const refreshed = await this.findInvoiceById(invoiceId);
+    if (!refreshed) throw new NotFoundError(`Fatura '${invoiceId}' não encontrada.`);
+    return refreshed;
   }
 }
 

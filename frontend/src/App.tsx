@@ -35,6 +35,7 @@ import {
   InternalTab,
   RoutineSubTab,
   SettingsSubTab,
+  FinancialSubTab,
 } from './pages/InternalPanel';
 import { LoginPage } from './pages/LoginPage';
 import { api } from './services/api';
@@ -62,8 +63,10 @@ export const App: React.FC = () => {
   const [vetPortalTab, setVetPortalTab] = useState<VetPortalTab>('orders');
   const [routineSubTab, setRoutineSubTab] = useState<RoutineSubTab>('list');
   const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>('exams');
+  const [financialSubTab, setFinancialSubTab] = useState<FinancialSubTab>('overview');
   const [routineMenuExpanded, setRoutineMenuExpanded] = useState(true);
   const [settingsMenuExpanded, setSettingsMenuExpanded] = useState(false);
+  const [financialMenuExpanded, setFinancialMenuExpanded] = useState(false);
   const [internalTabNonce, setInternalTabNonce] = useState(0);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const [, setAuthRevision] = useState(0);
@@ -949,29 +952,88 @@ export const App: React.FC = () => {
                             )}
                           </div>
 
-                          <button
-                            type="button"
-                            title="Dashboard Financeiro"
-                            onClick={() => {
-                              if (currentView !== 'internal') handleNavigate('internal');
-                              setInternalTab('financial');
-                              setInternalTabNonce((n) => n + 1);
-                              setMobileSidebarOpen(false);
-                            }}
-                            className={`w-full flex items-center ${
-                              sidebarCollapsed ? 'md:justify-center md:px-0' : 'px-3.5'
-                            } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-3 transition cursor-pointer ${
-                              (currentView === 'internal' || currentView === 'login') &&
-                              internalTab === 'financial'
-                                ? 'bg-[#0071e3] text-white shadow-xs'
-                                : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
-                            }`}
-                          >
-                            <DollarSign className="w-4 h-4 shrink-0" />
-                            <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                              Dashboard Financeiro
-                            </span>
-                          </button>
+                          <div className="space-y-1">
+                            <button
+                              type="button"
+                              title="Financeiro"
+                              onClick={() => {
+                                if (sidebarCollapsed) {
+                                  setSidebarCollapsed(false);
+                                  setFinancialMenuExpanded(true);
+                                } else {
+                                  setFinancialMenuExpanded((prev) => !prev);
+                                }
+                              }}
+                              className={`w-full flex items-center ${
+                                sidebarCollapsed ? 'md:justify-center md:px-0' : 'justify-between px-3.5'
+                              } py-2.5 rounded-2xl text-[12.5px] font-semibold gap-2 transition cursor-pointer ${
+                                (currentView === 'internal' || currentView === 'login') &&
+                                internalTab === 'financial'
+                                  ? 'bg-[#0071e3] text-white shadow-xs'
+                                  : 'text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                              }`}
+                            >
+                              <span className="flex items-center gap-3 min-w-0">
+                                <DollarSign className="w-4 h-4 shrink-0" />
+                                <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+                                  Financeiro
+                                </span>
+                              </span>
+                              {!sidebarCollapsed && (
+                                <ChevronDown
+                                  className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                                    financialMenuExpanded ? 'rotate-180' : ''
+                                  }`}
+                                />
+                              )}
+                            </button>
+
+                            {!sidebarCollapsed && financialMenuExpanded && (
+                              <div className="pl-5 pr-1 py-1 space-y-1 border-l-2 border-slate-100 ml-5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (currentView !== 'internal') handleNavigate('internal');
+                                    setInternalTab('financial');
+                                    setFinancialSubTab('overview');
+                                    setInternalTabNonce((n) => n + 1);
+                                    setMobileSidebarOpen(false);
+                                  }}
+                                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-[11.5px] font-semibold transition cursor-pointer ${
+                                    (currentView === 'internal' || currentView === 'login') &&
+                                    internalTab === 'financial' &&
+                                    financialSubTab === 'overview'
+                                      ? 'bg-[#0071e3]/10 text-[#0071e3]'
+                                      : 'text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                                  }`}
+                                >
+                                  <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">Visão Geral</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (currentView !== 'internal') handleNavigate('internal');
+                                    setInternalTab('financial');
+                                    setFinancialSubTab('billing');
+                                    setInternalTabNonce((n) => n + 1);
+                                    setMobileSidebarOpen(false);
+                                  }}
+                                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-[11.5px] font-semibold transition cursor-pointer ${
+                                    (currentView === 'internal' || currentView === 'login') &&
+                                    internalTab === 'financial' &&
+                                    financialSubTab === 'billing'
+                                      ? 'bg-[#0071e3]/10 text-[#0071e3]'
+                                      : 'text-[#5b6675] hover:text-[#1d1d1f] hover:bg-[#f5f5f7]'
+                                  }`}
+                                >
+                                  <FileText className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">Faturamento</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </>
                       )}
                     </>
@@ -1213,14 +1275,17 @@ export const App: React.FC = () => {
               activeTab={internalTab}
               routineSubTab={routineSubTab}
               settingsTab={settingsSubTab}
+              financialSubTab={financialSubTab}
               tabChangeNonce={internalTabNonce}
               onTabChange={(nextTab) => {
                 setInternalTab(nextTab);
                 if (nextTab === 'routine') setRoutineMenuExpanded(true);
                 if (nextTab === 'settings') setSettingsMenuExpanded(true);
+                if (nextTab === 'financial') setFinancialMenuExpanded(true);
               }}
               onRoutineSubTabChange={(nextSub) => setRoutineSubTab(nextSub)}
               onSettingsTabChange={(nextSub) => setSettingsSubTab(nextSub)}
+              onFinancialSubTabChange={(nextSub) => setFinancialSubTab(nextSub)}
               onLogout={() => handleAuthLogout('internal')}
             />
           ) : isVetAuthenticated ? (

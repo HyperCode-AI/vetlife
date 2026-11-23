@@ -171,7 +171,30 @@ CREATE INDEX IF NOT EXISTS idx_vets_email_crmv ON public.vets(email, crmv);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vets_crmv_unique_nonempty ON public.vets(crmv) WHERE crmv IS NOT NULL AND crmv <> '';
 
 -- =============================================================================
--- 10. TABELA: orders (Atendimentos / Pedidos de Exames — HU-06, HU-12, RN-02, RN-04)
+-- 10. TABELA: invoices (Faturas / Lotes de Cobrança Consolidados por Veterinário)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.invoices (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    invoice_number VARCHAR(40) NOT NULL UNIQUE,
+    vet_id UUID NOT NULL REFERENCES public.vets(id) ON DELETE RESTRICT,
+    reference_month VARCHAR(7) DEFAULT '',
+    period_start DATE DEFAULT NULL,
+    period_end DATE DEFAULT NULL,
+    due_date DATE DEFAULT NULL,
+    total_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00 CHECK (total_amount >= 0),
+    status VARCHAR(30) NOT NULL DEFAULT 'aguardando_pagamento' CHECK (status IN ('aguardando_pagamento', 'pago', 'cancelado')),
+    boleto_filename VARCHAR(255) DEFAULT '',
+    boleto_pdf_url TEXT DEFAULT NULL,
+    notes TEXT DEFAULT '',
+    paid_at TIMESTAMPTZ DEFAULT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_vet_status ON public.invoices(vet_id, status);
+CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON public.invoices(created_at DESC);
+
+-- =============================================================================
+-- 11. TABELA: orders (Atendimentos / Pedidos de Exames — HU-06, HU-12, RN-02, RN-04)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS public.orders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -179,8 +202,10 @@ CREATE TABLE IF NOT EXISTS public.orders (
     patient_id UUID NOT NULL REFERENCES public.patients(id) ON DELETE RESTRICT,
     vet_id UUID NOT NULL REFERENCES public.vets(id) ON DELETE RESTRICT,
     price_table_id UUID REFERENCES public.price_tables(id) ON DELETE SET NULL,
+    invoice_id UUID REFERENCES public.invoices(id) ON DELETE SET NULL,
     total_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00 CHECK (total_amount >= 0),
     status VARCHAR(30) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'em_analise', 'concluido')),
+    payment_status VARCHAR(30) NOT NULL DEFAULT 'nao_faturado' CHECK (payment_status IN ('nao_faturado', 'aguardando_pagamento', 'pago')),
     pdf_url TEXT DEFAULT NULL,
     notes TEXT DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -189,6 +214,8 @@ CREATE TABLE IF NOT EXISTS public.orders (
 CREATE INDEX IF NOT EXISTS idx_orders_protocol_code ON public.orders(protocol_code);
 CREATE INDEX IF NOT EXISTS idx_orders_vet_id ON public.orders(vet_id);
 CREATE INDEX IF NOT EXISTS idx_orders_patient_id ON public.orders(patient_id);
+CREATE INDEX IF NOT EXISTS idx_orders_invoice_id ON public.orders(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON public.orders(payment_status);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON public.orders(created_at DESC);
 

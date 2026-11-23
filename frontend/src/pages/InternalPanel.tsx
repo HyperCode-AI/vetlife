@@ -36,6 +36,7 @@ import {
 import { SearchableSelectField } from '../components/SearchablePickerModal';
 import { ExamMultiPicker } from '../components/ExamMultiPicker';
 import { PaginationBar } from '../components/PaginationBar';
+import { BillingSection } from '../components/BillingSection';
 import {
   User,
   Exam,
@@ -46,6 +47,7 @@ import {
   Patient,
   Vet,
   Order,
+  Invoice,
   CollectionLabel,
   CollectionRequest,
   OperationalStats,
@@ -76,6 +78,7 @@ export type InternalTab =
   | 'settings'
   | 'financial';
 export type RoutineSubTab = 'list' | 'new' | 'collections';
+export type FinancialSubTab = 'overview' | 'billing';
 export type SettingsSubTab =
   | 'exams'
   | 'fields'
@@ -89,11 +92,13 @@ interface InternalPanelProps {
   activeTab?: InternalTab;
   routineSubTab?: RoutineSubTab;
   settingsTab?: SettingsSubTab;
+  financialSubTab?: FinancialSubTab;
   tabChangeNonce?: number;
   openNewOrderNonce?: number;
   onTabChange?: (tab: InternalTab) => void;
   onRoutineSubTabChange?: (sub: RoutineSubTab) => void;
   onSettingsTabChange?: (sub: SettingsSubTab) => void;
+  onFinancialSubTabChange?: (sub: FinancialSubTab) => void;
   onLogout?: () => void;
 }
 
@@ -148,11 +153,13 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
   activeTab: externalActiveTab,
   routineSubTab: externalRoutineSubTab,
   settingsTab: externalSettingsTab,
+  financialSubTab: externalFinancialSubTab,
   tabChangeNonce,
   openNewOrderNonce,
   onTabChange,
   onRoutineSubTabChange,
   onSettingsTabChange,
+  onFinancialSubTabChange,
 }) => {
   const [user, setUser] = useState<User | null>(() =>
     api.hasValidSession('internal') ? api.getCurrentUser() : null
@@ -177,6 +184,15 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     setSettingsTabState(nextSub);
     onSettingsTabChange?.(nextSub);
   };
+  const [financialSubTabState, setFinancialSubTabState] = useState<FinancialSubTab>(
+    externalFinancialSubTab || 'overview'
+  );
+  const financialSubTab = externalFinancialSubTab || financialSubTabState;
+  const setFinancialSubTab = (nextSub: FinancialSubTab) => {
+    setFinancialSubTabState(nextSub);
+    onFinancialSubTabChange?.(nextSub);
+  };
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
   type NavHistorySnapshot = {
@@ -455,7 +471,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       return map[sTab] || 'Configurações';
     }
     if (tab === 'patients') return 'Cadastro & Listagem';
-    if (tab === 'financial') return 'Visão Financeira';
+    if (tab === 'financial') return financialSubTab === 'billing' ? 'Faturamento' : 'Visão Financeira';
     return 'Visão Geral';
   };
 
@@ -978,6 +994,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       try {
         const uList = await api.getUsers();
         setLabUsers(uList);
+      } catch {
+        // ignore if restricted
+      }
+      try {
+        const invList = await api.getInvoices();
+        setInvoices(invList);
       } catch {
         // ignore if restricted
       }
@@ -7098,11 +7120,50 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       )}
 
       {/* =====================================================================
-          ABA 5: DASHBOARD FINANCEIRO (EXCLUSIVO ADMIN)
+          ABA 5: MÓDULO FINANCEIRO (VISÃO FINANCEIRA + FATURAMENTO — ADMIN)
          ===================================================================== */}
-      {activeTab === 'financial' && user.role === 'admin' && finStats && (
+      {activeTab === 'financial' && user.role === 'admin' && (
         <div className="space-y-5 sm:space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFinancialSubTab('overview')}
+              className={`px-4 py-2 rounded-full text-[12px] font-semibold inline-flex items-center gap-2 transition cursor-pointer ${
+                financialSubTab === 'overview'
+                  ? 'bg-[#0b2240] text-white shadow-xs'
+                  : 'bg-white border border-black/5 text-[#1d1d1f] hover:bg-[#f5f5f7]'
+              }`}
+            >
+              <DollarSign className="w-3.5 h-3.5" />
+              <span>Dashboard Financeiro</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFinancialSubTab('billing')}
+              className={`px-4 py-2 rounded-full text-[12px] font-semibold inline-flex items-center gap-2 transition cursor-pointer ${
+                financialSubTab === 'billing'
+                  ? 'bg-[#0b2240] text-white shadow-xs'
+                  : 'bg-white border border-black/5 text-[#1d1d1f] hover:bg-[#f5f5f7]'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Faturamento & Boletos ({invoices.filter((i) => i.status === 'aguardando_pagamento').length})</span>
+            </button>
+          </div>
+
+          {financialSubTab === 'billing' && (
+            <BillingSection
+              orders={orders}
+              vets={vets}
+              invoices={invoices}
+              onRefresh={loadAllData}
+              onToast={showToast}
+            />
+          )}
+
+          {financialSubTab === 'overview' && finStats && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-white p-4 sm:p-[28px] rounded-[24px] sm:rounded-[28px]">
               <div className="text-[11px] sm:text-[12px] uppercase text-[#86868b]">Receita Bruta Mensal</div>
               <div className="font-display text-[24px] sm:text-[32px] font-semibold text-[#1d1d1f] font-mono mt-1">
@@ -7195,6 +7256,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
       )}
     </div>

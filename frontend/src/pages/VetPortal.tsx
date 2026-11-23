@@ -17,7 +17,7 @@ import {
   FlaskConical,
   RefreshCw,
 } from 'lucide-react';
-import { CollectionRequest, Exam, Order, Vet } from '../types';
+import { CollectionRequest, Exam, Invoice, Order, Vet } from '../types';
 import { api, formatAgeLabel, resolveSideBySideReference } from '../services/api';
 import { downloadOrderPdf, printFormattedReportWindow } from '../utils/pdfGenerator';
 import { PaginationBar } from '../components/PaginationBar';
@@ -73,6 +73,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [collections, setCollections] = useState<CollectionRequest[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [catalogExams, setCatalogExams] = useState<Exam[]>([]);
   const [catalogTableName, setCatalogTableName] = useState<string>('Tabela Vigente');
   const [loading, setLoading] = useState(false);
@@ -119,7 +120,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({
   const loadAllVetData = async () => {
     setLoading(true);
     try {
-      const [ordersList, collectionsList, catalogRes] = await Promise.all([
+      const [ordersList, collectionsList, catalogRes, invoicesList] = await Promise.all([
         api.getVetOrders(vet?.id).catch(() => []),
         api.getVetCollections().catch(() => []),
         api.getVetCatalog().catch(() => ({
@@ -128,11 +129,13 @@ export const VetPortal: React.FC<VetPortalProps> = ({
           end_date: null,
           exams: [],
         })),
+        api.getVetInvoices().catch(() => []),
       ]);
       setOrders(ordersList);
       setCollections(collectionsList);
       setCatalogExams(catalogRes.exams);
       setCatalogTableName(catalogRes.price_table_name || 'Tabela Vigente');
+      setInvoices(invoicesList);
       if (ordersList.length > 0 && !selectedOrder) {
         setSelectedOrder(ordersList[0]);
       }
@@ -933,10 +936,87 @@ export const VetPortal: React.FC<VetPortalProps> = ({
       )}
 
       {/* =====================================================================
-          ABA 4: CONSOLIDADO FINANCEIRO / ACERTO DO PERÍODO
+          ABA 4: CONSOLIDADO FINANCEIRO / FATURAS & BOLETOS
          ===================================================================== */}
       {activeTab === 'financial' && (
         <div className="space-y-4">
+          {/* Faturas / Boletos Emitidos pelo Laboratório */}
+          <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-black/5 space-y-3.5">
+            <div>
+              <h2 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
+                Faturas & Boletos ({invoices.length})
+              </h2>
+              <p className="text-[12px] text-[#707070]">
+                Acompanhe as faturas consolidadas emitidas pelo laboratório e baixe o PDF do boleto para pagamento.
+              </p>
+            </div>
+
+            {invoices.length === 0 ? (
+              <div className="py-6 text-center text-[12px] text-[#707070] bg-[#f8fafc] rounded-2xl">
+                Nenhuma fatura consolidada emitida até o momento.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {invoices.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="p-4 rounded-2xl bg-[#f5f5f7] border border-black/5 flex flex-col justify-between gap-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-mono text-[13px] font-bold text-[#0b2240]">
+                          {inv.invoice_number}
+                        </div>
+                        <div className="text-[11px] text-[#707070]">
+                          Referência: {inv.reference_month || '—'} •{' '}
+                          {inv.orders_count ?? inv.orders?.length ?? 0} atendimento(s)
+                        </div>
+                      </div>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-semibold ${
+                          inv.status === 'pago'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {inv.status === 'pago' ? 'Pago' : 'Aguardando Pagamento'}
+                      </span>
+                    </div>
+
+                    <div className="bg-white rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10.5px] text-[#707070]">Valor da Fatura</div>
+                        <div className="font-mono text-[17px] font-bold text-[#0b2240]">
+                          R$ {Number(inv.total_amount || 0).toFixed(2)}
+                        </div>
+                        {inv.due_date && (
+                          <div className="text-[11px] text-[#5b6675]">
+                            Vencimento: {inv.due_date.split('-').reverse().join('/')}
+                          </div>
+                        )}
+                      </div>
+                      {inv.boleto_pdf_url ? (
+                        <a
+                          href={inv.boleto_pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 rounded-full bg-[#0071e3] hover:bg-[#0062c4] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 transition"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          Baixar Boleto PDF
+                        </a>
+                      ) : (
+                        <span className="px-3 py-1.5 rounded-full bg-[#f5f5f7] text-[#707070] text-[11px] font-medium">
+                          Boleto pendente de envio
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-black/5 space-y-4">
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3">
               <div>
@@ -1070,7 +1150,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({
                     <th className="py-2.5 px-3 font-semibold">Protocolo</th>
                     <th className="py-2.5 px-3 font-semibold">Paciente / Tutor</th>
                     <th className="py-2.5 px-3 font-semibold">Exames Solicitados</th>
-                    <th className="py-2.5 px-3 font-semibold">Status</th>
+                    <th className="py-2.5 px-3 font-semibold">Pagamento</th>
                     <th className="py-2.5 px-3 font-semibold text-right">Valor</th>
                   </tr>
                 </thead>
@@ -1113,18 +1193,18 @@ export const VetPortal: React.FC<VetPortalProps> = ({
                           <td className="py-2.5 px-3 whitespace-nowrap">
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${
-                                ord.status === 'concluido'
+                                ord.payment_status === 'pago'
                                   ? 'bg-emerald-100 text-emerald-800'
-                                  : ord.status === 'em_analise'
+                                  : ord.payment_status === 'aguardando_pagamento'
                                     ? 'bg-amber-100 text-amber-800'
                                     : 'bg-[#f5f5f7] text-[#5b6675]'
                               }`}
                             >
-                              {ord.status === 'concluido'
-                                ? 'Concluído'
-                                : ord.status === 'em_analise'
-                                  ? 'Em Análise'
-                                  : 'Pendente'}
+                              {ord.payment_status === 'pago'
+                                ? 'Pago'
+                                : ord.payment_status === 'aguardando_pagamento'
+                                  ? 'Aguardando Pagamento'
+                                  : 'Não Faturado'}
                             </span>
                           </td>
                           <td className="py-2.5 px-3 font-mono font-bold text-[#0b2240] text-right whitespace-nowrap">

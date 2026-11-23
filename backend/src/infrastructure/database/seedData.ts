@@ -7,6 +7,7 @@ import {
   ExamPrice,
   ExamReference,
   ExamResult,
+  Invoice,
   Order,
   Patient,
   PriceTable,
@@ -31,6 +32,7 @@ export interface SeedDatabaseState {
   orders: Order[];
   examResults: ExamResult[];
   collectionRequests: CollectionRequest[];
+  invoices: Invoice[];
 }
 
 export function createInitialSeedState(): SeedDatabaseState {
@@ -947,6 +949,8 @@ export function createInitialSeedState(): SeedDatabaseState {
       patient_id: toUuid(o.patient_id),
       vet_id: toUuid(o.vet_id),
       price_table_id: o.price_table_id ? toUuid(o.price_table_id) : null,
+      invoice_id: null,
+      payment_status: 'nao_faturado' as const,
     })),
     examResults: examResults.map((r) => ({
       ...r,
@@ -956,5 +960,6 @@ export function createInitialSeedState(): SeedDatabaseState {
       released_by: r.released_by ? toUuid(r.released_by) : null,
     })),
     collectionRequests: collectionRequests.map((c) => ({ ...c, id: toUuid(c.id) })),
+    invoices: [],
   };
 }

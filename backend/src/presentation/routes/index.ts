@@ -96,6 +96,12 @@ export function createApiV1Router(): Router {
     requireRole('vet'),
     controller.listVetPortalCatalog
   );
+  router.get(
+    '/vet/invoices',
+    authenticate,
+    requireRole('vet'),
+    controller.listVetPortalInvoices
+  );
 
   // ===========================================================================
   // 4. Settings & Catalog (Admin Only Write — RN-01, HU-01 to HU-05)
@@ -382,6 +388,40 @@ export function createApiV1Router(): Router {
     authenticate,
     requireRole('admin'),
     controller.getFinancialDashboard
+  );
+
+  // ===========================================================================
+  // 7. Billing / Invoices (Faturamento por Veterinário — Exclusive to Admin)
+  // ===========================================================================
+  router.get(
+    '/invoices',
+    authenticate,
+    requireRole('admin'),
+    controller.listInvoices
+  );
+  router.post(
+    '/invoices',
+    authenticate,
+    requireRole('admin'),
+    controller.createInvoice
+  );
+  router.patch(
+    '/invoices/:id/boleto',
+    authenticate,
+    requireRole('admin'),
+    controller.updateInvoiceBoleto
+  );
+  router.patch(
+    '/invoices/:id/pay',
+    authenticate,
+    requireRole('admin'),
+    controller.markInvoiceAsPaid
+  );
+  router.patch(
+    '/invoices/:id/cancel',
+    authenticate,
+    requireRole('admin'),
+    controller.cancelInvoice
   );
 
   return router;
