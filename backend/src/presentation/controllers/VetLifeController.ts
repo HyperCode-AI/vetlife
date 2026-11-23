@@ -158,9 +158,11 @@ export class VetLifeController {
     try {
       const role = req.authUser?.role;
       if (req.query.page !== undefined || req.query.limit !== undefined) {
+        const rawPage = Number(req.query.page);
+        const rawLimit = Number(req.query.limit);
         const paginated = await this.examUseCases.listExamsPaginated({
-          page: req.query.page ? Number(req.query.page) : 1,
-          limit: req.query.limit ? Number(req.query.limit) : 12,
+          page: Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1,
+          limit: Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 12,
           search: req.query.search ? String(req.query.search) : undefined,
           section: req.query.section ? String(req.query.section) : undefined,
         });

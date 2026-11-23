@@ -858,24 +858,50 @@ export const api = {
     limit: number;
     totalPages: number;
   }> {
+    const safePage = Number.isFinite(Number(params.page)) && Number(params.page) > 0 ? Math.floor(Number(params.page)) : 1;
+    const safeLimit = Number.isFinite(Number(params.limit)) && Number(params.limit) > 0 ? Math.floor(Number(params.limit)) : 12;
     const qs = new URLSearchParams({
-      page: String(params.page),
-      limit: String(params.limit),
+      page: String(safePage),
+      limit: String(safeLimit),
     });
     if (params.search?.trim()) qs.set('search', params.search.trim());
     if (params.section && params.section !== 'todos') qs.set('section', params.section);
 
-    const remote = await request<{
-      items: Exam[];
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    }>(`/exams?${qs.toString()}`);
+    const remote = await request<any>(`/exams?${qs.toString()}`);
+
+    if (Array.isArray(remote)) {
+      const normalized = remote.map(normalizeExam);
+      const total = normalized.length;
+      const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+      const currentPage = Math.min(safePage, totalPages);
+      const items = normalized.slice((currentPage - 1) * safeLimit, currentPage * safeLimit);
+      return {
+        items,
+        total,
+        page: currentPage,
+        limit: safeLimit,
+        totalPages,
+      };
+    }
+
+    const rawItems = Array.isArray(remote?.items)
+      ? remote.items
+      : Array.isArray(remote?.data)
+        ? remote.data
+        : [];
+    const items = rawItems.map(normalizeExam);
+    const total = Number.isFinite(Number(remote?.total)) ? Math.max(0, Number(remote.total)) : items.length;
+    const totalPages = Number.isFinite(Number(remote?.totalPages))
+      ? Math.max(1, Number(remote.totalPages))
+      : Math.max(1, Math.ceil(total / safeLimit));
+    const page = Number.isFinite(Number(remote?.page)) ? Math.max(1, Number(remote.page)) : safePage;
 
     return {
-      ...remote,
-      items: Array.isArray(remote.items) ? remote.items.map(normalizeExam) : [],
+      items,
+      total,
+      page,
+      limit: safeLimit,
+      totalPages,
     };
   },
 

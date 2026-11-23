@@ -416,7 +416,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       case 'patients':
         return 'Pacientes';
       case 'routine':
-        return 'Atendimentos / Rotina';
+        return 'Atendimentos';
       case 'launch':
         return 'Lançamento de Laudos';
       case 'settings':
@@ -435,8 +435,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     sTab: SettingsSubTab
   ): string => {
     if (tab === 'routine') {
-      if (rSub === 'collections') return 'Solicitações de Coleta';
-      return 'Fila de Atendimentos';
+      if (rSub === 'collections') return 'Coletas';
+      return 'Atendimentos';
     }
     if (tab === 'launch') {
       return lView === 'editor' ? 'Editor de Laudo' : 'Fila de Bancada';
@@ -565,8 +565,27 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       })
       .then((res) => {
         if (!cancelled) {
-          setPagedExams(res.items);
-          setPagedExamsTotal(res.total);
+          const safeItems = Array.isArray(res?.items) ? res.items : [];
+          setPagedExams(safeItems);
+          setPagedExamsTotal(
+            Number.isFinite(Number(res?.total)) ? Math.max(0, Number(res.total)) : safeItems.length
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          const q = examSearchQuery.trim().toLowerCase();
+          const filtered = exams.filter((ex) => {
+            const matchesSec = examSectionFilter === 'todos' || ex.section === examSectionFilter;
+            const matchesQ =
+              !q ||
+              ex.code.toLowerCase().includes(q) ||
+              ex.name.toLowerCase().includes(q) ||
+              (ex.section || '').toLowerCase().includes(q);
+            return matchesSec && matchesQ;
+          });
+          setPagedExamsTotal(filtered.length);
+          setPagedExams(filtered.slice((examsPage - 1) * 12, examsPage * 12));
         }
       });
     return () => {

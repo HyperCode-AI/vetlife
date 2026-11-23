@@ -20,7 +20,6 @@ import {
   ArrowLeft,
   Mail,
   Shield,
-  Plus,
   Calendar,
   List,
   Sliders,
@@ -65,7 +64,6 @@ export const App: React.FC = () => {
   const [routineMenuExpanded, setRoutineMenuExpanded] = useState(true);
   const [settingsMenuExpanded, setSettingsMenuExpanded] = useState(false);
   const [internalTabNonce, setInternalTabNonce] = useState(0);
-  const [openNewOrderNonce, setOpenNewOrderNonce] = useState(0);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const [, setAuthRevision] = useState(0);
   const [isVerifyingSession, setIsVerifyingSession] = useState<boolean>(() =>
@@ -772,25 +770,19 @@ export const App: React.FC = () => {
                         </span>
                       </button>
 
-                      {/* Item com Subitens: Atendimentos / Rotina */}
+                      {/* Item com Subitens: Atendimentos */}
                       <div className="space-y-1">
                         <div className="flex items-center">
                           <button
                             type="button"
-                            title="Atendimentos / Rotina"
+                            title="Atendimentos"
                             onClick={() => {
-                              if (currentView !== 'internal') handleNavigate('internal');
                               if (sidebarCollapsed) {
                                 setSidebarCollapsed(false);
                                 setRoutineMenuExpanded(true);
-                              } else if (internalTab === 'routine') {
-                                setRoutineMenuExpanded((prev) => !prev);
                               } else {
-                                setRoutineMenuExpanded(true);
+                                setRoutineMenuExpanded((prev) => !prev);
                               }
-                              setInternalTab('routine');
-                              setRoutineSubTab('list');
-                              setInternalTabNonce((n) => n + 1);
                             }}
                             className={`w-full flex items-center ${
                               sidebarCollapsed ? 'md:justify-center md:px-0' : 'justify-between px-3.5'
@@ -804,7 +796,7 @@ export const App: React.FC = () => {
                             <span className="flex items-center gap-3 min-w-0">
                               <ClipboardPlus className="w-4 h-4 shrink-0" />
                               <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                                Atendimentos / Rotina
+                                Atendimentos
                               </span>
                             </span>
                             {!sidebarCollapsed && (
@@ -837,20 +829,7 @@ export const App: React.FC = () => {
                               }`}
                             >
                               <List className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">Lista de Atendimentos</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (currentView !== 'internal') handleNavigate('internal');
-                                setOpenNewOrderNonce((n) => n + 1);
-                                setMobileSidebarOpen(false);
-                              }}
-                              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-[#0071e3] hover:bg-[#0071e3]/10 transition cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">+ Novo Atendimento</span>
+                              <span className="truncate">Atendimentos</span>
                             </button>
 
                             <button
@@ -871,7 +850,7 @@ export const App: React.FC = () => {
                               }`}
                             >
                               <Calendar className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">Solicitações de Coleta</span>
+                              <span className="truncate">Coletas</span>
                             </button>
                           </div>
                         )}
@@ -917,17 +896,12 @@ export const App: React.FC = () => {
                             type="button"
                             title="Configurações"
                             onClick={() => {
-                              if (currentView !== 'internal') handleNavigate('internal');
                               if (sidebarCollapsed) {
                                 setSidebarCollapsed(false);
                                 setSettingsMenuExpanded(true);
-                              } else if (internalTab === 'settings') {
-                                setSettingsMenuExpanded((prev) => !prev);
                               } else {
-                                setSettingsMenuExpanded(true);
+                                setSettingsMenuExpanded((prev) => !prev);
                               }
-                              setInternalTab('settings');
-                              setInternalTabNonce((n) => n + 1);
                             }}
                             className={`w-full flex items-center ${
                               sidebarCollapsed ? 'md:justify-center md:px-0' : 'justify-between px-3.5'
@@ -1241,7 +1215,6 @@ export const App: React.FC = () => {
               routineSubTab={routineSubTab}
               settingsTab={settingsSubTab}
               tabChangeNonce={internalTabNonce}
-              openNewOrderNonce={openNewOrderNonce}
               onTabChange={(nextTab) => {
                 setInternalTab(nextTab);
                 if (nextTab === 'routine') setRoutineMenuExpanded(true);

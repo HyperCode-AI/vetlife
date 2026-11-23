@@ -16,12 +16,16 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
   onPageChange,
   className = '',
 }) => {
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  if (totalItems === 0) return null;
+  const safeTotalItems = Number.isFinite(Number(totalItems)) ? Math.max(0, Math.floor(Number(totalItems))) : 0;
+  const safePageSize = Number.isFinite(Number(pageSize)) && Number(pageSize) > 0 ? Math.floor(Number(pageSize)) : 10;
+  const safePage = Number.isFinite(Number(page)) && Number(page) > 0 ? Math.floor(Number(page)) : 1;
 
-  const currentPage = Math.min(Math.max(1, page), totalPages);
-  const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const endItem = Math.min(totalItems, currentPage * pageSize);
+  const totalPages = Math.max(1, Math.ceil(safeTotalItems / safePageSize));
+  if (safeTotalItems <= 0) return null;
+
+  const currentPage = Math.min(Math.max(1, safePage), totalPages);
+  const startItem = safeTotalItems === 0 ? 0 : (currentPage - 1) * safePageSize + 1;
+  const endItem = Math.min(safeTotalItems, currentPage * safePageSize);
 
   const pages: (number | '...')[] = [];
   if (totalPages <= 7) {
@@ -43,7 +47,7 @@ export const PaginationBar: React.FC<PaginationBarProps> = ({
       <p className="text-[12px] text-[#6e6e73]">
         Mostrando <span className="font-semibold text-[#1d1d1f]">{startItem}</span>–
         <span className="font-semibold text-[#1d1d1f]">{endItem}</span> de{' '}
-        <span className="font-semibold text-[#1d1d1f]">{totalItems}</span> registro(s)
+        <span className="font-semibold text-[#1d1d1f]">{safeTotalItems}</span> registro(s)
       </p>
 
       <div className="flex items-center gap-1.5">

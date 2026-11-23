@@ -40,10 +40,12 @@ export class ExamUseCases {
       );
     });
 
-    const limit = Math.max(1, Math.min(100, Number(params.limit) || 12));
+    const rawLimit = Number(params.limit);
+    const rawPage = Number(params.page);
+    const limit = Math.max(1, Math.min(100, Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 12));
     const total = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
-    const page = Math.min(Math.max(1, Number(params.page) || 1), totalPages);
+    const page = Math.min(Math.max(1, Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1), totalPages);
     const items = filtered.slice((page - 1) * limit, page * limit);
 
     return { items, total, page, limit, totalPages };
