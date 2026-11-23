@@ -393,6 +393,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
   >('todos');
   const [launchSearch, setLaunchSearch] = useState('');
   const [launchPage, setLaunchPage] = useState(1);
+  const [expandedLaunchOrderIds, setExpandedLaunchOrderIds] = useState<string[]>([]);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [routinePatientMode, setRoutinePatientMode] = useState<'existing' | 'new'>('existing');
   const [routineSelectedPatientId, setRoutineSelectedPatientId] = useState<string>('');
@@ -418,7 +419,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       case 'routine':
         return 'Atendimentos';
       case 'launch':
-        return 'Lançamento de Laudos';
+        return 'Laudos';
       case 'settings':
         return 'Configurações';
       case 'financial':
@@ -1281,8 +1282,9 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     showToast(`Parâmetros de ${currentResultItem.exam_code} salvos com sucesso!`);
   };
 
-  const handleReleaseReport = async () => {
+  const handleReleaseReport = async (options?: { advanceToNext?: boolean }) => {
     if (!currentOrder) return;
+    const currentId = currentResultItem?.id;
     if (currentResultItem) {
       await api.saveExamResult(currentOrder.id, currentResultItem.id, {
         dynamic_content: dynamicValues,
@@ -1295,13 +1297,32 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     const released = await api.releaseOrderReport(
       currentOrder.id,
       selectedTemplateId,
-      currentResultItem?.id
+      currentId
     );
     await loadAllData();
+
+    const releasedResults = released.results || [];
+    const nextPending = releasedResults.find(
+      (r) => r.id !== currentId && !r.released_at
+    );
+
+    if (options?.advanceToNext && nextPending) {
+      setSelectedOrderId(released.id);
+      setSelectedResultId(nextPending.id);
+      setDynamicValues(nextPending.dynamic_content || {});
+      setAttachments(nextPending.attachments || []);
+      const nextMeta = getOrderResultMeta(nextPending);
+      const remainingCount = releasedResults.filter((r) => !r.released_at).length;
+      showToast(
+        `Exame concluído! Carregado próximo exame: [${nextMeta.code}] ${nextMeta.name} (${remainingCount} restante${remainingCount > 1 ? 's' : ''}).`
+      );
+      return;
+    }
+
     showToast(
       released.status === 'concluido'
-        ? `Todos os exames finalizados! Laudo Oficial ${released.protocol_code} liberado para o Tutor e Veterinário.`
-        : `Exame liberado! O atendimento ${released.protocol_code} segue Em Análise até todos os exames serem finalizados.`
+        ? `Todos os exames finalizados! Atendimento ${released.protocol_code} concluído e laudo liberado.`
+        : `Exame liberado! O atendimento ${released.protocol_code} segue Em Análise até todos os exames serem concluídos.`
     );
     if (navHistory.length > 0) {
       handleGoBack();
@@ -4330,65 +4351,101 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       )}
 
       {/* =====================================================================
-          ABA 3: LANÇAMENTO DE LAUDOS DINÂMICOS (FILA POR STATUS + EDITOR)
+          ABA 3: LAUDOS (AGRUPADO POR ATENDIMENTO, LAYOUT SLIM + EDITOR)
          ===================================================================== */}
       {activeTab === 'launch' && launchSubView === 'list' && (() => {
-        const allExamRows = orders.flatMap((ord) =>
-          (ord.results || []).map((res) => {
+        const groupedOrders = orders.map((ord) => {
+          const examItems = (ord.results || []).map((res) => {
             const meta = getOrderResultMeta(res);
-            const rowStatus: 'pendente' | 'em_analise' | 'concluido' =
+            const itemStatus: 'pendente' | 'em_analise' | 'concluido' =
               meta.isReleased || ord.status === 'concluido'
                 ? 'concluido'
                 : meta.hasDraft || ord.status === 'em_analise'
                   ? 'em_analise'
                   : 'pendente';
-            return { ord, res, meta, rowStatus };
-          })
-        );
+            return { res, meta, itemStatus };
+          });
+
+          const totalExams = examItems.length;
+          const completedExams = examItems.filter((i) => i.itemStatus === 'concluido').length;
+          const anyInAnalysis = examItems.some((i) => i.itemStatus === 'em_analise');
+
+          const orderStatus: 'pendente' | 'em_analise' | 'concluido' =
+            (totalExams > 0 && completedExams === totalExams) || ord.status === 'concluido'
+              ? 'concluido'
+              : completedExams > 0 || anyInAnalysis || ord.status === 'em_analise'
+                ? 'em_analise'
+                : 'pendente';
+
+          const firstPendingItem =
+            examItems.find((i) => i.itemStatus !== 'concluido') || examItems[0];
+
+          return {
+            ord,
+            examItems,
+            totalExams,
+            completedExams,
+            orderStatus,
+            firstPendingItem,
+          };
+        });
 
         const counts = {
-          todos: allExamRows.length,
-          pendente: allExamRows.filter((r) => r.rowStatus === 'pendente').length,
-          em_analise: allExamRows.filter((r) => r.rowStatus === 'em_analise').length,
-          concluido: allExamRows.filter((r) => r.rowStatus === 'concluido').length,
+          todos: groupedOrders.length,
+          pendente: groupedOrders.filter((g) => g.orderStatus === 'pendente').length,
+          em_analise: groupedOrders.filter((g) => g.orderStatus === 'em_analise').length,
+          concluido: groupedOrders.filter((g) => g.orderStatus === 'concluido').length,
         };
 
         const q = launchSearch.trim().toLowerCase();
-        const filteredRows = allExamRows.filter(({ ord, meta, rowStatus }) => {
-          if (launchStatusFilter !== 'todos' && rowStatus !== launchStatusFilter) {
+        const filteredOrders = groupedOrders.filter(({ ord, examItems, orderStatus }) => {
+          if (launchStatusFilter !== 'todos' && orderStatus !== launchStatusFilter) {
             return false;
           }
           if (!q) return true;
-          return `${ord.protocol_code} ${meta.code} ${meta.name} ${ord.patient?.name || ''} ${ord.patient?.tutor_name || ''
+          const examsHaystack = examItems.map((i) => `${i.meta.code} ${i.meta.name}`).join(' ');
+          return `${ord.protocol_code} ${examsHaystack} ${ord.patient?.name || ''} ${ord.patient?.tutor_name || ''
             } ${ord.vet?.name || ''} ${ord.vet?.clinic_name || ''}`
             .toLowerCase()
             .includes(q);
         });
 
-        const pagedRows = filteredRows.slice((launchPage - 1) * 10, launchPage * 10);
+        const pagedOrders = filteredOrders.slice((launchPage - 1) * 12, launchPage * 12);
+
+        const toggleExpandOrder = (orderId: string) => {
+          setExpandedLaunchOrderIds((prev) =>
+            prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
+          );
+        };
+
+        const openExamEditor = (orderId: string, resultId: string) => {
+          pushNavSnapshot();
+          setSelectedOrderId(orderId);
+          setSelectedResultId(resultId);
+          setLaunchSubView('editor');
+        };
 
         return (
-          <div className="bg-white rounded-[24px] sm:rounded-[28px] p-4 sm:p-[28px] space-y-4 sm:space-y-5">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
-              <div>
-                <span className="text-[12px] uppercase text-[#86868b]">Bancada Biomédica</span>
-                <h2 className="font-display text-[20px] sm:text-[24px] font-semibold text-[#1d1d1f]">
-                  Exames para Lançamento de Laudos
+          <div className="bg-white rounded-[22px] p-4 sm:p-5 space-y-3.5 border border-black/5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+              <div className="min-w-0">
+                <h2 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f] leading-tight">
+                  Laudos por Atendimento
                 </h2>
-                <p className="text-[12px] text-[#707070]">
-                  Selecione um exame abaixo por status para lançar, revisar ou enviar o laudo finalizado.
+                <p className="text-[11.5px] text-[#707070] mt-0.5">
+                  Clique em um atendimento para expandir os exames e lançar ou revisar os laudos.
                 </p>
               </div>
               <input
                 type="text"
                 value={launchSearch}
                 onChange={(e) => setLaunchSearch(e.target.value)}
-                placeholder="Buscar por protocolo, exame, paciente, tutor ou veterinário..."
-                className="w-full lg:w-96 px-4 py-2.5 rounded-full bg-[#f5f5f7] text-[12px] text-[#1d1d1f]"
+                placeholder="Buscar protocolo, exame, paciente, tutor ou vet..."
+                className="w-full md:w-80 px-3.5 py-2 rounded-full bg-[#f5f5f7] text-[12px] text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30"
               />
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               {[
                 { id: 'todos' as const, label: 'Todos', count: counts.todos },
                 { id: 'pendente' as const, label: 'Pendentes', count: counts.pendente },
@@ -4399,14 +4456,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setLaunchStatusFilter(tab.id)}
-                  className={`px-4 py-2 rounded-full text-[12px] font-semibold inline-flex items-center gap-2 transition cursor-pointer ${launchStatusFilter === tab.id
+                  className={`px-3 py-1.5 rounded-full text-[11.5px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer ${launchStatusFilter === tab.id
                     ? 'bg-[#0b2240] text-white'
                     : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e5e5ea]'
                     }`}
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${launchStatusFilter === tab.id
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${launchStatusFilter === tab.id
                       ? 'bg-white/20 text-white'
                       : 'bg-white text-[#1d1d1f]'
                       }`}
@@ -4417,130 +4474,283 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
               ))}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-[12px]">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full table-fixed text-left border-collapse text-[11.5px]">
                 <thead>
-                  <tr className="text-[#86868b] uppercase border-b border-[#e8e8ed]">
-                    <th className="py-3 px-4 font-normal">Protocolo</th>
-                    <th className="py-3 px-4 font-normal">Exame</th>
-                    <th className="py-3 px-4 font-normal">Paciente / Espécie</th>
-                    <th className="py-3 px-4 font-normal">Tutor & Veterinário</th>
-                    <th className="py-3 px-4 font-normal">Status</th>
-                    <th className="py-3 px-4 font-normal text-right">Ações</th>
+                  <tr className="text-[#86868b] uppercase border-b border-[#e8e8ed] text-[10px]">
+                    <th className="py-2 px-2 font-semibold w-[16%]">Protocolo</th>
+                    <th className="py-2 px-2 font-semibold w-[16%]">Paciente</th>
+                    <th className="py-2 px-2 font-semibold w-[22%]">Tutor / Vet</th>
+                    <th className="py-2 px-2 font-semibold w-[14%]">Exames</th>
+                    <th className="py-2 px-2 font-semibold w-[11%]">Status</th>
+                    <th className="py-2 px-2 font-semibold text-right w-[21%]">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#f5f5f7]">
-                  {pagedRows.length === 0 ? (
+                <tbody className="divide-y divide-[#f0f0f5]">
+                  {pagedOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-[#707070]">
-                        Nenhum exame encontrado para este filtro.
+                      <td colSpan={6} className="py-8 text-center text-[#707070] text-[12px]">
+                        Nenhum atendimento encontrado para este filtro.
                       </td>
                     </tr>
                   ) : (
-                    pagedRows.map(({ ord, res, meta, rowStatus }) => (
-                      <tr key={`${ord.id}-${res.id}`} className="hover:bg-[#f5f5f7]/60">
-                        <td className="py-3.5 px-4 font-mono font-semibold text-[#1d1d1f] whitespace-nowrap">
-                          {ord.protocol_code}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-[#1d1d1f]">
-                            <span className="font-mono text-[#0071e3] mr-1.5">[{meta.code}]</span>
-                            {meta.name}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-[#1d1d1f]">{ord.patient?.name}</div>
-                          <div className="text-[#707070]">
-                            {ord.patient?.species} • {ord.patient?.breed}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="text-[#1d1d1f]">{ord.patient?.tutor_name}</div>
-                          <div className="text-[#707070]">
-                            {ord.vet?.name} ({ord.vet?.crmv})
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${rowStatus === 'concluido'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : rowStatus === 'em_analise'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-[#f5f5f7] text-[#1d1d1f]'
-                              }`}
+                    pagedOrders.map(({ ord, examItems, totalExams, completedExams, orderStatus, firstPendingItem }) => {
+                      const isExpanded = expandedLaunchOrderIds.includes(ord.id);
+                      const shortDate = ord.created_at
+                        ? new Date(ord.created_at).toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: '2-digit',
+                          })
+                        : '';
+
+                      return (
+                        <React.Fragment key={ord.id}>
+                          <tr
+                            onClick={() => toggleExpandOrder(ord.id)}
+                            className={`transition cursor-pointer ${
+                              isExpanded ? 'bg-[#f5f8fc]' : 'hover:bg-[#f5f5f7]/70'
+                            }`}
                           >
-                            {rowStatus === 'concluido'
-                              ? 'Concluído'
-                              : rowStatus === 'em_analise'
-                                ? 'Em Análise'
-                                : 'Pendente'}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          {rowStatus === 'concluido' ? (
-                            <div className="inline-flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => downloadOrderPdf(ord)}
-                                className="px-3 py-1.5 rounded-full border border-[#1d1d1f] text-[#1d1d1f] hover:bg-[#1d1d1f] hover:text-white text-[11px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                            <td className="py-2 px-2 align-middle">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="p-0.5 rounded-md text-[#5b6675] shrink-0">
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-3.5 h-3.5 text-[#0071e3]" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  )}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="font-mono font-bold text-[#1d1d1f] truncate">
+                                    {ord.protocol_code}
+                                  </div>
+                                  {shortDate && (
+                                    <div className="text-[10px] text-[#86868b] leading-tight">
+                                      {shortDate}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-2 px-2 align-middle">
+                              <div
+                                className="font-semibold text-[#1d1d1f] truncate"
+                                title={ord.patient?.name || ''}
                               >
-                                <FileDown className="w-3.5 h-3.5" />
-                                Baixar PDF
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSendOrderWhatsApp(ord)}
-                                className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                                {ord.patient?.name || '—'}
+                              </div>
+                              <div
+                                className="text-[10.5px] text-[#707070] truncate"
+                                title={`${ord.patient?.species || ''} • ${ord.patient?.breed || ''}`}
                               >
-                                <MessageCircle className="w-3.5 h-3.5" />
-                                Enviar por Whats
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  pushNavSnapshot();
-                                  setSelectedOrderId(ord.id);
-                                  setSelectedResultId(res.id);
-                                  setLaunchSubView('editor');
-                                }}
-                                className="px-3 py-1.5 rounded-full bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[11px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                                {ord.patient?.species || '—'}
+                                {ord.patient?.breed ? ` • ${ord.patient.breed}` : ''}
+                              </div>
+                            </td>
+
+                            <td className="py-2 px-2 align-middle">
+                              <div
+                                className="text-[#1d1d1f] font-medium truncate"
+                                title={ord.patient?.tutor_name || ''}
                               >
-                                <Pencil className="w-3.5 h-3.5" />
-                                Editar
-                              </button>
-                            </div>
-                          ) : rowStatus === 'em_analise' ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                pushNavSnapshot();
-                                setSelectedOrderId(ord.id);
-                                setSelectedResultId(res.id);
-                                setLaunchSubView('editor');
-                              }}
-                              className="px-3.5 py-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                                {ord.patient?.tutor_name || '—'}
+                              </div>
+                              <div
+                                className="text-[10.5px] text-[#707070] truncate"
+                                title={`${ord.vet?.name || ''} ${ord.vet?.crmv ? `(${ord.vet.crmv})` : ''}`}
+                              >
+                                {ord.vet?.name || '—'}
+                              </div>
+                            </td>
+
+                            <td className="py-2 px-2 align-middle">
+                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#f5f5f7] text-[#1d1d1f] text-[10.5px] font-semibold whitespace-nowrap">
+                                <span>
+                                  {completedExams}/{totalExams}
+                                </span>
+                                <span className="text-[#707070] font-normal">
+                                  {totalExams === 1 ? 'exame' : 'exames'}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="py-2 px-2 align-middle">
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold whitespace-nowrap ${
+                                  orderStatus === 'concluido'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : orderStatus === 'em_analise'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-[#f5f5f7] text-[#1d1d1f]'
+                                }`}
+                              >
+                                {orderStatus === 'concluido'
+                                  ? 'Concluído'
+                                  : orderStatus === 'em_analise'
+                                    ? 'Em Análise'
+                                    : 'Pendente'}
+                              </span>
+                            </td>
+
+                            <td
+                              className="py-2 px-2 align-middle text-right"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              <Pencil className="w-3.5 h-3.5" />
-                              Editar Laudo
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                pushNavSnapshot();
-                                setSelectedOrderId(ord.id);
-                                setSelectedResultId(res.id);
-                                setLaunchSubView('editor');
-                              }}
-                              className="px-3.5 py-1.5 rounded-full bg-[#0071e3] hover:bg-[#0062c4] text-white text-[11px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
-                            >
-                              <FlaskConical className="w-3.5 h-3.5" />
-                              Lançar Laudo
-                            </button>
+                              <div className="inline-flex items-center justify-end gap-1 flex-nowrap">
+                                {orderStatus === 'concluido' ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => downloadOrderPdf(ord)}
+                                      title="Baixar PDF Completo"
+                                      className="px-2 py-1 rounded-full border border-[#1d1d1f]/25 text-[#1d1d1f] hover:bg-[#1d1d1f] hover:text-white text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer shrink-0"
+                                    >
+                                      <FileDown className="w-3 h-3" />
+                                      <span>PDF</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendOrderWhatsApp(ord)}
+                                      title="Enviar por WhatsApp"
+                                      className="px-2 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer shrink-0"
+                                    >
+                                      <MessageCircle className="w-3 h-3" />
+                                      <span>Whats</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleExpandOrder(ord.id)}
+                                      title={isExpanded ? 'Recolher exames' : 'Ver / editar exames'}
+                                      className="px-2 py-1 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer shrink-0"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                      <span>Itens</span>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {firstPendingItem && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openExamEditor(ord.id, firstPendingItem.res.id)
+                                        }
+                                        className={`px-2.5 py-1 rounded-full text-white text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer shrink-0 ${
+                                          orderStatus === 'em_analise'
+                                            ? 'bg-amber-500 hover:bg-amber-600'
+                                            : 'bg-[#0071e3] hover:bg-[#0062c4]'
+                                        }`}
+                                      >
+                                        <FlaskConical className="w-3 h-3" />
+                                        <span>
+                                          {orderStatus === 'em_analise' ? 'Continuar' : 'Lançar'}
+                                        </span>
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleExpandOrder(ord.id)}
+                                      title={isExpanded ? 'Recolher exames' : 'Ver exames do atendimento'}
+                                      className="px-2 py-1 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[10.5px] font-semibold inline-flex items-center gap-0.5 transition cursor-pointer shrink-0"
+                                    >
+                                      <span>Exames</span>
+                                      {isExpanded ? (
+                                        <ChevronDown className="w-3 h-3" />
+                                      ) : (
+                                        <ChevronRight className="w-3 h-3" />
+                                      )}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* SUB-LISTA EXPANDIDA: EXAMES DO ATENDIMENTO */}
+                          {isExpanded && (
+                            <tr className="bg-[#f8fafc]">
+                              <td colSpan={6} className="px-3 py-2.5 border-t border-slate-200/70">
+                                <div className="pl-4 border-l-2 border-[#0071e3]/40 space-y-1.5">
+                                  <div className="flex items-center justify-between text-[10.5px] font-semibold text-[#5b6675] pb-0.5">
+                                    <span>
+                                      Exames de {ord.protocol_code} ({completedExams} de {totalExams}{' '}
+                                      concluído{completedExams === 1 ? '' : 's'})
+                                    </span>
+                                  </div>
+                                  {examItems.map(({ res, meta, itemStatus }, idx) => (
+                                    <div
+                                      key={res.id}
+                                      className="bg-white rounded-xl px-3 py-1.5 border border-slate-200/70 flex items-center justify-between gap-2.5"
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <span className="text-[10px] font-mono text-[#86868b] shrink-0">
+                                          #{idx + 1}
+                                        </span>
+                                        <span className="font-mono text-[11px] font-bold text-[#0071e3] bg-[#e8f2fd] px-1.5 py-0.5 rounded shrink-0">
+                                          {meta.code}
+                                        </span>
+                                        <span
+                                          className="text-[11.5px] font-semibold text-[#1d1d1f] truncate"
+                                          title={meta.name}
+                                        >
+                                          {meta.name}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span
+                                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
+                                            itemStatus === 'concluido'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : itemStatus === 'em_analise'
+                                                ? 'bg-amber-100 text-amber-800'
+                                                : 'bg-[#f5f5f7] text-[#5b6675]'
+                                          }`}
+                                        >
+                                          {itemStatus === 'concluido'
+                                            ? 'Concluído'
+                                            : itemStatus === 'em_analise'
+                                              ? 'Em Análise'
+                                              : 'Pendente'}
+                                        </span>
+
+                                        {itemStatus === 'concluido' ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => openExamEditor(ord.id, res.id)}
+                                            className="px-2.5 py-1 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                                          >
+                                            <Pencil className="w-3 h-3" />
+                                            Revisar / Editar
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => openExamEditor(ord.id, res.id)}
+                                            className={`px-2.5 py-1 rounded-full text-white text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer ${
+                                              itemStatus === 'em_analise'
+                                                ? 'bg-amber-500 hover:bg-amber-600'
+                                                : 'bg-[#0071e3] hover:bg-[#0062c4]'
+                                            }`}
+                                          >
+                                            <FlaskConical className="w-3 h-3" />
+                                            {itemStatus === 'em_analise'
+                                              ? 'Continuar Laudo'
+                                              : 'Lançar Laudo'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                      </tr>
-                    ))
+                        </React.Fragment>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -4548,8 +4758,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
 
             <PaginationBar
               page={launchPage}
-              pageSize={10}
-              totalItems={filteredRows.length}
+              pageSize={12}
+              totalItems={filteredOrders.length}
               onPageChange={setLaunchPage}
             />
           </div>
@@ -4603,26 +4813,63 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {(currentOrder.results || []).map((r) => {
-                const fallbackExam = exams.find((e) => e.id === r.exam_id);
-                const examCode = r.exam_code || fallbackExam?.code || 'EXAME';
-                const examName = r.exam_name || fallbackExam?.name || '';
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => handleSelectResultItem(r.id)}
-                    className={`px-3.5 sm:px-4 py-2 rounded-[980px] text-[12px] font-semibold transition text-left ${currentResultItem?.id === r.id
-                      ? 'bg-[#0071e3] text-white'
-                      : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
-                      }`}
-                  >
-                    [{examCode}] {examName}
-                  </button>
-                );
-              })}
-            </div>
+            {(() => {
+              const allResults = currentOrder.results || [];
+              const completedCount = allResults.filter((r) => Boolean(r.released_at)).length;
+              const pendingOthersCount = allResults.filter(
+                (r) => r.id !== currentResultItem?.id && !r.released_at
+              ).length;
+              return (
+                <div className="space-y-2">
+                  {allResults.length > 1 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-[#f5f8fc] border border-[#0071e3]/15 text-[11px]">
+                      <span className="font-semibold text-[#0b2240]">
+                        Progresso do atendimento {currentOrder.protocol_code}:{' '}
+                        <span className="text-[#0071e3]">
+                          {completedCount}/{allResults.length} concluído{completedCount === 1 ? '' : 's'}
+                        </span>
+                      </span>
+                      <span className="text-[#5b6675]">
+                        {pendingOthersCount > 0
+                          ? `${pendingOthersCount} outro${pendingOthersCount > 1 ? 's' : ''} exame${pendingOthersCount > 1 ? 's' : ''} aguardando lançamento`
+                          : currentResultItem?.released_at
+                            ? 'Todos os exames deste atendimento já foram lançados'
+                            : 'Último exame pendente — ao concluir, o atendimento será finalizado'}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {allResults.map((r) => {
+                      const fallbackExam = exams.find((e) => e.id === r.exam_id);
+                      const examCode = r.exam_code || fallbackExam?.code || 'EXAME';
+                      const examName = r.exam_name || fallbackExam?.name || '';
+                      const isReleased = Boolean(r.released_at);
+                      const isActive = currentResultItem?.id === r.id;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => handleSelectResultItem(r.id)}
+                          title={`[${examCode}] ${examName}`}
+                          className={`px-3 py-1.5 rounded-full text-[11.5px] font-semibold transition text-left inline-flex items-center gap-1.5 max-w-full cursor-pointer ${
+                            isActive
+                              ? 'bg-[#0071e3] text-white'
+                              : isReleased
+                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]'
+                          }`}
+                        >
+                          {isReleased && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                          <span className="truncate max-w-[260px]">
+                            [{examCode}] {examName}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="p-3.5 rounded-2xl bg-[#f5f5f7] space-y-1 text-[11px]">
               <div className="font-semibold text-[#1d1d1f] flex items-start sm:items-center gap-1.5">
@@ -4797,44 +5044,82 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
               )}
             </div>
 
-            <div className="pt-2 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleSaveResultDraft}
-                className="w-full sm:w-auto justify-center px-4 py-2.5 sm:py-2 rounded-[980px] border border-[#1d1d1f] text-[#1d1d1f] text-[12px] font-semibold hover:bg-[#1d1d1f] hover:text-white transition inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Clock className="w-3.5 h-3.5 shrink-0" />
-                <span>Salvar Parâmetros (Em Análise)</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleReleaseReport}
-                className="w-full sm:w-auto justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
-              >
-                <Send className="w-3.5 h-3.5 shrink-0" />
-                <span>Finalizar e Liberar Laudo Oficial</span>
-              </button>
-              {currentOrder.status === 'concluido' && (
-                <>
+            {(() => {
+              const allResults = currentOrder.results || [];
+              const nextPendingExam = allResults.find(
+                (r) => r.id !== currentResultItem?.id && !r.released_at
+              );
+              const hasMoreExamsToLaunch = Boolean(nextPendingExam);
+
+              return (
+                <div className="pt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => downloadOrderPdf(currentOrder)}
-                    className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                    onClick={handleSaveResultDraft}
+                    className="w-full sm:w-auto justify-center px-4 py-2.5 sm:py-2 rounded-[980px] border border-[#1d1d1f] text-[#1d1d1f] text-[12px] font-semibold hover:bg-[#1d1d1f] hover:text-white transition inline-flex items-center gap-1.5 cursor-pointer"
                   >
-                    <FileDown className="w-3.5 h-3.5 shrink-0" />
-                    <span>Baixar PDF</span>
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <span>Salvar Rascunho</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSendOrderWhatsApp(currentOrder)}
-                    className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>Enviar por Whats</span>
-                  </button>
-                </>
-              )}
-            </div>
+
+                  {hasMoreExamsToLaunch ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleReleaseReport({ advanceToNext: true })}
+                        className="w-full sm:w-auto justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5 shrink-0" />
+                        <span>Concluir e Lançar Próximo Exame</span>
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReleaseReport({ advanceToNext: false })}
+                        className="w-full sm:w-auto justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>Concluir Exame e Voltar</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleReleaseReport({ advanceToNext: false })}
+                      className="w-full sm:w-auto justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#0071e3] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        {allResults.length > 1
+                          ? 'Finalizar Último Exame e Concluir Atendimento'
+                          : 'Finalizar e Concluir Atendimento'}
+                      </span>
+                    </button>
+                  )}
+
+                  {currentOrder.status === 'concluido' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => downloadOrderPdf(currentOrder)}
+                        className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <FileDown className="w-3.5 h-3.5 shrink-0" />
+                        <span>Baixar PDF</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSendOrderWhatsApp(currentOrder)}
+                        className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>Enviar por Whats</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="lg:col-span-6 min-w-0 bg-white rounded-[24px] p-4 sm:p-5 space-y-4">

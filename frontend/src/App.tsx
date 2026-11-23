@@ -843,7 +843,7 @@ export const App: React.FC = () => {
 
                       <button
                         type="button"
-                        title="Lançamento de Laudos"
+                        title="Laudos"
                         onClick={() => {
                           if (currentView !== 'internal') handleNavigate('internal');
                           setInternalTab('launch');
@@ -861,7 +861,7 @@ export const App: React.FC = () => {
                       >
                         <FlaskConical className="w-4 h-4 shrink-0" />
                         <span className={`${sidebarCollapsed ? 'md:hidden' : ''} truncate`}>
-                          Lançamento de Laudos
+                          Laudos
                         </span>
                       </button>
 
