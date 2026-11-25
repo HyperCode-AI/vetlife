@@ -131,6 +131,7 @@ const createEmptyPatientForm = () => ({
   breed: '',
   gender: '' as '' | 'M' | 'F',
   birth_date: '',
+  age_years: '' as number | '',
   age_months: '' as number | '',
   tutor_name: '',
   tutor_phone: '',
@@ -143,6 +144,7 @@ const createEmptyPatientCrudForm = () => ({
   breed: '',
   gender: '' as '' | 'M' | 'F',
   birth_date: '',
+  age_years: '' as number | '',
   age_months: '' as number | '',
   tutor_name: '',
   tutor_phone: '',
@@ -329,6 +331,33 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const dd = String(date.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const calculateAgeDaysFromYearsMonths = (years: number, months: number): number => {
+    const safeY = Math.max(0, Math.floor(years || 0));
+    const safeM = Math.max(0, Math.floor(months || 0));
+    return Math.max(1, safeY * 365 + safeM * 30);
+  };
+
+  const splitDaysToYearsMonths = (days: number): { years: number; months: number } => {
+    const safeDays = Math.max(0, Math.floor(Number(days) || 0));
+    const years = Math.floor(safeDays / 365);
+    const months = Math.min(11, Math.floor((safeDays % 365) / 30));
+    return { years, months };
+  };
+
+  const formatReferenceAgeRange = (minDays: number, maxDays: number): string => {
+    const fmt = (d: number) => {
+      const safe = Math.max(0, Math.floor(Number(d) || 0));
+      if (safe === 0) return '0 dias';
+      if (safe < 30) return `${safe} dia${safe === 1 ? '' : 's'}`;
+      const y = Math.floor(safe / 365);
+      const m = Math.floor((safe % 365) / 30);
+      if (y === 0) return `${m} ${m === 1 ? 'mês' : 'meses'}`;
+      if (m === 0) return `${y} ${y === 1 ? 'ano' : 'anos'}`;
+      return `${y}a ${m}m`;
+    };
+    return `${fmt(minDays)} a ${fmt(maxDays)} (${minDays}–${maxDays} dias)`;
   };
 
   const [patientSearchQuery, setPatientSearchQuery] = useState('');
@@ -1113,8 +1142,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       showToast('Selecione espécie e sexo do paciente.');
       return;
     }
-    if (patientCrudForm.age_months === '' || Number(patientCrudForm.age_months) < 0) {
-      showToast('Informe a idade em meses (ou a data de nascimento para cálculo automático).');
+    const hasYears =
+      patientCrudForm.age_years !== '' && !Number.isNaN(Number(patientCrudForm.age_years));
+    const hasMonths =
+      patientCrudForm.age_months !== '' && !Number.isNaN(Number(patientCrudForm.age_months));
+    const safeYears = hasYears ? Math.max(0, Math.floor(Number(patientCrudForm.age_years))) : 0;
+    const safeMonths = hasMonths ? Math.max(0, Math.floor(Number(patientCrudForm.age_months))) : 0;
+    const totalMonths = safeYears * 12 + safeMonths;
+
+    if (!hasYears && !hasMonths && !patientCrudForm.birth_date) {
+      showToast('Informe a idade em anos/meses (ou a data de nascimento para cálculo automático).');
       return;
     }
     if (patientIncludeExamOrder) {
@@ -1128,15 +1165,18 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       }
     }
 
-    const numericMonths = Number(patientCrudForm.age_months);
+    const computedDays =
+      patientCrudForm.birth_date
+        ? calculatePatientAgeDays(patientCrudForm.birth_date)
+        : calculateAgeDaysFromYearsMonths(safeYears, safeMonths);
     const savedPatient = await api.savePatient({
       ...(editingPatientId ? { id: editingPatientId } : {}),
       name: patientCrudForm.name.trim(),
       species: patientCrudForm.species,
       breed: patientCrudForm.breed.trim() || 'SRD',
       gender: patientCrudForm.gender,
-      birth_date: patientCrudForm.birth_date || calculateBirthDateFromAgeMonths(numericMonths),
-      age_days: Math.max(1, numericMonths * 30),
+      birth_date: patientCrudForm.birth_date || calculateBirthDateFromAgeMonths(totalMonths),
+      age_days: computedDays,
       tutor_name: patientCrudForm.tutor_name.trim(),
       tutor_phone: patientCrudForm.tutor_phone.trim(),
       tutor_email: patientCrudForm.tutor_email.trim(),
@@ -1203,14 +1243,21 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       return;
     }
 
+    const hasAgeYears =
+      patientForm.age_years !== '' && !Number.isNaN(Number(patientForm.age_years));
     const hasAgeMonths =
       patientForm.age_months !== '' && !Number.isNaN(Number(patientForm.age_months));
-    const numericAgeMonths = hasAgeMonths ? Math.max(0, Number(patientForm.age_months)) : undefined;
+    const safeOrderYears = hasAgeYears ? Math.max(0, Math.floor(Number(patientForm.age_years))) : 0;
+    const safeOrderMonths = hasAgeMonths ? Math.max(0, Math.floor(Number(patientForm.age_months))) : 0;
+    const numericAgeMonths =
+      hasAgeYears || hasAgeMonths ? safeOrderYears * 12 + safeOrderMonths : undefined;
     const resolvedBirthDate =
       patientForm.birth_date ||
       (numericAgeMonths !== undefined ? calculateBirthDateFromAgeMonths(numericAgeMonths) : '');
     const resolvedAgeDays =
-      numericAgeMonths !== undefined ? Math.max(1, Math.round(numericAgeMonths * 30)) : undefined;
+      hasAgeYears || hasAgeMonths
+        ? calculateAgeDaysFromYearsMonths(safeOrderYears, safeOrderMonths)
+        : undefined;
 
     const newPatientPayload: Omit<Patient, 'id'> = {
       name: patientForm.name.trim(),
@@ -2185,8 +2232,8 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                      <div className="sm:col-span-4">
                         <label className="block text-[11px] font-medium text-[#707070] mb-1">
                           Raça
                         </label>
@@ -2200,7 +2247,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                           className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
                         />
                       </div>
-                      <div>
+                      <div className="sm:col-span-3">
                         <label className="block text-[11px] font-medium text-[#707070] mb-1">
                           Sexo *
                         </label>
@@ -2220,43 +2267,85 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                           <option value="F">Fêmea (F)</option>
                         </select>
                       </div>
-                      <div>
+                      <div className="sm:col-span-5">
                         <label className="block text-[11px] font-medium text-[#707070] mb-1">
-                          Idade (Meses) *
+                          Idade (Anos e Meses) *
                         </label>
-                        <input
-                          type="number"
-                          min={0}
-                          required
-                          placeholder="Ex: 12"
-                          value={patientCrudForm.age_months}
-                          onChange={(e) => {
-                            const raw = e.target.value;
-                            if (raw === '') {
-                              setPatientCrudForm({
-                                ...patientCrudForm,
-                                age_months: '',
-                                birth_date: '',
-                              });
-                              return;
-                            }
-                            const parsed = Math.max(0, Math.floor(Number(raw)));
-                            if (Number.isNaN(parsed)) return;
-                            setPatientCrudForm({
-                              ...patientCrudForm,
-                              age_months: parsed,
-                              birth_date: calculateBirthDateFromAgeMonths(parsed),
-                            });
-                          }}
-                          className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
-                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min={0}
+                              max={60}
+                              placeholder="0"
+                              value={patientCrudForm.age_years}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const nextYears =
+                                  raw === '' ? '' : Math.max(0, Math.floor(Number(raw)));
+                                if (nextYears !== '' && Number.isNaN(nextYears)) return;
+                                const curMonths =
+                                  patientCrudForm.age_months === ''
+                                    ? 0
+                                    : Math.max(0, Number(patientCrudForm.age_months));
+                                const totalM =
+                                  (nextYears === '' ? 0 : nextYears) * 12 + curMonths;
+                                setPatientCrudForm({
+                                  ...patientCrudForm,
+                                  age_years: nextYears,
+                                  birth_date:
+                                    nextYears === '' && patientCrudForm.age_months === ''
+                                      ? ''
+                                      : calculateBirthDateFromAgeMonths(totalM),
+                                });
+                              }}
+                              className="w-full h-[38px] pl-3 pr-12 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#707070] pointer-events-none">
+                              anos
+                            </span>
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min={0}
+                              max={11}
+                              placeholder="0"
+                              value={patientCrudForm.age_months}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const nextMonths =
+                                  raw === '' ? '' : Math.min(11, Math.max(0, Math.floor(Number(raw))));
+                                if (nextMonths !== '' && Number.isNaN(nextMonths)) return;
+                                const curYears =
+                                  patientCrudForm.age_years === ''
+                                    ? 0
+                                    : Math.max(0, Number(patientCrudForm.age_years));
+                                const totalM =
+                                  curYears * 12 + (nextMonths === '' ? 0 : nextMonths);
+                                setPatientCrudForm({
+                                  ...patientCrudForm,
+                                  age_months: nextMonths,
+                                  birth_date:
+                                    patientCrudForm.age_years === '' && nextMonths === ''
+                                      ? ''
+                                      : calculateBirthDateFromAgeMonths(totalM),
+                                });
+                              }}
+                              className="w-full h-[38px] pl-3 pr-14 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#707070] pointer-events-none">
+                              meses
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <div>
                         <label className="block text-[11px] font-medium text-[#707070] mb-1">
-                          Data de Nascimento
+                          Data de Nascimento (Opcional)
                         </label>
                         <input
                           type="date"
@@ -2267,8 +2356,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                             setPatientCrudForm({
                               ...patientCrudForm,
                               birth_date: val,
+                              age_years:
+                                computedMonths !== ''
+                                  ? Math.floor(computedMonths / 12)
+                                  : patientCrudForm.age_years,
                               age_months:
-                                computedMonths !== '' ? computedMonths : patientCrudForm.age_months,
+                                computedMonths !== ''
+                                  ? computedMonths % 12
+                                  : patientCrudForm.age_months,
                             });
                           }}
                           className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
@@ -2294,7 +2389,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <div>
                         <label className="block text-[11px] font-medium text-[#707070] mb-1">
-                          Telefone / WhatsApp
+                          Telefone / WhatsApp do Tutor (Opcional)
                         </label>
                         <input
                           type="text"
@@ -2302,13 +2397,13 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                           onChange={(e) =>
                             setPatientCrudForm({ ...patientCrudForm, tutor_phone: e.target.value })
                           }
-                          placeholder="(00) 00000-0000"
+                          placeholder="Opcional — (00) 00000-0000"
                           className="w-full h-[38px] px-3 rounded-xl bg-[#f5f5f7] border border-transparent focus:bg-white focus:border-[#0071e3] focus:outline-none text-[13px] text-[#1d1d1f]"
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] font-medium text-[#707070] mb-1">
-                          E-mail do Tutor
+                          E-mail do Tutor (Opcional)
                         </label>
                         <input
                           type="email"
@@ -2577,7 +2672,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                                 resetPatientModal();
                                 setEditingPatientId(p.id);
                                 const editBirthDate = p.birth_date || '';
-                                const editAgeMonths = editBirthDate
+                                const editTotalMonths = editBirthDate
                                   ? calculateAgeMonthsFromBirthDate(editBirthDate)
                                   : p.age_days
                                     ? Math.max(0, Math.round(p.age_days / 30))
@@ -2588,7 +2683,10 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                                   breed: p.breed || '',
                                   gender: p.gender,
                                   birth_date: editBirthDate,
-                                  age_months: editAgeMonths,
+                                  age_years:
+                                    editTotalMonths !== '' ? Math.floor(editTotalMonths / 12) : '',
+                                  age_months:
+                                    editTotalMonths !== '' ? editTotalMonths % 12 : '',
                                   tutor_name: p.tutor_name,
                                   tutor_phone: p.tutor_phone || '',
                                   tutor_email: p.tutor_email || '',
@@ -3475,28 +3573,48 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                                 <option value="F">F</option>
                               </select>
                             </div>
-                            <div className="sm:col-span-1 lg:col-span-1 min-w-0">
-                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
-                                Idade (m)
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                placeholder="Meses"
-                                value={patientForm.age_months}
-                                onChange={(e) =>
-                                  setPatientForm({
-                                    ...patientForm,
-                                    age_months:
-                                      e.target.value === ''
-                                        ? ''
-                                        : Math.max(0, Math.floor(Number(e.target.value))),
-                                  })
-                                }
-                                className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
-                              />
-                            </div>
                             <div className="sm:col-span-2 lg:col-span-2 min-w-0">
+                              <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
+                                Idade (Anos / Meses)
+                              </label>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={60}
+                                  placeholder="Anos"
+                                  value={patientForm.age_years}
+                                  onChange={(e) =>
+                                    setPatientForm({
+                                      ...patientForm,
+                                      age_years:
+                                        e.target.value === ''
+                                          ? ''
+                                          : Math.max(0, Math.floor(Number(e.target.value))),
+                                    })
+                                  }
+                                  className="w-full h-[36px] px-2 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12px] text-[#1d1d1f]"
+                                />
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={11}
+                                  placeholder="Meses"
+                                  value={patientForm.age_months}
+                                  onChange={(e) =>
+                                    setPatientForm({
+                                      ...patientForm,
+                                      age_months:
+                                        e.target.value === ''
+                                          ? ''
+                                          : Math.min(11, Math.max(0, Math.floor(Number(e.target.value)))),
+                                    })
+                                  }
+                                  className="w-full h-[36px] px-2 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12px] text-[#1d1d1f]"
+                                />
+                              </div>
+                            </div>
+                            <div className="sm:col-span-2 lg:col-span-1 min-w-0">
                               <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
                                 Raça
                               </label>
@@ -3506,7 +3624,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                                 onChange={(e) =>
                                   setPatientForm({ ...patientForm, breed: e.target.value })
                                 }
-                                placeholder="Opcional (SRD)"
+                                placeholder="SRD"
                                 className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
                               />
                             </div>
@@ -3527,7 +3645,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                             </div>
                             <div className="sm:col-span-2 lg:col-span-2 min-w-0">
                               <label className="block text-[11px] font-medium text-[#707070] mb-0.5">
-                                Telefone
+                                Tel. Tutor (Opcional)
                               </label>
                               <input
                                 type="text"
@@ -3535,7 +3653,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                                 onChange={(e) =>
                                   setPatientForm({ ...patientForm, tutor_phone: e.target.value })
                                 }
-                                placeholder="(00) 00000-0000"
+                                placeholder="Opcional"
                                 className="w-full h-[36px] px-2.5 rounded-xl bg-white border border-black/10 focus:border-[#0071e3] focus:outline-none text-[12.5px] text-[#1d1d1f]"
                               />
                             </div>
@@ -6147,7 +6265,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                           onChange={(id) => setNewRefForm({ ...newRefForm, exam_id: id })}
                         />
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
                             <label className="block text-[12px] text-[#707070] mb-1">Espécie *</label>
                             <select
@@ -6173,35 +6291,113 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                               <option value="F">Fêmea (F)</option>
                             </select>
                           </div>
-                          <div>
-                            <label className="block text-[12px] text-[#707070] mb-1">
-                              Idade Mín. (Dias) *
-                            </label>
-                            <input
-                              type="number"
-                              min={0}
-                              value={newRefForm.min_age_days}
-                              onChange={(e) =>
-                                setNewRefForm({ ...newRefForm, min_age_days: Number(e.target.value) })
-                              }
-                              className="w-full px-3 sm:px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[12px] text-[#707070] mb-1">
-                              Idade Máx. (Dias) *
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              value={newRefForm.max_age_days}
-                              onChange={(e) =>
-                                setNewRefForm({ ...newRefForm, max_age_days: Number(e.target.value) })
-                              }
-                              className="w-full px-3 sm:px-3.5 py-2 rounded-[18px] bg-[#f5f5f7] text-[12px]"
-                            />
-                          </div>
                         </div>
+
+                        {(() => {
+                          const minSplit = splitDaysToYearsMonths(newRefForm.min_age_days);
+                          const maxSplit = splitDaysToYearsMonths(newRefForm.max_age_days);
+                          return (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="p-3 rounded-2xl bg-[#f5f5f7] space-y-1.5">
+                                <div className="flex items-center justify-between text-[11px] font-semibold text-[#5b6675]">
+                                  <span>Idade Mínima (Anos / Meses) *</span>
+                                  <span className="font-mono text-[#0071e3]">
+                                    = {newRefForm.min_age_days} dias
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={60}
+                                      value={minSplit.years}
+                                      onChange={(e) => {
+                                        const y = Math.max(0, Math.floor(Number(e.target.value) || 0));
+                                        setNewRefForm({
+                                          ...newRefForm,
+                                          min_age_days: y * 365 + minSplit.months * 30,
+                                        });
+                                      }}
+                                      className="w-full pl-3 pr-11 py-1.5 rounded-xl bg-white text-[12px] font-semibold"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] text-[#707070] pointer-events-none">
+                                      anos
+                                    </span>
+                                  </div>
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={11}
+                                      value={minSplit.months}
+                                      onChange={(e) => {
+                                        const m = Math.min(11, Math.max(0, Math.floor(Number(e.target.value) || 0)));
+                                        setNewRefForm({
+                                          ...newRefForm,
+                                          min_age_days: minSplit.years * 365 + m * 30,
+                                        });
+                                      }}
+                                      className="w-full pl-3 pr-13 py-1.5 rounded-xl bg-white text-[12px] font-semibold"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] text-[#707070] pointer-events-none">
+                                      meses
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="p-3 rounded-2xl bg-[#f5f5f7] space-y-1.5">
+                                <div className="flex items-center justify-between text-[11px] font-semibold text-[#5b6675]">
+                                  <span>Idade Máxima (Anos / Meses) *</span>
+                                  <span className="font-mono text-[#0071e3]">
+                                    = {newRefForm.max_age_days} dias
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={60}
+                                      value={maxSplit.years}
+                                      onChange={(e) => {
+                                        const y = Math.max(0, Math.floor(Number(e.target.value) || 0));
+                                        setNewRefForm({
+                                          ...newRefForm,
+                                          max_age_days: Math.max(1, y * 365 + maxSplit.months * 30),
+                                        });
+                                      }}
+                                      className="w-full pl-3 pr-11 py-1.5 rounded-xl bg-white text-[12px] font-semibold"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] text-[#707070] pointer-events-none">
+                                      anos
+                                    </span>
+                                  </div>
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={11}
+                                      value={maxSplit.months}
+                                      onChange={(e) => {
+                                        const m = Math.min(11, Math.max(0, Math.floor(Number(e.target.value) || 0)));
+                                        setNewRefForm({
+                                          ...newRefForm,
+                                          max_age_days: Math.max(1, maxSplit.years * 365 + m * 30),
+                                        });
+                                      }}
+                                      className="w-full pl-3 pr-13 py-1.5 rounded-xl bg-white text-[12px] font-semibold"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] text-[#707070] pointer-events-none">
+                                      meses
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* Campo 1: Janela de Edição Visual (sem escrever HTML) */}
                         <RichHtmlEditor
@@ -6241,7 +6437,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                             {exams.find((item) => item.id === newRefForm.exam_id)?.name || 'Exame'}
                           </div>
                           <div className="text-[11px] text-[#1d9496] font-semibold">
-                            Faixa: {newRefForm.min_age_days} a {newRefForm.max_age_days} dias
+                            Faixa: {formatReferenceAgeRange(newRefForm.min_age_days, newRefForm.max_age_days)}
                           </div>
                           <div className="bg-white rounded-xl border border-slate-200/80 p-3 sm:p-4 min-h-[180px] text-[13px] text-[#0b2240] leading-relaxed overflow-x-auto [&_h2]:text-base [&_h2]:font-bold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5">
                             {newRefForm.reference_text_content.replace(/<[^>]+>/g, '').trim() ? (
@@ -6291,7 +6487,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                         <div className="font-semibold text-[#1d1d1f]">
                           {r.exam_name || r.exam_id} —{' '}
                           <span className="text-[#0066cc]">
-                            {r.species} ({r.gender}) • {r.min_age_days} a {r.max_age_days} dias
+                            {r.species} ({r.gender}) • {formatReferenceAgeRange(r.min_age_days, r.max_age_days)}
                           </span>
                         </div>
                         {/<[a-z][\s\S]*>/i.test(r.reference_text_content || '') ? (

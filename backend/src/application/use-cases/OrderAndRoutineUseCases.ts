@@ -64,7 +64,7 @@ export class OrderAndRoutineUseCases {
       gender: input.gender === 'F' ? 'F' : 'M',
       birth_date: resolvedBirthDate,
       tutor_name: input.tutor_name,
-      tutor_phone: input.tutor_phone || '(11) 99999-0000',
+      tutor_phone: input.tutor_phone || '',
       tutor_email: input.tutor_email || '',
     });
   }
