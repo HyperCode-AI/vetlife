@@ -26,6 +26,7 @@ import {
   Pencil,
   Users,
   MessageCircle,
+  Mail,
   Calendar,
   RefreshCw,
   ChevronDown,
@@ -667,8 +668,28 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     return { code, name, isReleased, hasDraft };
   };
 
-  const handleSendOrderWhatsApp = async (ord: Order) => {
-    showToast('Gerando e salvando PDF online para envio no WhatsApp...');
+  const resolveOrderVet = (ord: Order): Vet | undefined => {
+    const fromList = vets.find((v) => v.id === ord.vet_id);
+    if (ord.vet && fromList) {
+      return {
+        ...fromList,
+        ...ord.vet,
+        name: ord.vet.name || fromList.name,
+        phone: ord.vet.phone || fromList.phone,
+        email: ord.vet.email || fromList.email,
+      };
+    }
+    return ord.vet || fromList;
+  };
+
+  const formatVetGreeting = (vet?: Vet): string => {
+    const name = vet?.name?.trim();
+    if (!name) return 'Olá, Dr(a).!';
+    if (/^dr(a)?\.?\s/i.test(name)) return `Olá, ${name}!`;
+    return `Olá, Dr(a). ${name}!`;
+  };
+
+  const publishOrderForSharing = async (ord: Order) => {
     const published = await api.publishOrderPdf(ord);
     const pdfLink = published.pdf_url;
 
@@ -687,29 +708,98 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
       )
     );
 
-    const rawPhone = ord.patient?.tutor_phone || ord.vet?.phone || '';
-    const digits = rawPhone.replace(/\D/g, '');
-    const waNumber =
-      digits.length >= 10 && !digits.startsWith('55') ? `55${digits}` : digits;
+    const attachmentLinks = Array.from(
+      new Map(
+        (ord.results || [])
+          .flatMap((r) => r.attachments || [])
+          .filter((att) => att?.url && /^https?:\/\//i.test(att.url))
+          .map((att) => [att.url, att])
+      ).values()
+    );
+
+    return { pdfLink, attachmentLinks };
+  };
+
+  const buildOrderShareMessage = (
+    ord: Order,
+    targetVet: Vet | undefined,
+    pdfLink: string,
+    attachmentLinks: ExamAttachment[],
+    useMarkdownBold: boolean
+  ): string => {
+    const b = (text: string) => (useMarkdownBold ? `*${text}*` : text);
     const examNames = (ord.results || [])
       .map((r) => getOrderResultMeta(r).name)
       .join(', ');
-    const message = [
-      `Olá! Segue o link oficial do laudo laboratorial do atendimento *${ord.protocol_code}*.`,
-      `Paciente: *${ord.patient?.name || 'Pet'}* (${ord.patient?.species || ''})`,
+    const patientSpecies = ord.patient?.species ? ` (${ord.patient.species})` : '';
+    const lines = [
+      `${formatVetGreeting(targetVet)} Segue o link oficial do laudo laboratorial do atendimento ${b(ord.protocol_code)}.`,
+      `Paciente: ${b(ord.patient?.name || 'Pet')}${patientSpecies}`,
+      ord.patient?.tutor_name ? `Tutor: ${ord.patient.tutor_name}` : '',
       examNames ? `Exames incluídos: ${examNames}` : '',
-      ``,
-      `📄 Baixar Laudo em PDF:`,
+      '',
+      'Baixar Laudo em PDF:',
       pdfLink,
-    ]
-      .filter((line) => line !== undefined)
-      .join('\n');
+    ];
 
-    const waUrl = waNumber
-      ? `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`
-      : `https://wa.me/?text=${encodeURIComponent(message)}`;
+    if (attachmentLinks.length > 0) {
+      lines.push('', 'Arquivos / Anexos Complementares:');
+      attachmentLinks.forEach((att) => {
+        lines.push(`- ${att.name}: ${att.url}`);
+      });
+    }
+
+    return lines.filter((line) => line !== undefined && line !== null).join('\n');
+  };
+
+  const handleSendOrderWhatsApp = async (ord: Order) => {
+    // Regra de negócio: envio de laudos, arquivos e mensagens é SEMPRE para o veterinário, nunca para o tutor.
+    const targetVet = resolveOrderVet(ord);
+    const rawPhone = (targetVet?.phone || '').trim();
+    const digits = rawPhone.replace(/\D/g, '');
+    const waNumber =
+      digits.length >= 10 && !digits.startsWith('55') ? `55${digits}` : digits;
+
+    if (!waNumber) {
+      const vetLabel = targetVet?.name || 'veterinário solicitante';
+      showToast(
+        `O ${vetLabel} não possui telefone/WhatsApp cadastrado. Cadastre o WhatsApp do veterinário para enviar o laudo.`
+      );
+      return;
+    }
+
+    showToast('Gerando e salvando PDF online para envio no WhatsApp do veterinário...');
+    const { pdfLink, attachmentLinks } = await publishOrderForSharing(ord);
+    const message = buildOrderShareMessage(ord, targetVet, pdfLink, attachmentLinks, true);
+
+    const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank', 'noopener,noreferrer');
-    showToast('PDF salvo online e link de download incluído no WhatsApp!');
+    showToast(
+      `PDF salvo online e WhatsApp aberto para o veterinário (${targetVet?.name || rawPhone})!`
+    );
+  };
+
+  const handleSendOrderEmail = async (ord: Order) => {
+    // Regra de negócio: envio de laudos, arquivos e mensagens é SEMPRE para o veterinário, nunca para o tutor.
+    const targetVet = resolveOrderVet(ord);
+    const vetEmail = (targetVet?.email || '').trim();
+
+    if (!vetEmail) {
+      const vetLabel = targetVet?.name || 'veterinário solicitante';
+      showToast(
+        `O ${vetLabel} não possui e-mail cadastrado. Cadastre o e-mail do veterinário para enviar o laudo.`
+      );
+      return;
+    }
+
+    showToast('Gerando e salvando PDF online para envio por e-mail ao veterinário...');
+    const { pdfLink, attachmentLinks } = await publishOrderForSharing(ord);
+    const subject = `Laudo Laboratorial VetLife — Protocolo ${ord.protocol_code} (${ord.patient?.name || 'Paciente'})`;
+    const body = buildOrderShareMessage(ord, targetVet, pdfLink, attachmentLinks, false);
+
+    const mailtoUrl = `mailto:${encodeURIComponent(vetEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoUrl;
+    showToast(`PDF salvo online e e-mail preparado para o veterinário (${vetEmail})!`);
   };
 
   const renderOrderExamsDropdown = (ord: Order, scopeKey: string) => {
@@ -970,11 +1060,20 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
           <button
             type="button"
             onClick={() => handleSendOrderWhatsApp(ord)}
-            title="Enviar link do PDF por WhatsApp"
+            title="Enviar laudo por WhatsApp para o veterinário"
             className={`${pad} rounded-[980px] bg-emerald-600 hover:bg-emerald-700 text-white transition inline-flex items-center gap-1 font-semibold whitespace-nowrap cursor-pointer`}
           >
             <MessageCircle className={iconSize} />
             WhatsApp
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSendOrderEmail(ord)}
+            title="Enviar laudo por e-mail para o veterinário"
+            className={`${pad} rounded-[980px] bg-[#0071e3] hover:bg-[#0062c4] text-white transition inline-flex items-center gap-1 font-semibold whitespace-nowrap cursor-pointer`}
+          >
+            <Mail className={iconSize} />
+            E-mail
           </button>
           {editOrderBtn}
         </div>
@@ -3118,17 +3217,32 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                                 const waText = encodeURIComponent(
                                   `Olá ${col.clinic_or_tutor_name}! Aqui é da VetLife Laboratório Veterinário. Recebemos sua solicitação de coleta e gostaríamos de confirmar o agendamento.`
                                 );
-                                return waNumber ? (
-                                  <a
-                                    href={`https://wa.me/${waNumber}?text=${waText}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold inline-flex items-center gap-1 transition"
-                                  >
-                                    <MessageCircle className="w-3.5 h-3.5" />
-                                    Chamar no Whats
-                                  </a>
-                                ) : null;
+                                return (
+                                  <>
+                                    {waNumber && (
+                                      <a
+                                        href={`https://wa.me/${waNumber}?text=${waText}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Chamar veterinário/clínica no WhatsApp"
+                                        className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold inline-flex items-center gap-1 transition"
+                                      >
+                                        <MessageCircle className="w-3.5 h-3.5" />
+                                        Chamar no Whats
+                                      </a>
+                                    )}
+                                    {col.email && (
+                                      <a
+                                        href={`mailto:${encodeURIComponent(col.email)}?subject=${encodeURIComponent('VetLife — Confirmação de Solicitação de Coleta')}&body=${waText}`}
+                                        title="Enviar e-mail para o veterinário/clínica"
+                                        className="px-3 py-1.5 rounded-full bg-[#0071e3] hover:bg-[#0062c4] text-white text-[11px] font-semibold inline-flex items-center gap-1 transition"
+                                      >
+                                        <Mail className="w-3.5 h-3.5" />
+                                        E-mail
+                                      </a>
+                                    )}
+                                  </>
+                                );
                               })()}
                               {(st === 'pendente' || st === 'agendada') && col.id && (
                                 <button
@@ -4753,11 +4867,20 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handleSendOrderWhatsApp(ord)}
-                                      title="Enviar por WhatsApp"
+                                      title="Enviar laudo por WhatsApp para o veterinário"
                                       className="px-2 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer shrink-0"
                                     >
                                       <MessageCircle className="w-3 h-3" />
                                       <span>Whats</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendOrderEmail(ord)}
+                                      title="Enviar laudo por e-mail para o veterinário"
+                                      className="px-2 py-1 rounded-full bg-[#0071e3] hover:bg-[#0062c4] text-white text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer shrink-0"
+                                    >
+                                      <Mail className="w-3 h-3" />
+                                      <span>E-mail</span>
                                     </button>
                                     <button
                                       type="button"
@@ -5250,10 +5373,20 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => handleSendOrderWhatsApp(currentOrder)}
+                        title="Enviar laudo por WhatsApp para o veterinário"
                         className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                       >
                         <MessageCircle className="w-3.5 h-3.5 shrink-0" />
                         <span>Enviar por Whats</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSendOrderEmail(currentOrder)}
+                        title="Enviar laudo por e-mail para o veterinário"
+                        className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#0071e3] hover:bg-[#0062c4] text-white text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Mail className="w-3.5 h-3.5 shrink-0" />
+                        <span>Enviar por E-mail</span>
                       </button>
                     </>
                   )}
