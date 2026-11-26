@@ -12,13 +12,32 @@ const DEFAULT_FALLBACK_TEMPLATE: ReportTemplate = {
 };
 
 function sanitizePdfText(input: string): string {
-  return input
+  return String(input || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\x20-\x7E]/g, ' ')
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)');
+}
+
+function stripHtmlTagsToLines(html?: string): string[] {
+  if (!html) return [];
+  const text = String(html)
+    .replace(/\{\{[^}]+\}\}/g, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h1|h2|h3|h4|li|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"');
+
+  return text
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
 }
 
 /**
@@ -33,13 +52,18 @@ export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate):
     ? new Date(order.released_at).toLocaleString('pt-BR')
     : new Date().toLocaleString('pt-BR');
 
+  const headerLines = stripHtmlTagsToLines(tpl.header_html).slice(0, 2);
+  const footerLines = stripHtmlTagsToLines(tpl.footer_html).slice(0, 2);
+
   const lines: Array<{ text: string; size: number; bold?: boolean }> = [
     { text: 'VETLIFE DIAGNOSTICOS VETERINARIOS - vetlifelab.com.br', size: 13, bold: true },
-    { text: sanitizePdfText(tpl.header_html), size: 8 },
+    ...(headerLines.length > 0
+      ? headerLines.map((h) => ({ text: h.slice(0, 96), size: 8.5 }))
+      : [{ text: 'Central Diagnostica Veterinaria | Controle de Qualidade PNCQ', size: 8.5 }]),
     { text: '----------------------------------------------------------------------------------------', size: 9 },
     {
       text: `LAUDO LABORATORIAL OFICIAL | PROTOCOLO: ${order.protocol_code} | STATUS: ${order.status.toUpperCase()}`,
-      size: 11,
+      size: 10.5,
       bold: true,
     },
     { text: `Data de Emissao/Liberacao: ${releaseStr}`, size: 9 },
@@ -52,8 +76,8 @@ export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate):
       bold: true,
     },
     {
-      text: `TUTOR(A) RESPONSAVEL: ${order.patient?.tutor_name || '-'} | Contato: ${
-        order.patient?.tutor_phone || '-'
+      text: `TUTOR(A) RESPONSAVEL: ${order.patient?.tutor_name || '-'}${
+        order.patient?.tutor_phone ? ` | Contato: ${order.patient.tutor_phone}` : ''
       }`,
       size: 9,
     },
@@ -68,16 +92,19 @@ export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate):
   ];
 
   (order.results || []).forEach((res, idx) => {
-    lines.push({
-      text: `${idx + 1}. [${res.exam_code || 'EXM'}] ${res.exam_name || 'Exame'} (Setor: ${
-        res.section || 'Geral'
-      })`,
-      size: 10,
-      bold: true,
-    });
+    const examCode = res.exam_code || res.exam?.code || 'EXM';
+    const examName = res.exam_name || res.exam?.name || 'Exame Laboratorial';
+    const examSection = res.section || res.exam?.section || 'Geral';
+
+    for (const wrappedTitle of wrapPdfText(
+      `${idx + 1}. [${examCode}] ${examName} (Setor: ${examSection})`,
+      86
+    )) {
+      lines.push({ text: wrappedTitle, size: 9.5, bold: true });
+    }
 
     const entries = Object.entries(res.dynamic_content || {});
-    const fields = res.input_fields || [];
+    const fields = res.input_fields || res.exam?.input_fields || [];
     const refText =
       res.reference_snapshot ||
       res.matched_reference?.reference_text_content ||
@@ -87,18 +114,28 @@ export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate):
       lines.push({ text: '   - Parametros em processamento na bancada tecnica.', size: 9 });
     } else {
       lines.push({
-        text: '   PARAMETRO ANALISADO                | RESULTADO OBTIDO       | VALOR DE REFERENCIA',
+        text: '   PARAMETRO ANALISADO             | RESULTADO OBTIDO       | VALOR DE REFERENCIA',
         size: 8,
         bold: true,
       });
       entries.forEach(([key, val]) => {
         const meta = fields.find((f) => f.field_name === key);
         const rawLabel = meta?.field_label || key;
-        const label = rawLabel.slice(0, 34).padEnd(34, ' ');
         const unit = meta?.unit ? ` ${meta.unit}` : '';
-        const valStr = `${val}${unit}`.slice(0, 22).padEnd(22, ' ');
-        const sideRef = resolveSideBySideReference(key, rawLabel, refText).slice(0, 36);
-        lines.push({ text: `   ${label} | ${valStr} | ${sideRef}`, size: 8.5 });
+        const valText = `${val}${unit}`;
+        const sideRefFull = resolveSideBySideReference(key, rawLabel, refText);
+
+        const labelLines = wrapPdfText(rawLabel, 30);
+        const valLines = wrapPdfText(valText, 21);
+        const refLines = wrapPdfText(sideRefFull, 34);
+        const rowCount = Math.max(labelLines.length, valLines.length, refLines.length);
+
+        for (let rIdx = 0; rIdx < rowCount; rIdx++) {
+          const c1 = (labelLines[rIdx] || '').padEnd(31, ' ');
+          const c2 = (valLines[rIdx] || '').padEnd(22, ' ');
+          const c3 = refLines[rIdx] || '';
+          lines.push({ text: `   ${c1} | ${c2} | ${c3}`, size: 8 });
+        }
       });
     }
 
@@ -116,55 +153,89 @@ export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate):
     size: 9,
   });
   lines.push({
-    text: 'Responsavel Tecnico: Dra. Camila Prado - Biomedica Veterinaria CRBM-1 9841',
-    size: 9,
+    text: 'Responsavel Tecnico: Dra. Maysa Barbosa de Almeida (RT) & Dra. Kerollyn Passos Silva',
+    size: 8.5,
     bold: true,
   });
-  lines.push({
-    text: sanitizePdfText(tpl.footer_html),
-    size: 8,
+  footerLines.forEach((fl) => {
+    lines.push({ text: fl.slice(0, 96), size: 8 });
   });
   lines.push({
-    text: `Autenticidade verificavel em https://vetlifelab.com.br/consulta — Protocolo ${order.protocol_code}`,
+    text: `Autenticidade verificavel em https://vetlifelab.com.br/consulta - Protocolo ${order.protocol_code}`,
     size: 8,
   });
 
-  // Build PDF content stream
-  let y = 800;
-  const streamCommands: string[] = ['BT'];
-  lines.slice(0, 56).forEach((line) => {
-    const font = line.bold ? '/F2' : '/F1';
-    const safe = sanitizePdfText(line.text);
-    streamCommands.push(`${font} ${line.size} Tf`);
-    streamCommands.push(`1 0 0 1 40 ${y} Tm`);
-    streamCommands.push(`(${safe}) Tj`);
-    y -= line.size + 4;
-  });
-  streamCommands.push('ET');
-  const streamContent = streamCommands.join('\n');
+  // Paginar automaticamente em folhas A4 (595 x 842 pt)
+  const pageChunks: Array<Array<{ text: string; size: number; bold?: boolean }>> = [];
+  let currentChunk: Array<{ text: string; size: number; bold?: boolean }> = [];
+  let yCursor = 798;
 
-  const objects: string[] = [
-    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
-    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj\n',
-    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
-    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
-    `6 0 obj\n<< /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream\nendobj\n`,
-  ];
+  for (const item of lines) {
+    const step = item.size + 4.5;
+    if (yCursor - step < 48) {
+      pageChunks.push(currentChunk);
+      currentChunk = [];
+      yCursor = 798;
+    }
+    currentChunk.push(item);
+    yCursor -= step;
+  }
+  if (currentChunk.length > 0) {
+    pageChunks.push(currentChunk);
+  }
+
+  const objects: string[] = [];
+  const pageObjectIds: number[] = [];
+  const contentObjectIds: number[] = [];
+  let nextObjId = 5;
+
+  for (let i = 0; i < pageChunks.length; i++) {
+    pageObjectIds.push(nextObjId++);
+    contentObjectIds.push(nextObjId++);
+  }
+
+  objects[1] = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n';
+  objects[2] = `2 0 obj\n<< /Type /Pages /Kids [${pageObjectIds
+    .map((id) => `${id} 0 R`)
+    .join(' ')}] /Count ${pageObjectIds.length} >>\nendobj\n`;
+  objects[3] = '3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n';
+  objects[4] = '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>\nendobj\n';
+
+  for (let i = 0; i < pageChunks.length; i++) {
+    const pId = pageObjectIds[i];
+    const cId = contentObjectIds[i];
+    const chunk = pageChunks[i];
+
+    let y = 798;
+    const streamCommands: string[] = ['BT'];
+    chunk.forEach((line) => {
+      const font = line.bold ? '/F2' : '/F1';
+      const safe = sanitizePdfText(line.text);
+      streamCommands.push(`${font} ${line.size} Tf`);
+      streamCommands.push(`1 0 0 1 36 ${y.toFixed(1)} Tm`);
+      streamCommands.push(`(${safe}) Tj`);
+      y -= line.size + 4.5;
+    });
+    streamCommands.push('ET');
+    const streamContent = streamCommands.join('\n');
+
+    objects[pId] = `${pId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${cId} 0 R >>\nendobj\n`;
+    objects[cId] = `${cId} 0 obj\n<< /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream\nendobj\n`;
+  }
 
   let pdf = '%PDF-1.4\n';
   const offsets: number[] = [0];
-  objects.forEach((obj) => {
-    offsets.push(pdf.length);
-    pdf += obj;
-  });
+  for (let id = 1; id < nextObjId; id++) {
+    offsets[id] = pdf.length;
+    pdf += objects[id];
+  }
 
   const xrefStart = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i <= objects.length; i++) {
-    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  pdf += `xref\n0 ${nextObjId}\n0000000000 65535 f \n`;
+  for (let id = 1; id < nextObjId; id++) {
+    pdf += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
   }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+  pdf += `trailer\n<< /Size ${nextObjId} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
 
   const blob = new Blob([pdf], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);

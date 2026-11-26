@@ -80,31 +80,45 @@ export function buildOrderPdfBuffer(order: Order, singleResultId?: string): Buff
   ];
 
   resultsToInclude.forEach((res, idx) => {
-    lines.push({
-      text: `${idx + 1}. [${res.exam?.code || 'EXM'}] ${res.exam?.name || 'Exame Laboratorial'} (Setor: ${
-        res.exam?.section || 'Geral'
-      })`,
-      size: 10,
-      bold: true,
-    });
+    const examCode = res.exam?.code || (res as any).exam_code || 'EXM';
+    const examName = res.exam?.name || (res as any).exam_name || 'Exame Laboratorial';
+    const examSection = res.exam?.section || (res as any).section || 'Geral';
+
+    for (const wrappedTitle of wrapLine(
+      `${idx + 1}. [${examCode}] ${examName} (Setor: ${examSection})`,
+      86
+    )) {
+      lines.push({ text: wrappedTitle, size: 9.5, bold: true });
+    }
 
     const entries = Object.entries(res.dynamic_content || {});
-    const fields = res.exam?.input_fields || [];
+    const fields = res.exam?.input_fields || (res as any).input_fields || [];
     if (entries.length === 0) {
       lines.push({ text: '   - Parametros em processamento na bancada tecnica.', size: 9 });
     } else {
       lines.push({
-        text: '   PARAMETRO ANALISADO                | RESULTADO OBTIDO       | VALOR DE REFERENCIA',
+        text: '   PARAMETRO ANALISADO             | RESULTADO OBTIDO       | VALOR DE REFERENCIA',
         size: 8,
         bold: true,
       });
       entries.forEach(([key, val]) => {
-        const meta = fields.find((f) => f.field_name === key);
-        const label = (meta?.field_label || key).slice(0, 34).padEnd(34, ' ');
+        const meta = fields.find((f: any) => f.field_name === key);
+        const rawLabel = meta?.field_label || key;
         const unit = meta?.unit ? ` ${meta.unit}` : '';
-        const valStr = `${val}${unit}`.slice(0, 22).padEnd(22, ' ');
-        const paramRef = resolveSideBySideReference(key, meta?.field_label || key, res.reference_snapshot).slice(0, 36);
-        lines.push({ text: `   ${label} | ${valStr} | ${paramRef}`, size: 8.5 });
+        const valText = `${val}${unit}`;
+        const paramRef = resolveSideBySideReference(key, rawLabel, res.reference_snapshot);
+
+        const labelLines = wrapLine(rawLabel, 30);
+        const valLines = wrapLine(valText, 21);
+        const refLines = wrapLine(paramRef, 34);
+        const rowCount = Math.max(labelLines.length, valLines.length, refLines.length);
+
+        for (let rIdx = 0; rIdx < rowCount; rIdx++) {
+          const c1 = (labelLines[rIdx] || '').padEnd(31, ' ');
+          const c2 = (valLines[rIdx] || '').padEnd(22, ' ');
+          const c3 = refLines[rIdx] || '';
+          lines.push({ text: `   ${c1} | ${c2} | ${c3}`, size: 8 });
+        }
       });
     }
 
@@ -164,9 +178,9 @@ export function buildOrderPdfBuffer(order: Order, singleResultId?: string): Buff
     .map((id) => `${id} 0 R`)
     .join(' ')}] /Count ${pageObjectIds.length} >>\nendobj\n`;
   objects[3] =
-    '3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n';
+    '3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n';
   objects[4] =
-    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n';
+    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>\nendobj\n';
 
   for (let i = 0; i < pageChunks.length; i++) {
     const pId = pageObjectIds[i];

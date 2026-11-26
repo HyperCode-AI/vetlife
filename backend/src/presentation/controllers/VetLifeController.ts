@@ -8,7 +8,11 @@ import { PublicAndPortalUseCases } from '../../application/use-cases/PublicAndPo
 import { ReferenceAndTemplateUseCases } from '../../application/use-cases/ReferenceAndTemplateUseCases';
 import { IVetLifeRepository } from '../../domain/repositories/IVetLifeRepository';
 import { ForbiddenError } from '../../domain/errors/AppError';
-import { buildThermalLabelsPdfBuffer, getLocalPdfBuffer } from '../../utils/pdfStorage';
+import {
+  buildOrderPdfBuffer,
+  buildThermalLabelsPdfBuffer,
+  getLocalPdfBuffer,
+} from '../../utils/pdfStorage';
 import {
   createCollectionRequestSchema,
   createExamReferenceSchema,
@@ -1086,7 +1090,32 @@ export class VetLifeController {
     res: Response
   ): Promise<void> => {
     const rawPath = String(req.query.path || '');
-    const buffer = getLocalPdfBuffer(rawPath);
+    let buffer = getLocalPdfBuffer(rawPath);
+
+    // Fallback stateless (Vercel Serverless): regenera o PDF direto do banco pelo protocolo
+    if (!buffer && rawPath) {
+      const protocolMatch = rawPath.match(/laudos\/([^/]+)\/([^/]+)\.pdf$/i);
+      if (protocolMatch) {
+        const protocolCode = decodeURIComponent(protocolMatch[1]);
+        const fileSlug = decodeURIComponent(protocolMatch[2]);
+        try {
+          const order = await this.repo.findOrderByProtocolCode(protocolCode);
+          if (order) {
+            let singleResultId: string | undefined;
+            if (fileSlug.toLowerCase().startsWith('exame-')) {
+              const matchedRes = (order.results || []).find((r) =>
+                fileSlug.endsWith(r.id)
+              );
+              singleResultId = matchedRes?.id;
+            }
+            buffer = buildOrderPdfBuffer(order, singleResultId);
+          }
+        } catch {
+          // segue para 404 abaixo se não localizado
+        }
+      }
+    }
+
     if (!buffer) {
       res.status(404).json({ success: false, message: 'Arquivo PDF não encontrado.' });
       return;
