@@ -656,7 +656,7 @@ export const App: React.FC = () => {
       ) : null}
 
       {/* CORPO: SIDEBAR EXPANSÍVEL/RECOLHÍVEL + CONTEÚDO PRINCIPAL */}
-      <div className="flex flex-1 min-w-0">
+      <div className="flex flex-1 min-w-0 items-stretch">
         {showInternalHeader && (
           <>
             {/* Overlay Mobile da Sidebar */}
@@ -669,15 +669,15 @@ export const App: React.FC = () => {
 
             <aside
               aria-label="Menu lateral de módulos"
-              className={`no-print bg-white border-r border-slate-200/80 flex flex-col justify-between transition-all duration-200 shrink-0 ${
+              className={`no-print bg-white border-r border-slate-200/80 flex flex-col transition-all duration-200 shrink-0 ${
                 sidebarCollapsed ? 'md:w-[74px]' : 'md:w-[252px]'
               } ${
                 mobileSidebarOpen
-                  ? 'fixed top-[60px] bottom-0 left-0 z-40 w-[260px] shadow-2xl'
-                  : 'hidden md:flex md:sticky md:top-[60px] md:h-[calc(100vh-60px)] md:z-20'
+                  ? 'fixed top-[60px] bottom-0 left-0 z-40 w-[260px] shadow-2xl md:static md:shadow-none md:z-20 md:min-h-[calc(100dvh-60px)]'
+                  : 'hidden md:flex md:min-h-[calc(100dvh-60px)] md:z-20'
               }`}
             >
-              <div className="p-3 space-y-2 overflow-y-auto flex-1">
+              <div className="p-3 space-y-2 overflow-y-auto flex-1 md:flex-none md:sticky md:top-[60px] md:max-h-[calc(100dvh-60px)]">
                 {/* Botão superior de recolher/expandir (somente setinha) */}
                 <div
                   className={`flex items-center ${

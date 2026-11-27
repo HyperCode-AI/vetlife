@@ -108,24 +108,214 @@ export function resolveReferenceForPatient(
   return speciesMatch || examRefs[0];
 }
 
+export function decodeHtmlEntities(str: string): string {
+  if (!str) return '';
+  let out = String(str);
+  // Decode double-escaped ampersands first so sequences like &amp;nbsp; or &amp;nbsp decode cleanly
+  out = out.replace(/&amp;/gi, '&');
+  out = out
+    .replace(/&nbsp;?/gi, ' ')
+    .replace(/&#160;?/gi, ' ')
+    .replace(/&#x0*a0;?/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+  return out;
+}
+
+function escapeHtmlText(str: string): string {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function stripFormControlsToText(html: string): string {
+  let out = String(html || '');
+
+  // Remove <button>...</button> completely
+  out = out.replace(/<button\b[^>]*>[\s\S]*?<\/button>/gi, '');
+
+  // Replace <input ...> with its non-empty value (plain text), otherwise remove
+  out = out.replace(/<input\b([^>]*)\/?>/gi, (_match, attrs: string) => {
+    const typeMatch = attrs.match(/\btype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const inputType = (typeMatch?.[1] || typeMatch?.[2] || typeMatch?.[3] || 'text').toLowerCase();
+    if (
+      inputType === 'hidden' ||
+      inputType === 'submit' ||
+      inputType === 'button' ||
+      inputType === 'reset' ||
+      inputType === 'image' ||
+      inputType === 'file'
+    ) {
+      return '';
+    }
+    const valMatch = attrs.match(/\bvalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const rawVal = valMatch?.[1] ?? valMatch?.[2] ?? valMatch?.[3] ?? '';
+    const cleanedVal = decodeHtmlEntities(rawVal).trim();
+    return cleanedVal ? escapeHtmlText(cleanedVal) : '';
+  });
+
+  // Replace <textarea ...>content</textarea> with trimmed plain text, or remove if empty
+  out = out.replace(/<textarea\b[^>]*>([\s\S]*?)<\/textarea>/gi, (_match, content: string) => {
+    const cleaned = decodeHtmlEntities(content.replace(/<[^>]+>/g, ' ')).trim();
+    return cleaned ? escapeHtmlText(cleaned) : '';
+  });
+
+  // Replace <select ...>...</select> with selected <option> text, or remove if none
+  out = out.replace(/<select\b[^>]*>([\s\S]*?)<\/select>/gi, (_match, inner: string) => {
+    const selectedOpt = inner.match(/<option\b[^>]*\bselected\b[^>]*>([\s\S]*?)<\/option>/i);
+    if (!selectedOpt) return '';
+    const cleaned = decodeHtmlEntities(selectedOpt[1].replace(/<[^>]+>/g, ' ')).trim();
+    return cleaned ? escapeHtmlText(cleaned) : '';
+  });
+
+  return out;
+}
+
+export function sanitizeReportHtmlFragment(html: string): string {
+  if (!html) return '';
+  let out = String(html);
+
+  // 1. Strip form controls (<input>, <textarea>, <select>, <button>)
+  out = stripFormControlsToText(out);
+
+  // 2. Decode &nbsp; / &nbsp / &#160; / &amp;nbsp; cleanly to regular spaces without corrupting HTML tags
+  out = out
+    .replace(/&amp;nbsp;?/gi, ' ')
+    .replace(/&nbsp;?/gi, ' ')
+    .replace(/&#160;?/gi, ' ')
+    .replace(/&#x0*a0;?/gi, ' ')
+    .replace(/\u00a0/g, ' ');
+
+  // 3. Strip excessive inline min-height / height / negative margin styles on non-<img> elements
+  out = out.replace(/<([a-z0-9]+)\b([^>]*)>/gi, (fullTag, tagName: string, attrs: string) => {
+    const lowerTag = tagName.toLowerCase();
+    if (lowerTag === 'img' || !/\bstyle\s*=/i.test(attrs)) {
+      return fullTag;
+    }
+    const cleanedAttrs = attrs.replace(
+      /\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi,
+      (_styleMatch, dQuoted: string, sQuoted: string) => {
+        const rawStyle = dQuoted ?? sQuoted ?? '';
+        const isDecorativeBar = /\bbackground(?:-color)?\s*:/i.test(rawStyle);
+        const declarations = rawStyle
+          .split(';')
+          .map((d) => d.trim())
+          .filter(Boolean)
+          .filter((decl) => {
+            const colonIdx = decl.indexOf(':');
+            if (colonIdx === -1) return false;
+            const prop = decl.slice(0, colonIdx).trim().toLowerCase();
+            const val = decl.slice(colonIdx + 1).trim().toLowerCase();
+
+            // Always remove min-height
+            if (prop === 'min-height') return false;
+
+            // Remove height unless it is a thin decorative bar (<= 6px) with background
+            if (prop === 'height') {
+              const pxMatch = val.match(/^(\d+(?:\.\d+)?)px$/);
+              if (isDecorativeBar && pxMatch && parseFloat(pxMatch[1]) <= 6) {
+                return true;
+              }
+              return false;
+            }
+
+            // Remove negative margins that cause overlapping headings/cards
+            if (
+              (prop === 'margin' ||
+                prop === 'margin-top' ||
+                prop === 'margin-bottom' ||
+                prop === 'margin-left' ||
+                prop === 'margin-right') &&
+              /(?:^|\s)-\d/.test(val)
+            ) {
+              return false;
+            }
+
+            return true;
+          });
+
+        return declarations.length > 0 ? `style="${declarations.join(';')};"` : '';
+      }
+    );
+    return `<${tagName}${cleanedAttrs}>`;
+  });
+
+  // 4. Remove empty <tr>...</tr> rows where all cells contain only whitespace/punctuation/empty tags
+  out = out.replace(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi, (trHtml) => {
+    if (/<(?:img|hr|svg)\b/i.test(trHtml)) return trHtml;
+    const textOnly = decodeHtmlEntities(trHtml.replace(/<[^>]+>/g, ' '))
+      .replace(/[\s\-–—:._|·•]+/g, '')
+      .trim();
+    return textOnly.length === 0 ? '' : trHtml;
+  });
+
+  // 5. Remove empty <p>, <div>, <span> blocks containing only whitespace / &nbsp; / <br>
+  for (let pass = 0; pass < 3; pass++) {
+    const before = out;
+    out = out.replace(
+      /<(p|div|span)\b([^>]*)>([\s\S]*?)<\/\1>/gi,
+      (fullMatch, _tag: string, attrs: string, inner: string) => {
+        // Preserve decorative bars / signature lines / elements with media or tables
+        if (/\b(?:background|border)\b/i.test(attrs)) return fullMatch;
+        if (/<(?:img|table|hr|svg)\b/i.test(inner)) return fullMatch;
+        const innerClean = decodeHtmlEntities(
+          inner.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' ')
+        ).trim();
+        return innerClean.length === 0 ? '' : fullMatch;
+      }
+    );
+    if (out === before) break;
+  }
+
+  // 6. Collapse 2+ consecutive <br> tags into a single <br/>
+  out = out.replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br/>');
+
+  // Trim leading/trailing <br/>
+  out = out.replace(/^(?:\s*<br\s*\/?>\s*)+|(?:\s*<br\s*\/?>\s*)+$/gi, '').trim();
+
+  return out;
+}
+
 export function resolveSideBySideReference(
   fieldName: string,
   fieldLabel: string,
   referenceSnapshot?: string
 ): string {
-  const raw = String(referenceSnapshot || '')
+  const withoutControls = stripFormControlsToText(String(referenceSnapshot || ''));
+  const withLineBreaks = withoutControls
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:tr|p|div|li)>/gi, '\n')
+    .replace(/<\/(?:td|th)>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ');
+
+  const raw = decodeHtmlEntities(withLineBreaks)
+    .replace(/[ \t]+/g, ' ')
     .trim();
-  if (!raw) return 'Conforme faixa da espécie';
+
+  const isEmptyValue = (val: string) => {
+    const t = val.trim();
+    return !t || /^[\s\-–—:._|·•]+$/.test(t);
+  };
+
+  if (isEmptyValue(raw)) return '—';
 
   const segments = raw
     .split(/\||;|\n/)
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter((s) => !isEmptyValue(s));
 
-  if (segments.length <= 1) {
-    return raw;
+  if (segments.length === 0) {
+    return '—';
+  }
+
+  if (segments.length === 1) {
+    return segments[0];
   }
 
   const normalize = (s: string) =>
@@ -148,11 +338,12 @@ export function resolveSideBySideReference(
       (labelTokens.length > 0 && labelTokens.some((tok) => segHeader.includes(tok))) ||
       (keyTokens.length > 0 && keyTokens.some((tok) => segHeader.includes(tok)))
     ) {
-      return colonIdx !== -1 ? seg.slice(colonIdx + 1).trim() : seg;
+      const matched = colonIdx !== -1 ? seg.slice(colonIdx + 1).trim() : seg;
+      return isEmptyValue(matched) ? '—' : matched;
     }
   }
 
-  return raw;
+  return segments.join(' | ');
 }
 
 export function renderReportWithDynamicTags(
@@ -348,31 +539,32 @@ export const DEFAULT_MERGED_REPORT_TEMPLATE: Pick<
 };
 
 export function formatReferenceLinesHtml(raw: string): string {
-  const str = String(raw || '').trim();
-  if (!str) return '';
+  const withoutControls = stripFormControlsToText(String(raw || '')).trim();
+  if (!withoutControls) return '—';
 
-  const hasHtml = /<[a-z][\s\S]*>/i.test(str);
+  const hasHtml = /<[a-z][\s\S]*>/i.test(withoutControls);
   if (hasHtml) {
-    return str
+    const sanitized = sanitizeReportHtmlFragment(withoutControls)
       .replace(/\s*\|\s*/g, '<br/>')
       .replace(/\r?\n/g, '<br/>')
       .replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br/>')
+      .replace(/^(?:\s*<br\s*\/?>\s*)+|(?:\s*<br\s*\/?>\s*)+$/gi, '')
       .trim();
+    const visibleText = decodeHtmlEntities(sanitized.replace(/<[^>]+>/g, ' '))
+      .replace(/[\s\-–—]+/g, '')
+      .trim();
+    return visibleText ? sanitized : '—';
   }
 
-  const escapeHtml = (s: string) =>
-    s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-
-  return str
+  const decoded = decodeHtmlEntities(withoutControls);
+  const lines = decoded
     .split(/\||\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map(escapeHtml)
-    .join('<br/>');
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .filter((line) => line.length > 0 && !/^[\-–—]+$/.test(line));
+
+  if (lines.length === 0) return '—';
+
+  return lines.map(escapeHtmlText).join('<br/>');
 }
 
 export function renderReportHtmlWithDynamicTags(
@@ -395,7 +587,7 @@ export function renderReportHtmlWithDynamicTags(
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
-  const resultsHtml = (order.results || [])
+  const resultsInnerHtml = (order.results || [])
     .map((res) => {
       const entries = Object.entries(res.dynamic_content || {});
       const fields = res.input_fields || res.exam?.input_fields || [];
@@ -412,9 +604,8 @@ export function renderReportHtmlWithDynamicTags(
                 const rawLabel = fieldMeta?.field_label || k;
                 const label = escapeHtml(rawLabel);
                 const unit = fieldMeta?.unit ? ` ${escapeHtml(fieldMeta.unit)}` : '';
-                const sideRefHtml = formatReferenceLinesHtml(
-                  resolveSideBySideReference(k, rawLabel, refText)
-                );
+                const sideRefHtml =
+                  formatReferenceLinesHtml(resolveSideBySideReference(k, rawLabel, refText)) || '—';
                 const rowBg = idx % 2 === 1 ? '#f8fbfb' : '#ffffff';
                 return `<tr style="background:${rowBg};">
                   <td style="padding:7px 10px;font-weight:600;color:#0f172a;border:1px solid #cbd5e1;vertical-align:top;">${label}</td>
@@ -428,7 +619,7 @@ export function renderReportHtmlWithDynamicTags(
           <span>[${escapeHtml(res.exam_code || res.exam?.code || 'EXAME')}] ${escapeHtml(res.exam_name || res.exam?.name || '')}</span>
           <span style="font-weight:600;color:#118a8a;font-size:10.5px;">${escapeHtml(res.section || res.exam?.section || 'Geral')}</span>
         </div>
-        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-top:0;margin-bottom:0;">
           <thead>
             <tr style="background:#118a8a;text-align:left;color:#ffffff;font-size:10.5px;text-transform:uppercase;">
               <th style="padding:6px 10px;width:36%;font-weight:700;border:1px solid #118a8a;">Parâmetro / Analito</th>
@@ -442,13 +633,15 @@ export function renderReportHtmlWithDynamicTags(
     })
     .join('');
 
+  const resultsHtml = `<div style="margin-top:12px;margin-bottom:14px;clear:both;display:block;">${resultsInnerHtml}</div>`;
+
   const referencesHtml = (order.results || [])
     .map((res) => {
       const rawRef =
         res.reference_snapshot ||
         res.matched_reference?.reference_text_content ||
         'Referência padrão da espécie conforme literatura clínica.';
-      const formattedRef = formatReferenceLinesHtml(rawRef);
+      const formattedRef = formatReferenceLinesHtml(rawRef) || '—';
       return `<div style="margin-bottom:6px;"><div style="color:#0b2240;">• <strong>${escapeHtml(
         res.exam_name || res.exam?.name || 'Exame'
       )}:</strong></div><div style="margin-left:12px;color:#334155;">${formattedRef}</div></div>`;
@@ -478,12 +671,14 @@ export function renderReportHtmlWithDynamicTags(
   const firstExamSection =
     order.results?.[0]?.section || order.results?.[0]?.exam?.section || 'Geral';
   const logoHtml = `<img src="/images/vetlife-logo.jpg" alt="VetLife" style="height:46px;width:auto;object-fit:contain;border-radius:8px;vertical-align:middle;" />`;
+  const sanitizedHeaderRaw = sanitizeReportHtmlFragment(template.header_html || '');
+  const sanitizedBodyRaw = sanitizeReportHtmlFragment(template.body_template || '');
+  const sanitizedFooterRaw = sanitizeReportHtmlFragment(template.footer_html || '');
   const hasLogoInHeader =
-    (template.header_html || '').includes('{{logo}}') ||
-    (template.header_html || '').includes('<img');
+    sanitizedHeaderRaw.includes('{{logo}}') || sanitizedHeaderRaw.includes('<img');
   const cleanHeaderHtml = hasLogoInHeader
-    ? template.header_html || ''
-    : `<div style="display:flex;align-items:center;gap:12px;">${logoHtml}<div style="flex:1;">${template.header_html || ''}</div></div>`;
+    ? sanitizedHeaderRaw
+    : `<div style="display:flex;align-items:center;gap:12px;">${logoHtml}<div style="flex:1;">${sanitizedHeaderRaw}</div></div>`;
 
   const replacements: Record<string, string> = {
     '{{logo}}': logoHtml,
@@ -508,10 +703,10 @@ export function renderReportHtmlWithDynamicTags(
     '{{observacoes}}': observationsHtml,
   };
 
-  let html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.45;">
+  let html = `<div class="vetlife-report-root" style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.45;">
     <div>${cleanHeaderHtml}</div>
-    <div style="margin:12px 0;">${template.body_template || ''}</div>
-    <div>${template.footer_html || ''}</div>
+    <div style="margin:12px 0;">${sanitizedBodyRaw}</div>
+    <div>${sanitizedFooterRaw}</div>
   </div>`;
 
   Object.entries(replacements).forEach(([tag, value]) => {

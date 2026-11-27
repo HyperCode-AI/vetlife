@@ -12,6 +12,192 @@ const DEFAULT_FALLBACK_TEMPLATE: ReportTemplate = {
   is_default: true,
 };
 
+const REPORT_SCOPED_CSS = `
+  .vetlife-report-root h1,
+  .vetlife-report-root h2,
+  .vetlife-report-root h3,
+  .vetlife-report-root h4 {
+    display: block !important;
+    position: static !important;
+    line-height: 1.4 !important;
+    margin-top: 12px !important;
+    margin-bottom: 10px !important;
+    clear: both !important;
+  }
+  .vetlife-report-root p {
+    line-height: 1.45;
+    margin-top: 4px;
+    margin-bottom: 6px;
+  }
+  .vetlife-report-root table {
+    margin-top: 8px;
+    margin-bottom: 10px;
+    border-collapse: collapse;
+  }
+  .vetlife-report-root input,
+  .vetlife-report-root textarea,
+  .vetlife-report-root select,
+  .vetlife-report-root button {
+    display: none !important;
+  }
+`;
+
+/**
+ * Live DOM cleanup pass before html2canvas / print to guarantee zero form inputs,
+ * zero literal &nbsp; artifacts, zero empty spacer rows/blocks, and zero negative-margin overlaps.
+ */
+function cleanupRenderedReportDom(root: HTMLElement): void {
+  const doc = root.ownerDocument || document;
+
+  // 1. Replace input / textarea / select with plain text (or remove if empty) and remove buttons
+  const formControls = Array.from(root.querySelectorAll('input, textarea, select, button'));
+  for (const el of formControls) {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'button') {
+      el.remove();
+      continue;
+    }
+
+    let val = '';
+    if (tag === 'input') {
+      const inputEl = el as HTMLInputElement;
+      const inputType = (inputEl.getAttribute('type') || 'text').toLowerCase();
+      if (
+        inputType !== 'hidden' &&
+        inputType !== 'submit' &&
+        inputType !== 'button' &&
+        inputType !== 'reset' &&
+        inputType !== 'image' &&
+        inputType !== 'file'
+      ) {
+        val = inputEl.value || inputEl.getAttribute('value') || '';
+      }
+    } else if (tag === 'textarea') {
+      const taEl = el as HTMLTextAreaElement;
+      val = taEl.value || taEl.textContent || '';
+    } else if (tag === 'select') {
+      const selEl = el as HTMLSelectElement;
+      const selectedOpt = selEl.options?.[selEl.selectedIndex];
+      val = selectedOpt ? selectedOpt.textContent || '' : '';
+    }
+
+    const cleanedVal = val
+      .replace(/&amp;nbsp;?/gi, ' ')
+      .replace(/&nbsp;?/gi, ' ')
+      .replace(/\u00a0/g, ' ')
+      .trim();
+
+    if (cleanedVal) {
+      el.replaceWith(doc.createTextNode(cleanedVal));
+    } else {
+      el.remove();
+    }
+  }
+
+  // 2. Walk text nodes and replace any stray literal &nbsp; or &nbsp with a regular space
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let currentNode = walker.nextNode();
+  while (currentNode) {
+    if (currentNode.nodeValue && /&(?:amp;)?nbsp;?/i.test(currentNode.nodeValue)) {
+      currentNode.nodeValue = currentNode.nodeValue
+        .replace(/&amp;nbsp;?/gi, ' ')
+        .replace(/&nbsp;?/gi, ' ');
+    }
+    currentNode = walker.nextNode();
+  }
+
+  // 3. Remove empty <tr> rows whose cells contain only whitespace / nbsp
+  const rows = Array.from(root.querySelectorAll('tr'));
+  for (const tr of rows) {
+    if (tr.querySelector('img, hr, svg')) continue;
+    const text = (tr.textContent || '').replace(/\u00a0/g, ' ').trim();
+    if (text === '') {
+      tr.remove();
+    }
+  }
+
+  // 4. Remove empty leaf <p> and <div> blocks (bottom-up so empty wrappers collapse too)
+  const blocks = Array.from(root.querySelectorAll('p, div')).reverse();
+  for (const el of blocks) {
+    if (el === root || el.classList.contains('vetlife-report-root')) continue;
+    if (el.querySelector('img, table, hr, svg')) continue;
+    const htmlEl = el as HTMLElement;
+    const inlineStyle = (htmlEl.getAttribute('style') || '').toLowerCase();
+    // Preserve thin decorative bars and signature lines
+    if (inlineStyle.includes('background') || inlineStyle.includes('border')) continue;
+    const text = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
+    if (text === '') {
+      el.remove();
+    }
+  }
+
+  // 5. Reset any negative marginTop / marginBottom and strip excessive min-height so nothing overlaps
+  const allElements = Array.from(root.querySelectorAll<HTMLElement>('*'));
+  for (const el of allElements) {
+    const mt = parseFloat(el.style.marginTop || '');
+    if (!Number.isNaN(mt) && mt < 0) {
+      el.style.marginTop = '0px';
+    }
+    const mb = parseFloat(el.style.marginBottom || '');
+    if (!Number.isNaN(mb) && mb < 0) {
+      el.style.marginBottom = '0px';
+    }
+    if (el.tagName.toLowerCase() !== 'img' && el.style.minHeight) {
+      el.style.minHeight = '';
+    }
+  }
+}
+
+/**
+ * Finds a clean white horizontal row near targetEndY (scanning upward within maxLookbackPx)
+ * so multi-page PDF slicing avoids cutting through lines of text where avoidable.
+ */
+function findCleanPageBreakY(
+  canvas: HTMLCanvasElement,
+  startY: number,
+  targetEndY: number,
+  maxLookbackPx: number
+): number {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return targetEndY;
+
+  const width = canvas.width;
+  const searchTop = Math.max(startY + Math.floor((targetEndY - startY) * 0.65), targetEndY - maxLookbackPx);
+  const bandHeight = targetEndY - searchTop;
+  if (bandHeight <= 4) return targetEndY;
+
+  const imgData = ctx.getImageData(0, searchTop, width, bandHeight).data;
+  const stepX = 4;
+  const samplesPerRow = Math.ceil(width / stepX);
+
+  const isNearlyWhiteRow = (localY: number): boolean => {
+    const rowOffset = localY * width * 4;
+    let nonWhite = 0;
+    const maxNonWhite = Math.max(2, Math.floor(samplesPerRow * 0.025));
+    for (let x = 0; x < width; x += stepX) {
+      const idx = rowOffset + x * 4;
+      if (imgData[idx] < 242 || imgData[idx + 1] < 242 || imgData[idx + 2] < 242) {
+        nonWhite += 1;
+        if (nonWhite > maxNonWhite) return false;
+      }
+    }
+    return true;
+  };
+
+  // Prefer a small 3px white gap so we don't break on a 1px fluke inside a glyph
+  for (let localY = bandHeight - 2; localY >= 2; localY--) {
+    if (
+      isNearlyWhiteRow(localY) &&
+      isNearlyWhiteRow(localY - 1) &&
+      isNearlyWhiteRow(localY + 1)
+    ) {
+      return searchTop + localY;
+    }
+  }
+
+  return targetEndY;
+}
+
 function sanitizePdfText(input: string): string {
   return String(input || '')
     .normalize('NFD')
@@ -74,11 +260,12 @@ export async function generateOrderPdfBlob(
   container.style.zIndex = '-1';
 
   container.innerHTML = `
+    <style>${REPORT_SCOPED_CSS}</style>
     <div style="position:relative;width:100%;background:#ffffff;">
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;opacity:0.045;">
         <img src="/images/vetlife-logo.jpg" alt="" style="width:340px;height:auto;object-fit:contain;" />
       </div>
-      <div style="position:relative;z-index:1;">
+      <div class="vetlife-report-root" style="position:relative;z-index:1;">
         ${renderedHtml}
       </div>
     </div>
@@ -87,6 +274,11 @@ export async function generateOrderPdfBlob(
   document.body.appendChild(container);
 
   try {
+    const reportRoot = container.querySelector('.vetlife-report-root') as HTMLElement | null;
+    if (reportRoot) {
+      cleanupRenderedReportDom(reportRoot);
+    }
+
     await waitForImagesLoaded(container);
 
     const canvas = await html2canvas(container, {
@@ -111,12 +303,26 @@ export async function generateOrderPdfBlob(
 
     const pxPerMm = canvas.width / pageWidthMm;
     const sliceHeightPx = Math.max(1, Math.floor(printableHeightMm * pxPerMm));
+    const maxBreakLookbackPx = Math.floor(sliceHeightPx * 0.14);
 
     let yOffsetPx = 0;
     let pageIdx = 0;
 
     while (yOffsetPx < canvas.height) {
-      const currentSlicePx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
+      const remainingPx = canvas.height - yOffsetPx;
+      let currentSlicePx = Math.min(sliceHeightPx, remainingPx);
+      if (remainingPx > sliceHeightPx) {
+        const cleanEndY = findCleanPageBreakY(
+          canvas,
+          yOffsetPx,
+          yOffsetPx + sliceHeightPx,
+          maxBreakLookbackPx
+        );
+        const adjustedSlicePx = cleanEndY - yOffsetPx;
+        if (adjustedSlicePx >= Math.floor(sliceHeightPx * 0.6)) {
+          currentSlicePx = adjustedSlicePx;
+        }
+      }
       const sliceCanvas = document.createElement('canvas');
       sliceCanvas.width = canvas.width;
       sliceCanvas.height = currentSlicePx;
@@ -263,6 +469,7 @@ export function printFormattedReportWindow(order: Order, customTemplate?: Report
             position: relative;
             z-index: 1;
           }
+          ${REPORT_SCOPED_CSS}
           @media print {
             body { padding: 0; }
             .a4-shell { max-width: none; }
@@ -274,7 +481,7 @@ export function printFormattedReportWindow(order: Order, customTemplate?: Report
           <div class="watermark">
             <img src="/images/vetlife-logo.jpg" alt="" />
           </div>
-          <div class="report-content">${renderedHtml}</div>
+          <div class="report-content vetlife-report-root">${renderedHtml}</div>
         </div>
         <script>
           window.addEventListener('load', () => {
@@ -285,6 +492,14 @@ export function printFormattedReportWindow(order: Order, customTemplate?: Report
     </html>
   `);
   win.document.close();
+  try {
+    const printRoot = win.document.querySelector('.vetlife-report-root') as HTMLElement | null;
+    if (printRoot) {
+      cleanupRenderedReportDom(printRoot);
+    }
+  } catch {
+    // ignore cross-window cleanup errors if window closed immediately
+  }
 }
 
 function wrapPdfText(input: string, maxChars: number): string[] {

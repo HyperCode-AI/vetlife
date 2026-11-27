@@ -1,5 +1,9 @@
 import { Invoice, Order, SampleLabel } from '../domain/entities';
-import { resolveSideBySideReference } from '../domain/services/ReportRendererService';
+import {
+  decodeHtmlEntities,
+  resolveSideBySideReference,
+  stripFormControlsToText,
+} from '../domain/services/ReportRendererService';
 
 const localPdfStore = new Map<string, Buffer>();
 
@@ -32,12 +36,9 @@ function wrapLine(text: string, maxChars = 92): string[] {
 }
 
 function toPlainAsciiPdf(input: string): string {
-  return String(input || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
+  const withoutControls = stripFormControlsToText(String(input || ''));
+  return decodeHtmlEntities(withoutControls.replace(/<[^>]+>/g, ' '))
+    .replace(/[\u2013\u2014]/g, '-')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\x20-\x7E]/g, ' ')
@@ -127,10 +128,13 @@ function splitPipeReferenceLines(
   maxWidthPt: number,
   fontSize: number
 ): string[] {
-  const stripped = String(rawRef || '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|tr)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ');
+  const withoutControls = stripFormControlsToText(String(rawRef || ''));
+  const stripped = decodeHtmlEntities(
+    withoutControls
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|tr)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+  );
 
   const segments = stripped
     .split(/\s*\|\s*|\r?\n/)
@@ -138,14 +142,15 @@ function splitPipeReferenceLines(
     .filter(Boolean);
 
   if (segments.length === 0) {
-    return ['Conforme faixa da especie'];
+    return ['-'];
   }
 
   const lines: string[] = [];
   for (const seg of segments) {
-    lines.push(...wrapHelveticaText(seg, maxWidthPt, fontSize, false));
+    const wrapped = wrapHelveticaText(seg, maxWidthPt, fontSize, false).filter((l) => l.trim().length > 0);
+    lines.push(...wrapped);
   }
-  return lines.length > 0 ? lines : ['Conforme faixa da especie'];
+  return lines.length > 0 ? lines : ['-'];
 }
 
 function formatOrderDateBr(iso?: string | null): string {
@@ -457,8 +462,8 @@ export function buildOrderPdfBuffer(order: Order, singleResultId?: string): Buff
       true
     );
 
-    const calloutH = examTitleLines.length * 11.5 + 16;
-    ensureSpace(calloutH + 38);
+    const calloutH = examTitleLines.length * 11.8 + 18;
+    ensureSpace(calloutH + 44);
 
     // Exam callout box with Teal left accent bar
     drawRectFill(M_LEFT, y - calloutH, CONTENT_W, calloutH, SOFT_TINT_FILL);
@@ -468,19 +473,19 @@ export function buildOrderPdfBuffer(order: Order, singleResultId?: string): Buff
     let ty = y - 12.5;
     for (const tl of examTitleLines) {
       drawText(tl, M_LEFT + 10, ty, 9.2, true, NAVY_FILL);
-      ty -= 11.5;
+      ty -= 11.8;
     }
     const releasedLabel = res.released_at
       ? ` | Liberado em: ${formatOrderDateTimeBr(res.released_at)}`
       : '';
-    drawText(`Setor: ${examSection}${releasedLabel}`, M_LEFT + 10, ty + 1, 7.3, false, TEAL_FILL);
-    y -= calloutH + 4;
+    drawText(`Setor: ${examSection}${releasedLabel}`, M_LEFT + 10, ty - 1, 7.3, false, TEAL_FILL);
+    y -= calloutH + 8;
 
     const entries = Object.entries(res.dynamic_content || {});
     const fields = res.exam?.input_fields || (res as any).input_fields || [];
 
     if (entries.length === 0) {
-      ensureSpace(22);
+      ensureSpace(24);
       drawRectFill(M_LEFT, y - 20, CONTENT_W, 20, WHITE_FILL);
       drawRectStroke(M_LEFT, y - 20, CONTENT_W, 20, BORDER_STROKE, 0.5);
       drawText(
@@ -491,16 +496,16 @@ export function buildOrderPdfBuffer(order: Order, singleResultId?: string): Buff
         false,
         TEXT_MUTED
       );
-      y -= 26;
+      y -= 28;
     } else {
-      ensureSpace(36);
+      ensureSpace(38);
       drawTableHeader(patientSpecies);
 
       entries.forEach(([key, val], entryIdx) => {
         const meta = fields.find((f: any) => f.field_name === key);
         const rawLabel = meta?.field_label || key;
         const unit = meta?.unit ? ` ${meta.unit}` : '';
-        const valText = `${val}${unit}`;
+        const valText = `${val ?? ''}${unit}`;
         const paramRef = resolveSideBySideReference(key, rawLabel, res.reference_snapshot);
 
         const labelLines = wrapHelveticaText(rawLabel, c1W - 12, 7.8, true);
@@ -509,7 +514,8 @@ export function buildOrderPdfBuffer(order: Order, singleResultId?: string): Buff
         const refLines = splitPipeReferenceLines(paramRef, c3W - 12, 7.4);
 
         const maxLines = Math.max(labelLines.length, valLines.length, refLines.length);
-        const rowH = Math.max(18, maxLines * 10.2 + 8);
+        const lineStep = 10.6;
+        const rowH = Math.max(20, maxLines * lineStep + 9);
 
         if (ensureSpace(rowH)) {
           drawTableHeader(patientSpecies);
@@ -527,98 +533,122 @@ export function buildOrderPdfBuffer(order: Order, singleResultId?: string): Buff
         drawLine(M_LEFT + c1W, rowBottom, M_LEFT + c1W, y, BORDER_STROKE, 0.4);
         drawLine(M_LEFT + c1W + c2W, rowBottom, M_LEFT + c1W + c2W, y, BORDER_STROKE, 0.4);
 
-        let ly = y - 11.5;
+        let ly = y - 12;
         for (const l of labelLines) {
           drawText(l, M_LEFT + 6, ly, 7.8, true, TEXT_DARK);
-          ly -= 10.2;
+          ly -= lineStep;
         }
 
-        let vy = y - 11.5;
+        let vy = y - 12;
         for (const v of valLines) {
           drawText(v, M_LEFT + c1W + 6, vy, 8.0, true, TEAL_FILL);
-          vy -= 10.2;
+          vy -= lineStep;
         }
 
-        let ry = y - 11.5;
+        let ry = y - 12;
         for (const r of refLines) {
           drawText(r, M_LEFT + c1W + c2W + 6, ry, 7.4, false, TEXT_MUTED);
-          ry -= 10.2;
+          ry -= lineStep;
         }
 
         y = rowBottom;
       });
-      y -= 6;
+      y -= 10;
     }
 
-    // Reference Snapshot Section with '|' split onto separate lines
+    // Reference Snapshot Section with '|' split onto separate lines (paginated cleanly)
     if (res.reference_snapshot && res.reference_snapshot.trim()) {
       const refSectionLines = splitPipeReferenceLines(
         res.reference_snapshot,
         CONTENT_W - 18,
         7.3
       );
-      const refBoxH = refSectionLines.length * 9.8 + 18;
-      if (y - refBoxH < BOTTOM_LIMIT) {
-        startNewPage();
-      }
-      drawRectFill(M_LEFT, y - refBoxH, CONTENT_W, refBoxH, SOFT_TINT_FILL);
-      drawRectStroke(M_LEFT, y - refBoxH, CONTENT_W, refBoxH, BORDER_STROKE, 0.45);
-      drawRectFill(M_LEFT, y - refBoxH, 2.5, refBoxH, TEAL_FILL);
-      drawText(
-        `Valores de Referencia (${patientSpecies}):`,
-        M_LEFT + 8,
-        y - 11,
-        7.5,
-        true,
-        NAVY_FILL
-      );
-      let refY = y - 21;
-      for (const rl of refSectionLines) {
-        if (refY < BOTTOM_LIMIT) {
-          startNewPage();
-          refY = y - 11;
+      const hasMeaningfulRef =
+        refSectionLines.length > 0 && !(refSectionLines.length === 1 && refSectionLines[0] === '-');
+
+      if (hasMeaningfulRef) {
+        const refLineStep = 10.2;
+        const headerPad = 22;
+        const bottomPad = 6;
+        let lineIdx = 0;
+        let isFirstChunk = true;
+
+        while (lineIdx < refSectionLines.length) {
+          const minChunkH = (isFirstChunk ? headerPad : 10) + refLineStep + bottomPad;
+          if (y - minChunkH < BOTTOM_LIMIT) {
+            startNewPage();
+          }
+
+          const topPad = isFirstChunk ? headerPad : 10;
+          const availH = y - BOTTOM_LIMIT - topPad - bottomPad;
+          const maxChunkLines = Math.max(1, Math.floor(availH / refLineStep));
+          const chunk = refSectionLines.slice(lineIdx, lineIdx + maxChunkLines);
+          const boxH = topPad + chunk.length * refLineStep + bottomPad;
+
+          drawRectFill(M_LEFT, y - boxH, CONTENT_W, boxH, SOFT_TINT_FILL);
+          drawRectStroke(M_LEFT, y - boxH, CONTENT_W, boxH, BORDER_STROKE, 0.45);
+          drawRectFill(M_LEFT, y - boxH, 2.5, boxH, TEAL_FILL);
+
+          let refY = y - 12;
+          if (isFirstChunk) {
+            drawText(
+              `Valores de Referencia (${patientSpecies}):`,
+              M_LEFT + 8,
+              refY,
+              7.5,
+              true,
+              NAVY_FILL
+            );
+            refY -= 11;
+          }
+
+          for (const rl of chunk) {
+            drawText(rl, M_LEFT + 8, refY, 7.3, false, TEXT_DARK);
+            refY -= refLineStep;
+          }
+
+          y -= boxH + 10;
+          lineIdx += chunk.length;
+          isFirstChunk = false;
         }
-        drawText(rl, M_LEFT + 8, refY, 7.3, false, TEXT_DARK);
-        refY -= 9.8;
       }
-      y = Math.min(y - refBoxH, refY + 4) - 6;
     }
 
     if (res.attachments && res.attachments.length > 0) {
-      ensureSpace(16);
+      ensureSpace(18);
       drawText(
         `Anexos complementares: ${res.attachments.map((a) => a.name).join(', ')}`,
         M_LEFT + 4,
-        y - 9,
+        y - 10,
         7.3,
         false,
         TEXT_MUTED
       );
-      y -= 16;
+      y -= 18;
     }
 
-    y -= 6;
+    y -= 8;
   });
 
   // Clinical / lab observations if present
-  if (order.notes && order.notes.trim()) {
+  if (order.notes && toPlainAsciiPdf(order.notes).length > 0) {
     const obsLines = wrapHelveticaText(order.notes, CONTENT_W - 18, 7.6, false);
-    const obsH = obsLines.length * 10 + 18;
-    ensureSpace(obsH + 6);
+    const obsH = obsLines.length * 10.4 + 20;
+    ensureSpace(obsH + 8);
     drawRectFill(M_LEFT, y - obsH, CONTENT_W, obsH, SOFT_TINT_FILL);
     drawRectStroke(M_LEFT, y - obsH, CONTENT_W, obsH, BORDER_STROKE, 0.5);
     drawRectFill(M_LEFT, y - obsH, 3, obsH, NAVY_FILL);
-    drawText('OBSERVACOES CLINICAS / LABORATORIAIS', M_LEFT + 8, y - 11, 7.5, true, NAVY_FILL);
-    let oy = y - 21.5;
+    drawText('OBSERVACOES CLINICAS / LABORATORIAIS', M_LEFT + 8, y - 12, 7.5, true, NAVY_FILL);
+    let oy = y - 23;
     for (const ol of obsLines) {
       drawText(ol, M_LEFT + 8, oy, 7.6, false, TEXT_DARK);
-      oy -= 10;
+      oy -= 10.4;
     }
-    y -= obsH + 10;
+    y -= obsH + 12;
   }
 
   // Dual Signatures Block (Kerollyn & Maysa)
-  ensureSpace(60);
+  ensureSpace(66);
   y -= 14;
   const sigLineY = y - 10;
   const leftSigStart = M_LEFT + 20;
