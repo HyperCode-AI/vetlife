@@ -9,9 +9,11 @@ import { ReferenceAndTemplateUseCases } from '../../application/use-cases/Refere
 import { IVetLifeRepository } from '../../domain/repositories/IVetLifeRepository';
 import { ForbiddenError } from '../../domain/errors/AppError';
 import {
+  buildBillingReportPdfBuffer,
   buildOrderPdfBuffer,
   buildThermalLabelsPdfBuffer,
   getLocalPdfBuffer,
+  uploadPdfToVercelBlob,
 } from '../../utils/pdfStorage';
 import {
   createCollectionRequestSchema,
@@ -1547,6 +1549,212 @@ export class VetLifeController {
     try {
       const updated = await this.repo.cancelInvoice(req.params.id);
       res.json({ success: true, data: updated });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  public publishBillingReportPdf = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const b = req.body || {};
+      const isVet = req.authUser?.role === 'vet';
+
+      const allowedStatuses = new Set([
+        'todos',
+        'nao_faturado',
+        'aguardando_pagamento',
+        'pago',
+        'cancelado',
+      ]);
+      const rawStatus = typeof b.status === 'string' ? b.status.trim() : 'todos';
+      const statusFilter = allowedStatuses.has(rawStatus) ? rawStatus : 'todos';
+
+      const startDate =
+        typeof b.start_date === 'string' && b.start_date.trim()
+          ? b.start_date.trim().slice(0, 10)
+          : undefined;
+      const endDate =
+        typeof b.end_date === 'string' && b.end_date.trim()
+          ? b.end_date.trim().slice(0, 10)
+          : undefined;
+
+      const rawPatientId =
+        typeof b.patient_id === 'string' && b.patient_id.trim() && b.patient_id.trim() !== 'todos'
+          ? b.patient_id.trim()
+          : undefined;
+
+      // Segurança: veterinário NUNCA pode consultar outro vet_id
+      const effectiveVetId = isVet
+        ? req.authUser?.sub || ''
+        : typeof b.vet_id === 'string' && b.vet_id.trim() && b.vet_id.trim() !== 'todos'
+        ? b.vet_id.trim()
+        : undefined;
+
+      const [rawInvoices, rawOrders] = await Promise.all([
+        this.repo.listInvoices({ vet_id: effectiveVetId || undefined }),
+        this.repo.listOrders({
+          vet_id: effectiveVetId || undefined,
+          patient_id: rawPatientId || undefined,
+        }),
+      ]);
+
+      // 1. Filtro de segurança e vet_id
+      let invoices = rawInvoices.filter((inv) => {
+        if (isVet && inv.status === 'cancelado') return false;
+        if (effectiveVetId && inv.vet_id !== effectiveVetId) return false;
+        return true;
+      });
+
+      let orders = rawOrders.filter((ord) => {
+        if (effectiveVetId && ord.vet_id !== effectiveVetId) return false;
+        if (rawPatientId && ord.patient_id !== rawPatientId) return false;
+        return true;
+      });
+
+      // 2. Filtro de período (YYYY-MM-DD sobre created_at.slice(0, 10))
+      const inDateRange = (createdAt?: string): boolean => {
+        if (!startDate && !endDate) return true;
+        const d = String(createdAt || '').slice(0, 10);
+        if (!d) return false;
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+        return true;
+      };
+
+      invoices = invoices.filter((inv) => inDateRange(inv.created_at));
+      orders = orders.filter((ord) => inDateRange(ord.created_at));
+
+      // 3. Filtro por patient_id nas faturas (manter faturas que tenham ao menos 1 pedido do paciente)
+      if (rawPatientId) {
+        const matchingInvoiceIds = new Set(
+          orders.map((o) => o.invoice_id).filter((id): id is string => Boolean(id))
+        );
+        invoices = invoices.filter((inv) => {
+          if (matchingInvoiceIds.has(inv.id)) return true;
+          if (Array.isArray(inv.orders) && inv.orders.some((o) => o.patient_id === rawPatientId)) {
+            return true;
+          }
+          return false;
+        });
+      }
+
+      // 4. Filtro por status
+      if (statusFilter === 'nao_faturado') {
+        invoices = [];
+        orders = orders.filter((ord) => (ord.payment_status || 'nao_faturado') === 'nao_faturado');
+      } else if (statusFilter === 'cancelado') {
+        invoices = invoices.filter((inv) => inv.status === 'cancelado');
+        const cancelledInvoiceIds = new Set(invoices.map((inv) => inv.id));
+        const cancelledOrderIds = new Set<string>();
+        for (const inv of invoices) {
+          (inv.order_ids || []).forEach((id) => cancelledOrderIds.add(id));
+          (inv.orders || []).forEach((o) => cancelledOrderIds.add(o.id));
+        }
+        orders = orders.filter(
+          (ord) =>
+            (ord.invoice_id && cancelledInvoiceIds.has(ord.invoice_id)) ||
+            cancelledOrderIds.has(ord.id)
+        );
+      } else if (statusFilter === 'aguardando_pagamento' || statusFilter === 'pago') {
+        invoices = invoices.filter((inv) => inv.status === statusFilter);
+        orders = orders.filter((ord) => ord.payment_status === statusFilter);
+      }
+
+      // 5. Resumo financeiro consistente (sem dupla contagem entre faturas e pedidos vinculados)
+      const unbilledAmount = orders
+        .filter((o) => (o.payment_status || 'nao_faturado') === 'nao_faturado')
+        .reduce((acc, o) => acc + Number(o.total_amount || 0), 0);
+
+      const cancelledAmount = invoices
+        .filter((i) => i.status === 'cancelado')
+        .reduce((acc, i) => acc + Number(i.total_amount || 0), 0);
+
+      const paidAmount = rawPatientId
+        ? orders
+            .filter((o) => o.payment_status === 'pago')
+            .reduce((acc, o) => acc + Number(o.total_amount || 0), 0)
+        : invoices
+            .filter((i) => i.status === 'pago')
+            .reduce((acc, i) => acc + Number(i.total_amount || 0), 0);
+
+      const pendingPaymentAmount = rawPatientId
+        ? orders
+            .filter((o) => o.payment_status === 'aguardando_pagamento')
+            .reduce((acc, o) => acc + Number(o.total_amount || 0), 0)
+        : invoices
+            .filter((i) => i.status === 'aguardando_pagamento')
+            .reduce((acc, i) => acc + Number(i.total_amount || 0), 0);
+
+      const totalAmount =
+        statusFilter === 'cancelado'
+          ? cancelledAmount
+          : paidAmount + pendingPaymentAmount + unbilledAmount;
+
+      // 6. Resolver rótulos legíveis para veterinário e paciente
+      let vetLabel = 'Todos os veterinarios';
+      if (effectiveVetId) {
+        const vetObj =
+          invoices.find((i) => i.vet)?.vet ||
+          orders.find((o) => o.vet)?.vet ||
+          (await this.repo.findVetById(effectiveVetId));
+        vetLabel = vetObj
+          ? `${vetObj.name}${vetObj.crmv ? ` (${vetObj.crmv})` : ''}`
+          : effectiveVetId;
+      }
+
+      let patientLabel = 'Todos os pacientes';
+      if (rawPatientId) {
+        const patientObj =
+          orders.find((o) => o.patient)?.patient || (await this.repo.findPatientById(rawPatientId));
+        patientLabel = patientObj
+          ? `${patientObj.name}${patientObj.tutor_name ? ` (Tutor: ${patientObj.tutor_name})` : ''}`
+          : rawPatientId;
+      }
+
+      const pdfBuffer = buildBillingReportPdfBuffer({
+        generated_at: new Date().toISOString(),
+        filters: {
+          scope: isVet ? 'vet' : 'admin',
+          status: statusFilter,
+          start_date: startDate,
+          end_date: endDate,
+          vet_label: vetLabel,
+          patient_label: patientLabel,
+        },
+        summary: {
+          invoices_count: invoices.length,
+          orders_count: orders.length,
+          total_amount: totalAmount,
+          paid_amount: paidAmount,
+          pending_payment_amount: pendingPaymentAmount,
+          unbilled_amount: unbilledAmount,
+          cancelled_amount: cancelledAmount,
+        },
+        invoices,
+        orders,
+      });
+
+      const timestampSlug = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `relatorio-faturamento-${isVet ? 'vet' : 'admin'}-${timestampSlug}.pdf`;
+      const fallbackOrigin = `${req.protocol}://${req.get('host') || 'vetlifelab.com.br'}`;
+      const uploaded = await uploadPdfToVercelBlob(
+        `relatorios/faturamento/${filename}`,
+        pdfBuffer,
+        fallbackOrigin
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          pdf_url: uploaded.url,
+          filename,
+          storage: uploaded.storage,
+        },
+      });
     } catch (err) {
       next(err);
     }

@@ -540,6 +540,20 @@ function normalizeExam(ex: any): Exam {
   };
 }
 
+export interface PublishBillingReportPdfPayload {
+  status?: 'todos' | 'nao_faturado' | 'aguardando_pagamento' | 'pago' | 'cancelado';
+  start_date?: string;
+  end_date?: string;
+  vet_id?: string;
+  patient_id?: string;
+}
+
+export interface PublishBillingReportPdfResponse {
+  pdf_url: string;
+  filename: string;
+  storage: 'vercel-blob' | 'local-api';
+}
+
 export const api = {
   // ==========================================
   // 1. AUTENTICAÇÃO INTERNA (Admin / Biomédico)
@@ -1269,6 +1283,15 @@ export const api = {
     return request<Invoice>(`/invoices/${invoiceId}/cancel`, {
       method: 'PATCH',
       body: JSON.stringify({}),
+    });
+  },
+
+  async publishBillingReportPdf(
+    payload: PublishBillingReportPdfPayload
+  ): Promise<PublishBillingReportPdfResponse> {
+    return request<PublishBillingReportPdfResponse>('/billing/report/publish-pdf', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
     });
   },
 

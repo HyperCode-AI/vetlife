@@ -11,18 +11,52 @@ import {
   Receipt,
   Check,
   X,
+  MessageCircle,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Filter,
+  RotateCcw,
 } from 'lucide-react';
-import { Invoice, Order, Vet } from '../types';
+import { Invoice, Order, Patient, Vet } from '../types';
 import { api } from '../services/api';
 import { PaginationBar } from './PaginationBar';
+import {
+  BillingReportStatusFilter,
+  filterBillingReportData,
+  downloadBillingReportPdf,
+  openBillingReportWhatsApp,
+} from '../utils/billingReport';
 
 interface BillingSectionProps {
   orders: Order[];
   vets: Vet[];
+  patients?: Patient[];
   invoices: Invoice[];
   onRefresh: () => Promise<void>;
   onToast: (msg: string) => void;
 }
+
+const getTodayIsoDate = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate()
+  ).padStart(2, '0')}`;
+};
+
+const getDaysAgoIsoDate = (days: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
+};
+
+const formatCurrency = (value: number): string =>
+  Number(value || 0).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 const getFirstDayOfMonth = (): string => {
   const now = new Date();
@@ -53,6 +87,7 @@ const readFileAsBase64 = (file: File): Promise<string> =>
 export const BillingSection: React.FC<BillingSectionProps> = ({
   orders,
   vets,
+  patients = [],
   invoices,
   onRefresh,
   onToast,
@@ -65,6 +100,16 @@ export const BillingSection: React.FC<BillingSectionProps> = ({
   const [endDate, setEndDate] = useState<string>('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [ordersPage, setOrdersPage] = useState(1);
+
+  // Relatório de Faturamento (Filtros + PDF + WhatsApp)
+  const [reportOpen, setReportOpen] = useState<boolean>(true);
+  const [reportStatus, setReportStatus] = useState<BillingReportStatusFilter>('todos');
+  const [reportStartDate, setReportStartDate] = useState<string>('');
+  const [reportEndDate, setReportEndDate] = useState<string>('');
+  const [reportVetId, setReportVetId] = useState<string>('todos');
+  const [reportPatientId, setReportPatientId] = useState<string>('todos');
+  const [reportWhatsappPhone, setReportWhatsappPhone] = useState<string>('');
+  const [sendingReportWhatsApp, setSendingReportWhatsApp] = useState<boolean>(false);
 
   // Modal de gerar fatura
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
@@ -138,6 +183,152 @@ export const BillingSection: React.FC<BillingSectionProps> = ({
       return true;
     });
   }, [invoices, invoiceStatusFilter]);
+
+  const availableReportPatients = useMemo(() => {
+    const patientMap = new Map<string, Patient>();
+    patients.forEach((p) => {
+      if (p?.id) patientMap.set(p.id, p);
+    });
+    orders.forEach((o) => {
+      if (o.patient?.id && !patientMap.has(o.patient.id)) {
+        patientMap.set(o.patient.id, o.patient);
+      }
+    });
+
+    const allKnown = Array.from(patientMap.values());
+    const scoped =
+      reportVetId && reportVetId !== 'todos'
+        ? (() => {
+            const vetPatientIds = new Set(
+              orders.filter((o) => o.vet_id === reportVetId).map((o) => o.patient_id)
+            );
+            return allKnown.filter((p) => vetPatientIds.has(p.id));
+          })()
+        : allKnown;
+
+    return scoped.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+  }, [patients, orders, reportVetId]);
+
+  const reportData = useMemo(
+    () =>
+      filterBillingReportData({
+        invoices,
+        orders,
+        filters: {
+          status: reportStatus,
+          startDate: reportStartDate,
+          endDate: reportEndDate,
+          vetId: reportVetId,
+          patientId: reportPatientId,
+        },
+        vets,
+        patients,
+        scope: 'admin',
+      }),
+    [
+      invoices,
+      orders,
+      reportStatus,
+      reportStartDate,
+      reportEndDate,
+      reportVetId,
+      reportPatientId,
+      vets,
+      patients,
+    ]
+  );
+
+  const hasReportRecords =
+    reportData.invoices.length > 0 || reportData.orders.length > 0;
+
+  const handleReportVetChange = (nextVetId: string) => {
+    setReportVetId(nextVetId);
+    if (nextVetId === 'todos') {
+      setReportWhatsappPhone('');
+    } else {
+      const chosenVet = vets.find((v) => v.id === nextVetId);
+      setReportWhatsappPhone(chosenVet?.phone || '');
+      if (reportPatientId !== 'todos') {
+        const vetHasPatient = orders.some(
+          (o) => o.vet_id === nextVetId && o.patient_id === reportPatientId
+        );
+        if (!vetHasPatient) {
+          setReportPatientId('todos');
+        }
+      }
+    }
+  };
+
+  const handleResetReportFilters = () => {
+    setReportStatus('todos');
+    setReportStartDate('');
+    setReportEndDate('');
+    setReportVetId('todos');
+    setReportPatientId('todos');
+    setReportWhatsappPhone('');
+  };
+
+  const handleDownloadBillingReportPdf = () => {
+    if (!hasReportRecords) {
+      onToast('Nenhum registro encontrado com os filtros atuais para gerar o PDF.');
+      return;
+    }
+    try {
+      downloadBillingReportPdf(reportData);
+      onToast(
+        `Relatório de Faturamento em PDF baixado (${reportData.summary.totalInvoices} fatura(s), ${reportData.summary.totalOrders} pedido(s)).`
+      );
+    } catch (err: any) {
+      onToast(err?.message || 'Erro ao gerar o PDF do relatório de faturamento.');
+    }
+  };
+
+  const handleSendBillingReportWhatsApp = async () => {
+    if (!hasReportRecords) {
+      onToast('Nenhum registro encontrado com os filtros atuais para enviar no WhatsApp.');
+      return;
+    }
+    setSendingReportWhatsApp(true);
+    let pdfUrl: string | null = null;
+    try {
+      const published = await api.publishBillingReportPdf({
+        status: reportStatus,
+        start_date: reportStartDate || undefined,
+        end_date: reportEndDate || undefined,
+        vet_id: reportVetId !== 'todos' ? reportVetId : undefined,
+        patient_id: reportPatientId !== 'todos' ? reportPatientId : undefined,
+      });
+      pdfUrl = published?.pdf_url || null;
+    } catch {
+      pdfUrl = null;
+    }
+
+    try {
+      const phone = reportWhatsappPhone.trim() || undefined;
+      openBillingReportWhatsApp({
+        data: reportData,
+        phone,
+        pdfUrl,
+      });
+      if (pdfUrl) {
+        onToast(
+          phone
+            ? 'PDF do relatório publicado online e WhatsApp aberto para o número informado!'
+            : 'PDF do relatório publicado online e WhatsApp aberto! Escolha o contato para enviar.'
+        );
+      } else {
+        onToast(
+          phone
+            ? 'WhatsApp aberto com o resumo do relatório de faturamento para o número informado.'
+            : 'WhatsApp aberto com o resumo do relatório! Escolha o contato para enviar.'
+        );
+      }
+    } catch (err: any) {
+      onToast(err?.message || 'Erro ao abrir o WhatsApp com o relatório.');
+    } finally {
+      setSendingReportWhatsApp(false);
+    }
+  };
 
   const toggleSelectOrder = (id: string) => {
     setSelectedOrderIds((prev) =>
@@ -268,6 +459,298 @@ export const BillingSection: React.FC<BillingSectionProps> = ({
 
   return (
     <div className="space-y-5">
+      {/* BLOCO 0: RELATÓRIO DE FATURAMENTO (FILTROS AVANÇADOS + PDF + WHATSAPP) */}
+      <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-black/5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#0b2240] text-white flex items-center justify-center shrink-0">
+              <FileText className="w-5 h-5 text-[#7fdbea]" />
+            </div>
+            <div>
+              <h3 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
+                Relatório de Faturamento
+              </h3>
+              <p className="text-[12px] text-[#707070]">
+                Filtre por status, período, veterinário ou paciente para baixar o relatório em PDF ou enviar diretamente pelo WhatsApp.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            {(reportStatus !== 'todos' ||
+              reportStartDate ||
+              reportEndDate ||
+              reportVetId !== 'todos' ||
+              reportPatientId !== 'todos') && (
+              <button
+                type="button"
+                onClick={handleResetReportFilters}
+                className="px-3 py-1.5 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#5b6675] text-[11.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                title="Limpar filtros do relatório"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Limpar filtros
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setReportOpen((prev) => !prev)}
+              className="px-3 py-1.5 rounded-full bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[11.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+            >
+              {reportOpen ? (
+                <>
+                  Recolher
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </>
+              ) : (
+                <>
+                  Expandir
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {reportOpen && (
+          <div className="space-y-4">
+            {/* Filtros do Relatório */}
+            <div className="bg-[#f8fafc] p-3.5 sm:p-4 rounded-2xl border border-slate-200/70 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-[#5b6675] inline-flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5 text-[#0071e3]" />
+                  Filtros do Relatório
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReportStartDate(getFirstDayOfMonth());
+                      setReportEndDate(getLastDayOfMonth());
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-white hover:bg-[#0b2240] hover:text-white border border-slate-200 text-[#1d1d1f] text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    Mês Atual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReportStartDate(getDaysAgoIsoDate(30));
+                      setReportEndDate(getTodayIsoDate());
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-white hover:bg-[#0b2240] hover:text-white border border-slate-200 text-[#1d1d1f] text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    Últimos 30 dias
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReportStartDate('');
+                      setReportEndDate('');
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-white hover:bg-[#0b2240] hover:text-white border border-slate-200 text-[#1d1d1f] text-[11px] font-semibold transition cursor-pointer"
+                  >
+                    Todo Período
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
+                <div className="lg:col-span-3">
+                  <label className="block text-[10.5px] font-semibold text-[#5b6675] mb-1">
+                    Status das Faturas
+                  </label>
+                  <select
+                    value={reportStatus}
+                    onChange={(e) =>
+                      setReportStatus(e.target.value as BillingReportStatusFilter)
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-[12px] font-medium text-[#1d1d1f]"
+                  >
+                    <option value="todos">Todos os status</option>
+                    <option value="aguardando_pagamento">Aguardando Pagamento</option>
+                    <option value="pago">Pago</option>
+                    <option value="cancelado">Cancelado</option>
+                    <option value="nao_faturado">Não Faturado</option>
+                  </select>
+                </div>
+
+                <div className="lg:col-span-3">
+                  <label className="block text-[10.5px] font-semibold text-[#5b6675] mb-1">
+                    Veterinário
+                  </label>
+                  <select
+                    value={reportVetId}
+                    onChange={(e) => handleReportVetChange(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-[12px] font-medium text-[#1d1d1f]"
+                  >
+                    <option value="todos">Todos os veterinários</option>
+                    {vets.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} — {v.clinic_name || v.crmv || 'Sem CRMV'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="lg:col-span-2">
+                  <label className="block text-[10.5px] font-semibold text-[#5b6675] mb-1">
+                    Paciente
+                  </label>
+                  <select
+                    value={reportPatientId}
+                    onChange={(e) => setReportPatientId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-[12px] font-medium text-[#1d1d1f]"
+                  >
+                    <option value="todos">Todos os pacientes</option>
+                    {availableReportPatients.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.tutor_name ? ` — ${p.tutor_name}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="lg:col-span-2">
+                  <label className="block text-[10.5px] font-semibold text-[#5b6675] mb-1">
+                    Data Inicial
+                  </label>
+                  <input
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(e) => setReportStartDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-[12px] text-[#1d1d1f]"
+                  />
+                </div>
+
+                <div className="lg:col-span-2">
+                  <label className="block text-[10.5px] font-semibold text-[#5b6675] mb-1">
+                    Data Final
+                  </label>
+                  <input
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(e) => setReportEndDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-[12px] text-[#1d1d1f]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Prévia de KPIs do Relatório */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              <div className="p-3 rounded-2xl bg-[#f5f5f7] border border-black/5">
+                <div className="text-[10.5px] font-semibold text-[#707070] uppercase">
+                  Faturas
+                </div>
+                <div className="font-mono text-[18px] font-bold text-[#0b2240] mt-0.5">
+                  {reportData.summary.totalInvoices}
+                </div>
+                <div className="text-[10.5px] text-[#86868b]">encontradas</div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-[#f5f5f7] border border-black/5">
+                <div className="text-[10.5px] font-semibold text-[#707070] uppercase">
+                  Pedidos
+                </div>
+                <div className="font-mono text-[18px] font-bold text-[#0b2240] mt-0.5">
+                  {reportData.summary.totalOrders}
+                </div>
+                <div className="text-[10.5px] text-[#86868b]">encontrados</div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200/70">
+                <div className="text-[10.5px] font-semibold text-emerald-700 uppercase">
+                  Total Pago
+                </div>
+                <div className="font-mono text-[15px] sm:text-[16px] font-bold text-emerald-800 mt-1">
+                  R$ {formatCurrency(reportData.summary.paidAmount)}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200/70">
+                <div className="text-[10.5px] font-semibold text-amber-700 uppercase">
+                  Aguardando Pgto
+                </div>
+                <div className="font-mono text-[15px] sm:text-[16px] font-bold text-amber-800 mt-1">
+                  R$ {formatCurrency(reportData.summary.awaitingAmount)}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-100/80 border border-slate-200/80">
+                <div className="text-[10.5px] font-semibold text-slate-600 uppercase">
+                  Não Faturado
+                </div>
+                <div className="font-mono text-[15px] sm:text-[16px] font-bold text-slate-800 mt-1">
+                  R$ {formatCurrency(reportData.summary.unbilledAmount)}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-[#0b2240] text-white">
+                <div className="text-[10.5px] font-semibold text-[#7fdbea] uppercase">
+                  Total Relatório
+                </div>
+                <div className="font-mono text-[15px] sm:text-[16px] font-bold text-white mt-1">
+                  R$ {formatCurrency(reportData.summary.totalAmount)}
+                </div>
+              </div>
+            </div>
+
+            {/* Ações: WhatsApp destino opcional + Baixar PDF + Enviar por WhatsApp */}
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 pt-1 border-t border-[#f0f0f5]">
+              <div className="flex-1 max-w-md">
+                <label className="block text-[10.5px] font-semibold text-[#5b6675] mb-1">
+                  WhatsApp de destino (opcional — deixe em branco para escolher o contato no WhatsApp)
+                </label>
+                <input
+                  type="tel"
+                  value={reportWhatsappPhone}
+                  onChange={(e) => setReportWhatsappPhone(e.target.value)}
+                  placeholder="Ex: (11) 99999-9999"
+                  className="w-full px-3 py-2 rounded-xl bg-[#f5f5f7] border border-slate-200/80 text-[12px] text-[#1d1d1f]"
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                {!hasReportRecords && (
+                  <span className="text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200/70 px-3 py-1.5 rounded-full font-medium">
+                    Nenhum registro encontrado para os filtros selecionados.
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={!hasReportRecords}
+                  onClick={handleDownloadBillingReportPdf}
+                  className="px-4 py-2.5 rounded-full bg-[#0071e3] hover:bg-[#0062c4] disabled:opacity-40 disabled:pointer-events-none text-white text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <FileDown className="w-4 h-4" />
+                  Baixar PDF
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasReportRecords || sendingReportWhatsApp}
+                  onClick={handleSendBillingReportWhatsApp}
+                  className="px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:pointer-events-none text-white text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  {sendingReportWhatsApp ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Publicando PDF...
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-4 h-4" />
+                      Enviar por WhatsApp
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* BLOCO 1: SELEÇÃO DE ATENDIMENTOS POR VETERINÁRIO PARA GERAR FATURA */}
       <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-black/5 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">

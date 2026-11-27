@@ -16,10 +16,19 @@ import {
   X,
   FlaskConical,
   RefreshCw,
+  Filter,
+  MessageCircle,
+  Loader2,
 } from 'lucide-react';
-import { CollectionRequest, Exam, Invoice, Order, Vet } from '../types';
+import { CollectionRequest, Exam, Invoice, Order, Patient, Vet } from '../types';
 import { api, formatAgeLabel, resolveSideBySideReference } from '../services/api';
 import { downloadOrderPdf, printFormattedReportWindow } from '../utils/pdfGenerator';
+import {
+  BillingReportStatusFilter,
+  downloadBillingReportPdf,
+  filterBillingReportData,
+  openBillingReportWhatsApp,
+} from '../utils/billingReport';
 import { PaginationBar } from '../components/PaginationBar';
 
 export type VetPortalTab = 'orders' | 'collections' | 'catalog' | 'financial';
@@ -109,8 +118,11 @@ export const VetPortal: React.FC<VetPortalProps> = ({
   // Aba 4: Consolidado Financeiro por Período
   const [finStartDate, setFinStartDate] = useState(getFirstDayOfCurrentMonth);
   const [finEndDate, setFinEndDate] = useState(getLastDayOfCurrentMonth);
-  const [finStatusFilter, setFinStatusFilter] = useState<'todos' | 'concluido' | 'em_andamento'>('todos');
+  const [finPaymentStatus, setFinPaymentStatus] = useState<BillingReportStatusFilter>('todos');
+  const [finPatientId, setFinPatientId] = useState<string>('todos');
   const [finPage, setFinPage] = useState(1);
+  const [sendingBillingWhatsApp, setSendingBillingWhatsApp] = useState(false);
+  const [billingReportFeedback, setBillingReportFeedback] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -164,7 +176,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({
 
   useEffect(() => {
     setFinPage(1);
-  }, [finStartDate, finEndDate, finStatusFilter]);
+  }, [finStartDate, finEndDate, finPaymentStatus, finPatientId]);
 
   const handleOpenRequestCollection = () => {
     setCollectionForm({
@@ -258,43 +270,118 @@ export const VetPortal: React.FC<VetPortalProps> = ({
     });
   }, [catalogExams, catalogSearch, catalogSection]);
 
-  const financialOrders = useMemo(() => {
-    return orders.filter((ord) => {
-      const ordDate = (ord.created_at || '').slice(0, 10);
-      if (finStartDate && ordDate && ordDate < finStartDate) return false;
-      if (finEndDate && ordDate && ordDate > finEndDate) return false;
-      if (finStatusFilter === 'concluido' && ord.status !== 'concluido') return false;
-      if (finStatusFilter === 'em_andamento' && ord.status === 'concluido') return false;
-      return true;
+  const vetPatients = useMemo(() => {
+    const map = new Map<string, Patient>();
+    orders.forEach((ord) => {
+      const pid = ord.patient?.id || ord.patient_id;
+      if (!pid || map.has(pid)) return;
+      map.set(pid, {
+        id: pid,
+        name: ord.patient?.name || 'Paciente',
+        species: ord.patient?.species || 'Canino',
+        breed: ord.patient?.breed || '',
+        gender: ord.patient?.gender || 'M',
+        birth_date: ord.patient?.birth_date || '',
+        age_days: ord.patient?.age_days,
+        tutor_name: ord.patient?.tutor_name || '',
+        tutor_phone: ord.patient?.tutor_phone || '',
+        tutor_email: ord.patient?.tutor_email || '',
+      });
     });
-  }, [orders, finStartDate, finEndDate, finStatusFilter]);
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [orders]);
+
+  const vetReportData = useMemo(
+    () =>
+      filterBillingReportData({
+        invoices,
+        orders,
+        filters: {
+          status: finPaymentStatus,
+          startDate: finStartDate,
+          endDate: finEndDate,
+          vetId: vet?.id || '',
+          patientId: finPatientId,
+        },
+        patients: vetPatients,
+        scope: 'vet',
+        fixedVet: vet,
+      }),
+    [invoices, orders, finPaymentStatus, finStartDate, finEndDate, vet, finPatientId, vetPatients]
+  );
+
+  const filteredInvoices = vetReportData.invoices;
+  const financialOrders = vetReportData.orders;
+  const hasBillingReportData = filteredInvoices.length > 0 || financialOrders.length > 0;
 
   const financialSummary = useMemo(() => {
-    const totalAmount = financialOrders.reduce(
-      (sum, o) => sum + (Number(o.total_amount) || 0),
-      0
-    );
     const totalExams = financialOrders.reduce(
       (sum, o) => sum + (o.results?.length || 0),
       0
     );
-    const completedOrders = financialOrders.filter((o) => o.status === 'concluido');
-    const completedAmount = completedOrders.reduce(
-      (sum, o) => sum + (Number(o.total_amount) || 0),
-      0
-    );
-    const inProgressAmount = totalAmount - completedAmount;
-    const avgTicket = financialOrders.length > 0 ? totalAmount / financialOrders.length : 0;
+    const avgTicket =
+      financialOrders.length > 0 ? vetReportData.summary.totalAmount / financialOrders.length : 0;
 
     return {
-      totalAmount,
+      ...vetReportData.summary,
       totalExams,
-      totalOrders: financialOrders.length,
-      completedAmount,
-      inProgressAmount,
       avgTicket,
     };
-  }, [financialOrders]);
+  }, [financialOrders, vetReportData.summary]);
+
+  const handleDownloadVetBillingPdf = () => {
+    if (!hasBillingReportData) {
+      showToast('Nenhum dado financeiro encontrado para os filtros selecionados.');
+      return;
+    }
+    setBillingReportFeedback(null);
+    downloadBillingReportPdf(vetReportData);
+    showToast('Relatório financeiro em PDF baixado com sucesso!');
+  };
+
+  const handleSendVetBillingWhatsApp = async () => {
+    if (!hasBillingReportData) {
+      showToast('Nenhum dado financeiro encontrado para os filtros selecionados.');
+      return;
+    }
+    setSendingBillingWhatsApp(true);
+    setBillingReportFeedback(null);
+    let pdfUrl: string | null = null;
+    let publishFailed = false;
+    try {
+      const published = await api.publishBillingReportPdf({
+        status: finPaymentStatus,
+        start_date: finStartDate || undefined,
+        end_date: finEndDate || undefined,
+        patient_id: finPatientId && finPatientId !== 'todos' ? finPatientId : undefined,
+      });
+      pdfUrl = published?.pdf_url || null;
+    } catch {
+      publishFailed = true;
+      pdfUrl = null;
+    } finally {
+      setSendingBillingWhatsApp(false);
+    }
+
+    const result = openBillingReportWhatsApp({
+      data: vetReportData,
+      phone: undefined,
+      pdfUrl,
+    });
+
+    if (publishFailed) {
+      setBillingReportFeedback(
+        'Resumo financeiro aberto no WhatsApp sem link do PDF (você pode usar "Baixar Relatório PDF" para anexar).'
+      );
+      showToast('Resumo financeiro aberto no WhatsApp.');
+    } else if (result.ok) {
+      showToast('Relatório financeiro aberto no WhatsApp!');
+    } else {
+      setBillingReportFeedback(
+        'Não foi possível abrir o WhatsApp automaticamente. Verifique o bloqueador de pop-ups.'
+      );
+    }
+  };
 
   if (!api.hasValidSession('vet')) {
     return null;
@@ -940,24 +1027,172 @@ export const VetPortal: React.FC<VetPortalProps> = ({
          ===================================================================== */}
       {activeTab === 'financial' && (
         <div className="space-y-4">
+          {/* Barra Unificada de Filtros & Relatórios (PDF + WhatsApp) */}
+          <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-black/5 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#0b2240]/5 text-[#0b2240] flex items-center justify-center shrink-0">
+                  <Filter className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h2 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
+                    Filtros Financeiros & Relatórios
+                  </h2>
+                  <p className="text-[12px] text-[#707070] mt-0.5">
+                    Os filtros abaixo atualizam suas Faturas, o Extrato de Pedidos e os relatórios em PDF ou WhatsApp.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleDownloadVetBillingPdf}
+                  disabled={!hasBillingReportData}
+                  className="px-4 py-2 rounded-full bg-[#0071e3] hover:bg-[#0062c4] disabled:opacity-50 disabled:cursor-not-allowed text-white text-[12px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  Baixar Relatório PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendVetBillingWhatsApp}
+                  disabled={!hasBillingReportData || sendingBillingWhatsApp}
+                  className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[12px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                >
+                  {sendingBillingWhatsApp ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <MessageCircle className="w-3.5 h-3.5" />
+                  )}
+                  {sendingBillingWhatsApp ? 'Preparando PDF...' : 'Enviar por WhatsApp'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end pt-1">
+              <div className="lg:col-span-3">
+                <label className="block text-[10.5px] font-semibold text-[#707070] mb-1">
+                  Status de Faturamento
+                </label>
+                <select
+                  value={finPaymentStatus}
+                  onChange={(e) => setFinPaymentStatus(e.target.value as BillingReportStatusFilter)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#f5f5f7] text-[12px] font-medium text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30"
+                >
+                  <option value="todos">Todos os status</option>
+                  <option value="aguardando_pagamento">Aguardando Pagamento</option>
+                  <option value="pago">Pago</option>
+                  <option value="nao_faturado">Não Faturado</option>
+                </select>
+              </div>
+
+              <div className="lg:col-span-2">
+                <label className="block text-[10.5px] font-semibold text-[#707070] mb-1">
+                  Data Inicial
+                </label>
+                <input
+                  type="date"
+                  value={finStartDate}
+                  onChange={(e) => setFinStartDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#f5f5f7] text-[12px] font-medium text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30"
+                />
+              </div>
+
+              <div className="lg:col-span-2">
+                <label className="block text-[10.5px] font-semibold text-[#707070] mb-1">
+                  Data Final
+                </label>
+                <input
+                  type="date"
+                  value={finEndDate}
+                  onChange={(e) => setFinEndDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#f5f5f7] text-[12px] font-medium text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30"
+                />
+              </div>
+
+              <div className="lg:col-span-3">
+                <label className="block text-[10.5px] font-semibold text-[#707070] mb-1">
+                  Paciente
+                </label>
+                <select
+                  value={finPatientId}
+                  onChange={(e) => setFinPatientId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#f5f5f7] text-[12px] font-medium text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/30"
+                >
+                  <option value="todos">Todos os pacientes</option>
+                  {vetPatients.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.tutor_name ? ` — ${p.tutor_name}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="lg:col-span-2 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFinStartDate(getFirstDayOfCurrentMonth());
+                    setFinEndDate(getLastDayOfCurrentMonth());
+                    setFinPaymentStatus('todos');
+                    setFinPatientId('todos');
+                  }}
+                  className="flex-1 px-3 py-2 rounded-xl bg-[#0b2240] hover:bg-[#13325b] text-white text-[11.5px] font-semibold transition cursor-pointer whitespace-nowrap"
+                >
+                  Mês Atual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFinStartDate('');
+                    setFinEndDate('');
+                    setFinPaymentStatus('todos');
+                    setFinPatientId('todos');
+                  }}
+                  className="flex-1 px-3 py-2 rounded-xl bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[11.5px] font-semibold transition cursor-pointer whitespace-nowrap"
+                >
+                  Todo Período
+                </button>
+              </div>
+            </div>
+
+            {billingReportFeedback && (
+              <div className="px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-amber-900 text-[12px] flex items-center justify-between gap-2">
+                <span>{billingReportFeedback}</span>
+                <button
+                  type="button"
+                  onClick={() => setBillingReportFeedback(null)}
+                  className="p-1 rounded-full hover:bg-amber-100 text-amber-800 cursor-pointer shrink-0"
+                  aria-label="Fechar aviso"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Faturas / Boletos Emitidos pelo Laboratório */}
           <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-black/5 space-y-3.5">
             <div>
               <h2 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
-                Faturas & Boletos ({invoices.length})
+                Faturas & Boletos ({filteredInvoices.length})
               </h2>
               <p className="text-[12px] text-[#707070]">
                 Acompanhe as faturas consolidadas emitidas pelo laboratório e baixe o PDF do boleto para pagamento.
               </p>
             </div>
 
-            {invoices.length === 0 ? (
+            {filteredInvoices.length === 0 ? (
               <div className="py-6 text-center text-[12px] text-[#707070] bg-[#f8fafc] rounded-2xl">
-                Nenhuma fatura consolidada emitida até o momento.
+                {invoices.length === 0
+                  ? 'Nenhuma fatura consolidada emitida até o momento.'
+                  : 'Nenhuma fatura encontrada para os filtros selecionados.'}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {invoices.map((inv) => (
+                {filteredInvoices.map((inv) => (
                   <div
                     key={inv.id}
                     className="p-4 rounded-2xl bg-[#f5f5f7] border border-black/5 flex flex-col justify-between gap-3"
@@ -1018,83 +1253,20 @@ export const VetPortal: React.FC<VetPortalProps> = ({
           </div>
 
           <div className="bg-white rounded-[24px] p-4 sm:p-6 border border-black/5 space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3">
-              <div>
-                <h2 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
-                  Consolidado para Acerto / Extrato por Período
-                </h2>
-                <p className="text-[12px] text-[#707070] mt-0.5">
-                  Filtre por data para conferir todos os exames solicitados e o valor total consolidado do período.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-end gap-2">
-                <div>
-                  <label className="block text-[10.5px] font-semibold text-[#707070] mb-1">
-                    Data Inicial
-                  </label>
-                  <input
-                    type="date"
-                    value={finStartDate}
-                    onChange={(e) => setFinStartDate(e.target.value)}
-                    className="px-3 py-1.5 rounded-xl bg-[#f5f5f7] text-[12px] font-medium text-[#1d1d1f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10.5px] font-semibold text-[#707070] mb-1">
-                    Data Final
-                  </label>
-                  <input
-                    type="date"
-                    value={finEndDate}
-                    onChange={(e) => setFinEndDate(e.target.value)}
-                    className="px-3 py-1.5 rounded-xl bg-[#f5f5f7] text-[12px] font-medium text-[#1d1d1f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10.5px] font-semibold text-[#707070] mb-1">
-                    Status
-                  </label>
-                  <select
-                    value={finStatusFilter}
-                    onChange={(e) => setFinStatusFilter(e.target.value as any)}
-                    className="px-3 py-1.5 rounded-xl bg-[#f5f5f7] text-[12px] font-medium text-[#1d1d1f]"
-                  >
-                    <option value="todos">Todos</option>
-                    <option value="concluido">Somente Concluídos</option>
-                    <option value="em_andamento">Em Andamento</option>
-                  </select>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFinStartDate(getFirstDayOfCurrentMonth());
-                    setFinEndDate(getLastDayOfCurrentMonth());
-                    setFinStatusFilter('todos');
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#0b2240] text-white text-[12px] font-semibold cursor-pointer"
-                >
-                  Mês Atual
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFinStartDate('');
-                    setFinEndDate('');
-                    setFinStatusFilter('todos');
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#f5f5f7] hover:bg-[#e5e5ea] text-[#1d1d1f] text-[12px] font-semibold cursor-pointer"
-                >
-                  Todo Período
-                </button>
-              </div>
+            <div>
+              <h2 className="font-display text-[19px] sm:text-[21px] font-semibold text-[#1d1d1f]">
+                Consolidado para Acerto / Extrato por Período ({financialOrders.length})
+              </h2>
+              <p className="text-[12px] text-[#707070] mt-0.5">
+                Confira todos os exames solicitados e o valor total consolidado conforme os filtros aplicados.
+              </p>
             </div>
 
             {/* Cards Consolidados */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="p-4 rounded-2xl bg-[#0b2240] text-white">
                 <div className="text-[11px] uppercase tracking-wider text-white/70">
-                  Total Consolidado no Período
+                  Total Consolidado
                 </div>
                 <div className="font-display text-[24px] font-bold font-mono mt-1">
                   R$ {financialSummary.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -1106,37 +1278,37 @@ export const VetPortal: React.FC<VetPortalProps> = ({
 
               <div className="p-4 rounded-2xl bg-[#f5f5f7]">
                 <div className="text-[11px] uppercase tracking-wider text-[#707070]">
-                  Laudos Concluídos
+                  Pago
                 </div>
                 <div className="font-display text-[22px] font-bold font-mono text-emerald-700 mt-1">
-                  R$ {financialSummary.completedAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R$ {financialSummary.paidAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
                 <div className="text-[11px] text-[#707070] mt-0.5">
-                  Exames já finalizados
+                  Valores já quitados
                 </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-[#f5f5f7]">
                 <div className="text-[11px] uppercase tracking-wider text-[#707070]">
-                  Em Análise / Pendentes
+                  Aguardando Pagamento
                 </div>
                 <div className="font-display text-[22px] font-bold font-mono text-amber-700 mt-1">
-                  R$ {financialSummary.inProgressAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R$ {financialSummary.awaitingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
                 <div className="text-[11px] text-[#707070] mt-0.5">
-                  Aguardando liberação
+                  {financialSummary.totalInvoices} fatura(s) no filtro
                 </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-[#f5f5f7]">
                 <div className="text-[11px] uppercase tracking-wider text-[#707070]">
-                  Ticket Médio
+                  Não Faturado
                 </div>
                 <div className="font-display text-[22px] font-bold font-mono text-[#1d1d1f] mt-1">
-                  R$ {financialSummary.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  R$ {financialSummary.unbilledAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
                 <div className="text-[11px] text-[#707070] mt-0.5">
-                  Média por atendimento
+                  Ticket médio: R$ {financialSummary.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
               </div>
             </div>

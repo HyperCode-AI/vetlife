@@ -7484,6 +7484,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
             <BillingSection
               orders={orders}
               vets={vets}
+              patients={patients}
               invoices={invoices}
               onRefresh={loadAllData}
               onToast={showToast}

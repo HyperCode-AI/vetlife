@@ -423,6 +423,12 @@ export function createApiV1Router(): Router {
     requireRole('admin'),
     controller.cancelInvoice
   );
+  router.post(
+    '/billing/report/publish-pdf',
+    authenticate,
+    requireRole('admin', 'biomedical', 'vet'),
+    controller.publishBillingReportPdf
+  );
 
   return router;
 }
