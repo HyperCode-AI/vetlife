@@ -51,34 +51,114 @@ export function createInitialSeedState(): SeedDatabaseState {
     {
       id: 'tpl-default-001',
       name: 'Laudo Oficial Padrão VetLife (Hematologia & Bioquímica)',
-      header_html: `<div style="border-bottom:2px solid #0d9488;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:14px;">
-  <div style="display:flex;align-items:center;gap:12px;">
-    {{logo}}
-    <div>
-      <h2 style="margin:0;color:#0b2240;font-size:18px;letter-spacing:-0.01em;">VETLIFE DIAGNÓSTICOS VETERINÁRIOS</h2>
-      <p style="margin:2px 0 0;font-size:11px;color:#475569;">vetlifelab.com.br • Registro CRMV-SP PJ 09842 • Controle de Qualidade PNCQ</p>
-    </div>
-  </div>
-  <div style="text-align:right;font-size:12px;color:#334155;">
-    <strong>Protocolo: {{protocolo}}</strong><br/>
-    Emissão: {{data_liberacao}}
-  </div>
-</div>`,
-      body_template: `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12.5px;">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-    <div><strong>Paciente:</strong> {{paciente}} ({{especie}} • {{raca}} • {{sexo}} • {{idade}})</div>
-    <div><strong>Tutor(a):</strong> {{tutor}}</div>
-    <div><strong>Veterinário(a) Solicitante:</strong> {{veterinario}} ({{crmv}})</div>
-    <div><strong>Clínica Parceira:</strong> {{clinica}}</div>
-  </div>
+      header_html: `<table style="width:100%;border-collapse:collapse;">
+  <tr>
+    <td style="vertical-align:middle;width:58%;padding:0;">
+      <table style="border-collapse:collapse;">
+        <tr>
+          <td style="vertical-align:middle;padding-right:10px;">{{logo}}</td>
+          <td style="vertical-align:middle;">
+            <div style="font-size:20px;font-weight:800;color:#0b2240;line-height:1.1;letter-spacing:-0.01em;">VetLife</div>
+            <div style="font-size:10px;font-weight:700;color:#118a8a;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">LABORATÓRIO DE ANÁLISES CLÍNICAS VETERINÁRIAS</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+    <td style="vertical-align:middle;width:42%;border-left:2px solid #118a8a;padding-left:12px;text-align:right;font-size:10px;color:#334155;line-height:1.45;">
+      <div>R. La Salles, 424 - Mocoquinha</div>
+      <div>São Sebastião do Paraíso/MG • CEP: 37950-000</div>
+      <div>Tel / WhatsApp: (35) 98458-1997</div>
+      <div style="font-weight:700;color:#0b2240;">CRMV-SP PJ 09842 • Controle de Qualidade PNCQ</div>
+    </td>
+  </tr>
+</table>
+<div style="border-bottom:2.5px solid #0b2240;margin:10px 0 12px;"></div>
+<table style="border-collapse:collapse;width:100%;font-size:11px;">
+  <tr>
+    <td style="width:16%;background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Protocolo:</td>
+    <td style="width:34%;background:#ffffff;color:#0b2240;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">{{protocolo}}</td>
+    <td style="width:17%;background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Data Cadastro:</td>
+    <td style="width:33%;background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{data_pedido}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Paciente:</td>
+    <td style="background:#ffffff;color:#0b2240;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">{{paciente}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Liberação:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{data_liberacao}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Espécie:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{especie}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Raça:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{raca}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Sexo:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{sexo}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Idade:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{idade}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Tutor:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{tutor}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Clínica:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{clinica}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">M.V. Solicitante:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{veterinario}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">CRMV:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{crmv}}</td>
+  </tr>
+</table>`,
+      body_template: `<div style="background:#f0f8f8;border-left:4px solid #118a8a;border-top:1px solid #d1e7e7;border-right:1px solid #d1e7e7;border-bottom:1px solid #d1e7e7;padding:8px 12px;margin:12px 0;">
+  <div style="font-size:13px;font-weight:700;color:#0b2240;">{{protocolo}} — {{exame}}</div>
+  <div style="font-size:10px;color:#118a8a;margin-top:2px;">Seção: {{secao}} • Liberado eletronicamente em {{data_liberacao}}</div>
 </div>
-<h3 style="color:#0f172a;font-size:15px;margin:12px 0 6px;">{{exame}} — Seção: {{secao}}</h3>
+<div style="background:#0b2240;color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.8px;padding:6px 10px;text-transform:uppercase;margin:12px 0 8px;">RESULTADO(S)</div>
 {{resultados}}
-<p style="margin-top:10px;font-size:12px;color:#475569;"><strong>Notas Clínicas:</strong> {{observacoes}}</p>`,
-      footer_html: `<div style="border-top:1px solid #cbd5e1;margin-top:20px;padding-top:10px;font-size:11px;color:#64748b;display:flex;justify-content:space-between;">
-  <span>Assinado digitalmente por Dra. Maysa Barbosa de Almeida (RT) & Dra. Kerollyn Passos Silva — VetLife</span>
-  <span>Validação pública em vetlifelab.com.br/consulta — Protocolo {{protocolo}}</span>
-</div>`,
+<div style="border-left:3px solid #0b2240;padding-left:8px;font-size:11px;font-weight:700;color:#118a8a;text-transform:uppercase;margin:14px 0 6px;">VALORES DE REFERÊNCIA / PARÂMETROS</div>
+<div style="font-size:11px;color:#334155;line-height:1.55;">{{referencias}}</div>
+<div style="border-left:3px solid #0b2240;padding-left:8px;font-size:11px;font-weight:700;color:#118a8a;text-transform:uppercase;margin:14px 0 6px;">NOTA / OBSERVAÇÕES TÉCNICAS</div>
+<div style="border:1px solid #cbd5e1;border-left:4px solid #0b2240;background:#ffffff;padding:8px 10px;font-size:11px;color:#1e293b;line-height:1.5;">{{observacoes}}</div>`,
+      footer_html: `<table style="margin-top:22px;width:100%;border-collapse:collapse;">
+  <tr>
+    <td style="width:46%;text-align:center;vertical-align:top;padding:0 12px;">
+      <div style="border-top:1px solid #0b2240;padding-top:6px;">
+        <div style="font-size:11px;font-weight:700;color:#0b2240;">Dra. Kerollyn Isabela M. P. Silva</div>
+        <div style="font-size:10px;color:#118a8a;margin-top:2px;">Biomédica Patologista Clínica • CRBM: 50555</div>
+      </div>
+    </td>
+    <td style="width:8%;"></td>
+    <td style="width:46%;text-align:center;vertical-align:top;padding:0 12px;">
+      <div style="border-top:1px solid #0b2240;padding-top:6px;">
+        <div style="font-size:11px;font-weight:700;color:#0b2240;">Dra. Maysa Barbosa de Almeida</div>
+        <div style="font-size:10px;color:#118a8a;margin-top:2px;">Médica Veterinária • Responsável Técnica</div>
+      </div>
+    </td>
+  </tr>
+</table>
+<div style="border-top:2px solid #118a8a;margin:14px 0 10px;"></div>
+<table style="width:100%;border-collapse:collapse;font-size:9.5px;color:#334155;text-align:center;">
+  <tr>
+    <td style="width:36%;vertical-align:top;padding:0 6px;">
+      <div style="font-weight:700;color:#0b2240;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">ENDEREÇO</div>
+      <div>R. La Salles, 424 - Mocoquinha</div>
+      <div>São Sebastião do Paraíso/MG • CEP: 37950-000</div>
+    </td>
+    <td style="width:32%;vertical-align:top;padding:0 6px;border-left:1px solid #cbd5e1;border-right:1px solid #cbd5e1;">
+      <div style="font-weight:700;color:#0b2240;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">CONTATO</div>
+      <div>WhatsApp: (35) 98458-1997</div>
+      <div>Financeiro: (35) 98445-1372</div>
+    </td>
+    <td style="width:32%;vertical-align:top;padding:0 6px;">
+      <div style="font-weight:700;color:#0b2240;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">HORÁRIOS</div>
+      <div>Seg a Sex: 09h às 17h</div>
+      <div>Sábado: 09h às 11h</div>
+    </td>
+  </tr>
+</table>
+<div style="font-size:9px;color:#64748b;text-align:center;margin-top:8px;line-height:1.4;">O resultado refere-se exclusivamente à amostra enviada, podendo sofrer interferências de diversos fatores. Somente seu médico veterinário tem condições de analisar corretamente este resultado.</div>`,
       dynamic_tags: [
         '{{logo}}',
         '{{paciente}}',
@@ -105,29 +185,133 @@ export function createInitialSeedState(): SeedDatabaseState {
     {
       id: 'tpl-micro-002',
       name: 'Laudo Especializado Microbiologia & Parasitologia',
-      header_html: `<div style="border-bottom:2px solid #0284c7;padding-bottom:10px;margin-bottom:14px;display:flex;align-items:center;gap:12px;">
-  {{logo}}
-  <div>
-    <h2 style="margin:0;color:#0369a1;font-size:18px;">VETLIFE — DIVISÃO DE MICROBIOLOGIA E PARASITOLOGIA VETERINÁRIA</h2>
-    <p style="margin:2px 0 0;font-size:12px;color:#475569;">Protocolo: {{protocolo}} | Paciente: {{paciente}} ({{especie}}) | Solicitante: {{veterinario}} ({{crmv}})</p>
-  </div>
-</div>`,
-      body_template: `<h3 style="color:#0f172a;font-size:15px;">{{exame}}</h3>
-{{resultados}}`,
-      footer_html: `<div style="border-top:1px solid #cbd5e1;margin-top:16px;padding-top:8px;font-size:11px;color:#64748b;">
-  Laudo Microbiológico liberado em {{data_liberacao}} • VetLife Diagnósticos Veterinários (vetlifelab.com.br)
-</div>`,
+      header_html: `<table style="width:100%;border-collapse:collapse;">
+  <tr>
+    <td style="vertical-align:middle;width:58%;padding:0;">
+      <table style="border-collapse:collapse;">
+        <tr>
+          <td style="vertical-align:middle;padding-right:10px;">{{logo}}</td>
+          <td style="vertical-align:middle;">
+            <div style="font-size:20px;font-weight:800;color:#0b2240;line-height:1.1;letter-spacing:-0.01em;">VetLife</div>
+            <div style="font-size:10px;font-weight:700;color:#118a8a;text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;">DIVISÃO DE MICROBIOLOGIA E PARASITOLOGIA VETERINÁRIA</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+    <td style="vertical-align:middle;width:42%;border-left:2px solid #118a8a;padding-left:12px;text-align:right;font-size:10px;color:#334155;line-height:1.45;">
+      <div>R. La Salles, 424 - Mocoquinha</div>
+      <div>São Sebastião do Paraíso/MG • CEP: 37950-000</div>
+      <div>Tel / WhatsApp: (35) 98458-1997</div>
+      <div style="font-weight:700;color:#0b2240;">CRMV-SP PJ 09842 • Controle de Qualidade PNCQ</div>
+    </td>
+  </tr>
+</table>
+<div style="border-bottom:2.5px solid #0b2240;margin:10px 0 12px;"></div>
+<table style="border-collapse:collapse;width:100%;font-size:11px;">
+  <tr>
+    <td style="width:16%;background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Protocolo:</td>
+    <td style="width:34%;background:#ffffff;color:#0b2240;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">{{protocolo}}</td>
+    <td style="width:17%;background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Data Cadastro:</td>
+    <td style="width:33%;background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{data_pedido}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Paciente:</td>
+    <td style="background:#ffffff;color:#0b2240;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">{{paciente}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Liberação:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{data_liberacao}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Espécie:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{especie}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Raça:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{raca}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Sexo:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{sexo}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Idade:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{idade}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Tutor:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{tutor}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Clínica:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{clinica}}</td>
+  </tr>
+  <tr>
+    <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">M.V. Solicitante:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{veterinario}}</td>
+    <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">CRMV:</td>
+    <td style="background:#ffffff;color:#0b2240;padding:5px 8px;border:1px solid #cbd5e1;">{{crmv}}</td>
+  </tr>
+</table>`,
+      body_template: `<div style="background:#f0f8f8;border-left:4px solid #118a8a;border-top:1px solid #d1e7e7;border-right:1px solid #d1e7e7;border-bottom:1px solid #d1e7e7;padding:8px 12px;margin:12px 0;">
+  <div style="font-size:13px;font-weight:700;color:#0b2240;">{{protocolo}} — {{exame}}</div>
+  <div style="font-size:10px;color:#118a8a;margin-top:2px;">Seção: {{secao}} • Liberado eletronicamente em {{data_liberacao}}</div>
+</div>
+<div style="background:#0b2240;color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.8px;padding:6px 10px;text-transform:uppercase;margin:12px 0 8px;">RESULTADO(S) MICROBIOLÓGICOS / CULTURA</div>
+{{resultados}}
+<div style="border-left:3px solid #0b2240;padding-left:8px;font-size:11px;font-weight:700;color:#118a8a;text-transform:uppercase;margin:14px 0 6px;">VALORES DE REFERÊNCIA / PARÂMETROS</div>
+<div style="font-size:11px;color:#334155;line-height:1.55;">{{referencias}}</div>
+<div style="border-left:3px solid #0b2240;padding-left:8px;font-size:11px;font-weight:700;color:#118a8a;text-transform:uppercase;margin:14px 0 6px;">NOTA / OBSERVAÇÕES TÉCNICAS</div>
+<div style="border:1px solid #cbd5e1;border-left:4px solid #0b2240;background:#ffffff;padding:8px 10px;font-size:11px;color:#1e293b;line-height:1.5;">{{observacoes}}</div>`,
+      footer_html: `<table style="margin-top:22px;width:100%;border-collapse:collapse;">
+  <tr>
+    <td style="width:46%;text-align:center;vertical-align:top;padding:0 12px;">
+      <div style="border-top:1px solid #0b2240;padding-top:6px;">
+        <div style="font-size:11px;font-weight:700;color:#0b2240;">Dra. Kerollyn Isabela M. P. Silva</div>
+        <div style="font-size:10px;color:#118a8a;margin-top:2px;">Biomédica Patologista Clínica • CRBM: 50555</div>
+      </div>
+    </td>
+    <td style="width:8%;"></td>
+    <td style="width:46%;text-align:center;vertical-align:top;padding:0 12px;">
+      <div style="border-top:1px solid #0b2240;padding-top:6px;">
+        <div style="font-size:11px;font-weight:700;color:#0b2240;">Dra. Maysa Barbosa de Almeida</div>
+        <div style="font-size:10px;color:#118a8a;margin-top:2px;">Médica Veterinária • Responsável Técnica</div>
+      </div>
+    </td>
+  </tr>
+</table>
+<div style="border-top:2px solid #118a8a;margin:14px 0 10px;"></div>
+<table style="width:100%;border-collapse:collapse;font-size:9.5px;color:#334155;text-align:center;">
+  <tr>
+    <td style="width:36%;vertical-align:top;padding:0 6px;">
+      <div style="font-weight:700;color:#0b2240;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">ENDEREÇO</div>
+      <div>R. La Salles, 424 - Mocoquinha</div>
+      <div>São Sebastião do Paraíso/MG • CEP: 37950-000</div>
+    </td>
+    <td style="width:32%;vertical-align:top;padding:0 6px;border-left:1px solid #cbd5e1;border-right:1px solid #cbd5e1;">
+      <div style="font-weight:700;color:#0b2240;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">CONTATO</div>
+      <div>WhatsApp: (35) 98458-1997</div>
+      <div>Financeiro: (35) 98445-1372</div>
+    </td>
+    <td style="width:32%;vertical-align:top;padding:0 6px;">
+      <div style="font-weight:700;color:#0b2240;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">HORÁRIOS</div>
+      <div>Seg a Sex: 09h às 17h</div>
+      <div>Sábado: 09h às 11h</div>
+    </td>
+  </tr>
+</table>
+<div style="font-size:9px;color:#64748b;text-align:center;margin-top:8px;line-height:1.4;">O resultado refere-se exclusivamente à amostra enviada, podendo sofrer interferências de diversos fatores. Somente seu médico veterinário tem condições de analisar corretamente este resultado.</div>`,
       dynamic_tags: [
         '{{logo}}',
         '{{paciente}}',
         '{{especie}}',
+        '{{raca}}',
+        '{{sexo}}',
+        '{{idade}}',
+        '{{tutor}}',
         '{{veterinario}}',
         '{{crmv}}',
+        '{{clinica}}',
         '{{protocolo}}',
+        '{{data_pedido}}',
         '{{data_liberacao}}',
         '{{exame}}',
+        '{{secao}}',
         '{{resultados}}',
         '{{referencias}}',
+        '{{observacoes}}',
       ],
       is_default: false,
       created_at: '2026-01-03T10:00:00.000Z',

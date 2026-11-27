@@ -1614,6 +1614,10 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
     const vet = this.state.vets.find((v) => v.id === order.vet_id) || this.state.vets[0];
     const pt = this.state.priceTables.find((t) => t.id === order.price_table_id);
 
+    const defaultTemplate =
+      this.state.reportTemplates.find((t) => t.is_default) || this.state.reportTemplates[0];
+    let resolvedOrderTemplate: ReportTemplate | undefined;
+
     const results = this.state.examResults
       .filter((r) => r.order_id === order.id)
       .map((r) => {
@@ -1632,7 +1636,10 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
 
         const template =
           this.state.reportTemplates.find((t) => t.id === exam.reference_template_id) ||
-          this.state.reportTemplates[0];
+          defaultTemplate;
+        if (!resolvedOrderTemplate && template) {
+          resolvedOrderTemplate = template;
+        }
 
         const enrichedResult: ExamResult = {
           ...r,
@@ -1659,6 +1666,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
       patient,
       vet,
       results,
+      template: resolvedOrderTemplate || defaultTemplate,
     };
   }
 
@@ -1694,6 +1702,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
         const patient = patMap.get(ord.patient_id);
         const vet = vetMap.get(ord.vet_id);
         const pt = ord.price_table_id ? ptMap.get(ord.price_table_id) : undefined;
+        let resolvedOrderTemplate: ReportTemplate | undefined;
         const results = ((rawResults || []) as ExamResult[])
           .filter((r) => r.order_id === ord.id)
           .map((r) => {
@@ -1711,6 +1720,9 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
             const refSnapshot =
               r.reference_snapshot || this.referenceResolver.buildReferenceSnapshotText(matchedRefs);
             const tpl = (exam?.reference_template_id && tplMap.get(exam.reference_template_id)) || defaultTpl;
+            if (!resolvedOrderTemplate && tpl) {
+              resolvedOrderTemplate = tpl;
+            }
             const enrichedResult: ExamResult = {
               ...r,
               applied_price: Number(r.applied_price),
@@ -1738,6 +1750,7 @@ export class HybridVetLifeRepository implements IVetLifeRepository {
           patient,
           vet,
           results,
+          template: resolvedOrderTemplate || defaultTpl,
         };
       });
     } else {

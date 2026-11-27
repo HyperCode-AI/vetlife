@@ -52,6 +52,32 @@ export function resolveSideBySideReference(
 }
 
 /**
+ * Converte valores de referência separados por "|" ou quebras de linha em linhas HTML (<br/>),
+ * preservando cabeçalhos entre colchetes [...] em linha própria.
+ */
+export function formatReferenceLinesHtml(raw: string): string {
+  const input = String(raw || '').trim();
+  if (!input) return '';
+
+  const normalized = input
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\[([^\]]+)\]/g, (_match, inner: string) => {
+      const cleanedInner = inner
+        .split('|')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(' • ');
+      return `[${cleanedInner}]\n`;
+    });
+
+  return normalized
+    .split(/\||\r?\n/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join('<br/>');
+}
+
+/**
  * SRP & OCP: Domain service responsible for HU-05
  * Renders dynamic report templates replacing tags like {{logo}}, {{paciente}}, {{protocolo}}, {{resultados}}, {{referencias}}.
  */
@@ -67,28 +93,31 @@ export class ReportRendererService {
     const { template, order, patient, vet, exam, result } = params;
 
     const resultsRows = Object.entries(result.dynamic_content || {})
-      .map(([key, value]) => {
+      .map(([key, value], idx) => {
         const fieldDef = exam.input_fields?.find((f) => f.field_name === key);
         const label = fieldDef?.field_label || key;
         const unit = fieldDef?.unit ? ` ${fieldDef.unit}` : '';
-        const paramRef = resolveSideBySideReference(key, label, result.reference_snapshot);
-        return `<tr>
-          <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;">${label}</td>
-          <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;color:#0f766e;font-weight:700;">${String(value)}${unit}</td>
-          <td style="padding:7px 10px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;">${paramRef}</td>
+        const paramRef = formatReferenceLinesHtml(
+          resolveSideBySideReference(key, label, result.reference_snapshot)
+        );
+        const rowBg = idx % 2 === 1 ? '#f8fbfb' : '#ffffff';
+        return `<tr style="background:${rowBg};">
+          <td style="padding:7px 10px;border:1px solid #cbd5e1;font-weight:600;color:#334155;vertical-align:top;">${label}</td>
+          <td style="padding:7px 10px;border:1px solid #cbd5e1;color:#0b2240;font-weight:700;vertical-align:top;">${String(value)}${unit}</td>
+          <td style="padding:7px 10px;border:1px solid #cbd5e1;color:#334155;font-size:11.5px;line-height:1.45;white-space:pre-line;vertical-align:top;">${paramRef}</td>
         </tr>`;
       })
       .join('');
 
-    const resultadosTable = `<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;">
+    const resultadosTable = `<table style="width:100%;border-collapse:collapse;margin:10px 0 12px;font-size:12px;">
       <thead>
-        <tr style="background:#f8fafc;text-align:left;">
-          <th style="padding:8px 10px;border-bottom:2px solid #cbd5e1;width:36%;">Parâmetro Analisado</th>
-          <th style="padding:8px 10px;border-bottom:2px solid #cbd5e1;width:28%;">Resultado Obtido</th>
-          <th style="padding:8px 10px;border-bottom:2px solid #cbd5e1;width:36%;">Valores de Referência (${patient.species})</th>
+        <tr style="background:#118a8a;color:#ffffff;text-align:left;">
+          <th style="padding:8px 10px;border:1px solid #118a8a;width:36%;font-weight:700;">Parâmetro Analisado</th>
+          <th style="padding:8px 10px;border:1px solid #118a8a;width:26%;font-weight:700;">Resultado Obtido</th>
+          <th style="padding:8px 10px;border:1px solid #118a8a;width:38%;font-weight:700;">Valores de Referência (${patient.species})</th>
         </tr>
       </thead>
-      <tbody>${resultsRows || '<tr><td colspan="3" style="padding:8px 10px;">Em processamento laboratorial</td></tr>'}</tbody>
+      <tbody>${resultsRows || '<tr><td colspan="3" style="padding:8px 10px;border:1px solid #cbd5e1;color:#334155;">Em processamento laboratorial</td></tr>'}</tbody>
     </table>`;
 
     const releaseDateFormatted = result.released_at
@@ -114,7 +143,7 @@ export class ReportRendererService {
       '{{exame}}': `${exam.code} - ${exam.name}`,
       '{{secao}}': exam.section,
       '{{resultados}}': resultadosTable,
-      '{{referencias}}': (result.reference_snapshot || '').replace(/\n/g, '<br/>'),
+      '{{referencias}}': formatReferenceLinesHtml(result.reference_snapshot || ''),
       '{{observacoes}}': order.notes || 'Sem observações clínicas adicionais.',
     };
 

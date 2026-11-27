@@ -228,6 +228,7 @@ export interface Order {
   patient?: Patient;
   vet?: Vet;
   results?: ExamResult[];
+  template?: ReportTemplate;
 }
 
 export interface SampleLabel {

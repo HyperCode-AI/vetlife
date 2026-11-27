@@ -1,13 +1,14 @@
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { Order, CollectionLabel, ReportTemplate } from '../types';
-import { formatAgeLabel, renderReportHtmlWithDynamicTags, resolveSideBySideReference } from '../services/api';
+import {
+  DEFAULT_MERGED_REPORT_TEMPLATE,
+  renderReportHtmlWithDynamicTags,
+} from '../services/api';
 
 const DEFAULT_FALLBACK_TEMPLATE: ReportTemplate = {
   id: 'default',
-  name: 'Laudo Oficial VetLife',
-  header_html: '<div style="border-bottom:2px solid #0d9488;padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;"><div>{{logo}}</div><div style="text-align:right;font-size:12px;"><strong>Protocolo:</strong> {{protocolo}}<br/><strong>Emissão:</strong> {{data_liberacao}}</div></div>',
-  body_template:
-    '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;"><strong>Paciente:</strong> {{paciente}} ({{especie}} • {{idade}}) | <strong>Tutor:</strong> {{tutor}}<br/><strong>Veterinário(a):</strong> {{veterinario}} ({{crmv}})</div>{{resultados}}',
-  footer_html: 'Documento assinado eletronicamente pelo Corpo Biomédico VetLife.',
+  ...DEFAULT_MERGED_REPORT_TEMPLATE,
   is_default: true,
 };
 
@@ -21,242 +22,199 @@ function sanitizePdfText(input: string): string {
     .replace(/\)/g, '\\)');
 }
 
-function stripHtmlTagsToLines(html?: string): string[] {
-  if (!html) return [];
-  const text = String(html)
-    .replace(/\{\{[^}]+\}\}/g, ' ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|h1|h2|h3|h4|li|tr)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"');
+async function waitForImagesLoaded(container: HTMLElement, timeoutMs = 3500): Promise<void> {
+  const images = Array.from(container.querySelectorAll('img'));
+  if (images.length === 0) return;
 
-  return text
-    .split('\n')
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
+  await Promise.all(
+    images.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete && img.naturalWidth > 0) {
+            resolve();
+            return;
+          }
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            img.removeEventListener('load', finish);
+            img.removeEventListener('error', finish);
+            resolve();
+          };
+          img.addEventListener('load', finish);
+          img.addEventListener('error', finish);
+          setTimeout(finish, timeoutMs);
+        })
+    )
+  );
 }
 
 /**
- * Generates and downloads a valid ISO PDF 1.4 binary document (.pdf) directly in the browser
- * containing the full VetLife Laboratory Report (Header, Patient/Tutor/Vet info, Dynamic Results,
- * Cross-matched Reference Values by Species/Gender/Age, Attachments and Biomedical Signature).
+ * Renders the order's HTML report template offscreen at A4 width, captures it in full color
+ * via html2canvas, slices cleanly across A4 pages with jsPDF, and returns { blob, base64, filename }.
  */
-export function downloadOrderPdf(order: Order, customTemplate?: ReportTemplate): void {
-  const tpl = customTemplate || order.template || DEFAULT_FALLBACK_TEMPLATE;
-  const ageLabel = formatAgeLabel(order.patient?.age_days, order.patient?.birth_date);
-  const releaseStr = order.released_at
-    ? new Date(order.released_at).toLocaleString('pt-BR')
-    : new Date().toLocaleString('pt-BR');
+export async function generateOrderPdfBlob(
+  order: Order,
+  customTemplate?: ReportTemplate
+): Promise<{ blob: Blob; base64: string; filename: string }> {
+  const resolvedTemplate = customTemplate || order.template || DEFAULT_FALLBACK_TEMPLATE;
+  const renderedHtml = renderReportHtmlWithDynamicTags(resolvedTemplate, order);
 
-  const headerLines = stripHtmlTagsToLines(tpl.header_html).slice(0, 2);
-  const footerLines = stripHtmlTagsToLines(tpl.footer_html).slice(0, 2);
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-10000px';
+  container.style.top = '0';
+  container.style.width = '794px';
+  container.style.padding = '28px 34px';
+  container.style.boxSizing = 'border-box';
+  container.style.background = '#ffffff';
+  container.style.fontFamily = 'Arial, Helvetica, sans-serif';
+  container.style.color = '#0f172a';
+  container.style.zIndex = '-1';
 
-  const lines: Array<{ text: string; size: number; bold?: boolean }> = [
-    { text: 'VETLIFE DIAGNOSTICOS VETERINARIOS - vetlifelab.com.br', size: 13, bold: true },
-    ...(headerLines.length > 0
-      ? headerLines.map((h) => ({ text: h.slice(0, 96), size: 8.5 }))
-      : [{ text: 'Central Diagnostica Veterinaria | Controle de Qualidade PNCQ', size: 8.5 }]),
-    { text: '----------------------------------------------------------------------------------------', size: 9 },
-    {
-      text: `LAUDO LABORATORIAL OFICIAL | PROTOCOLO: ${order.protocol_code} | STATUS: ${order.status.toUpperCase()}`,
-      size: 10.5,
-      bold: true,
-    },
-    { text: `Data de Emissao/Liberacao: ${releaseStr}`, size: 9 },
-    { text: '----------------------------------------------------------------------------------------', size: 9 },
-    {
-      text: `PACIENTE: ${order.patient?.name || '-'} | Especie: ${order.patient?.species || '-'} | Raca: ${
-        order.patient?.breed || '-'
-      } | Sexo: ${order.patient?.gender || '-'} | Idade: ${ageLabel}`,
-      size: 9,
-      bold: true,
-    },
-    {
-      text: `TUTOR(A) RESPONSAVEL: ${order.patient?.tutor_name || '-'}${
-        order.patient?.tutor_phone ? ` | Contato: ${order.patient.tutor_phone}` : ''
-      }`,
-      size: 9,
-    },
-    {
-      text: `VETERINARIO(A) SOLICITANTE: ${order.vet?.name || '-'} (${order.vet?.crmv || '-'}) - ${
-        order.vet?.clinic_name || ''
-      }`,
-      size: 9,
-    },
-    { text: '========================================================================================', size: 9 },
-    { text: 'RESULTADOS ANALITICOS E VALORES DE REFERENCIA CRUZADOS:', size: 10, bold: true },
-  ];
+  container.innerHTML = `
+    <div style="position:relative;width:100%;background:#ffffff;">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;opacity:0.045;">
+        <img src="/images/vetlife-logo.jpg" alt="" style="width:340px;height:auto;object-fit:contain;" />
+      </div>
+      <div style="position:relative;z-index:1;">
+        ${renderedHtml}
+      </div>
+    </div>
+  `;
 
-  (order.results || []).forEach((res, idx) => {
-    const examCode = res.exam_code || res.exam?.code || 'EXM';
-    const examName = res.exam_name || res.exam?.name || 'Exame Laboratorial';
-    const examSection = res.section || res.exam?.section || 'Geral';
+  document.body.appendChild(container);
 
-    for (const wrappedTitle of wrapPdfText(
-      `${idx + 1}. [${examCode}] ${examName} (Setor: ${examSection})`,
-      86
-    )) {
-      lines.push({ text: wrappedTitle, size: 9.5, bold: true });
-    }
+  try {
+    await waitForImagesLoaded(container);
 
-    const entries = Object.entries(res.dynamic_content || {});
-    const fields = res.input_fields || res.exam?.input_fields || [];
-    const refText =
-      res.reference_snapshot ||
-      res.matched_reference?.reference_text_content ||
-      'Referencia padrao para a especie/idade.';
-
-    if (entries.length === 0) {
-      lines.push({ text: '   - Parametros em processamento na bancada tecnica.', size: 9 });
-    } else {
-      lines.push({
-        text: '   PARAMETRO ANALISADO             | RESULTADO OBTIDO       | VALOR DE REFERENCIA',
-        size: 8,
-        bold: true,
-      });
-      entries.forEach(([key, val]) => {
-        const meta = fields.find((f) => f.field_name === key);
-        const rawLabel = meta?.field_label || key;
-        const unit = meta?.unit ? ` ${meta.unit}` : '';
-        const valText = `${val}${unit}`;
-        const sideRefFull = resolveSideBySideReference(key, rawLabel, refText);
-
-        const labelLines = wrapPdfText(rawLabel, 30);
-        const valLines = wrapPdfText(valText, 21);
-        const refLines = wrapPdfText(sideRefFull, 34);
-        const rowCount = Math.max(labelLines.length, valLines.length, refLines.length);
-
-        for (let rIdx = 0; rIdx < rowCount; rIdx++) {
-          const c1 = (labelLines[rIdx] || '').padEnd(31, ' ');
-          const c2 = (valLines[rIdx] || '').padEnd(22, ' ');
-          const c3 = refLines[rIdx] || '';
-          lines.push({ text: `   ${c1} | ${c2} | ${c3}`, size: 8 });
-        }
-      });
-    }
-
-    if (res.attachments && res.attachments.length > 0) {
-      lines.push({
-        text: `   Anexos Complementares: ${res.attachments.map((a) => a.name).join(', ')}`,
-        size: 8,
-      });
-    }
-    lines.push({ text: ' ', size: 6 });
-  });
-
-  lines.push({
-    text: '----------------------------------------------------------------------------------------',
-    size: 9,
-  });
-  lines.push({
-    text: 'Responsavel Tecnico: Dra. Maysa Barbosa de Almeida (RT) & Dra. Kerollyn Passos Silva',
-    size: 8.5,
-    bold: true,
-  });
-  footerLines.forEach((fl) => {
-    lines.push({ text: fl.slice(0, 96), size: 8 });
-  });
-  lines.push({
-    text: `Autenticidade verificavel em https://vetlifelab.com.br/consulta - Protocolo ${order.protocol_code}`,
-    size: 8,
-  });
-
-  // Paginar automaticamente em folhas A4 (595 x 842 pt)
-  const pageChunks: Array<Array<{ text: string; size: number; bold?: boolean }>> = [];
-  let currentChunk: Array<{ text: string; size: number; bold?: boolean }> = [];
-  let yCursor = 798;
-
-  for (const item of lines) {
-    const step = item.size + 4.5;
-    if (yCursor - step < 48) {
-      pageChunks.push(currentChunk);
-      currentChunk = [];
-      yCursor = 798;
-    }
-    currentChunk.push(item);
-    yCursor -= step;
-  }
-  if (currentChunk.length > 0) {
-    pageChunks.push(currentChunk);
-  }
-
-  const objects: string[] = [];
-  const pageObjectIds: number[] = [];
-  const contentObjectIds: number[] = [];
-  let nextObjId = 5;
-
-  for (let i = 0; i < pageChunks.length; i++) {
-    pageObjectIds.push(nextObjId++);
-    contentObjectIds.push(nextObjId++);
-  }
-
-  objects[1] = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n';
-  objects[2] = `2 0 obj\n<< /Type /Pages /Kids [${pageObjectIds
-    .map((id) => `${id} 0 R`)
-    .join(' ')}] /Count ${pageObjectIds.length} >>\nendobj\n`;
-  objects[3] = '3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n';
-  objects[4] = '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>\nendobj\n';
-
-  for (let i = 0; i < pageChunks.length; i++) {
-    const pId = pageObjectIds[i];
-    const cId = contentObjectIds[i];
-    const chunk = pageChunks[i];
-
-    let y = 798;
-    const streamCommands: string[] = ['BT'];
-    chunk.forEach((line) => {
-      const font = line.bold ? '/F2' : '/F1';
-      const safe = sanitizePdfText(line.text);
-      streamCommands.push(`${font} ${line.size} Tf`);
-      streamCommands.push(`1 0 0 1 36 ${y.toFixed(1)} Tm`);
-      streamCommands.push(`(${safe}) Tj`);
-      y -= line.size + 4.5;
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
     });
-    streamCommands.push('ET');
-    const streamContent = streamCommands.join('\n');
 
-    objects[pId] = `${pId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${cId} 0 R >>\nendobj\n`;
-    objects[cId] = `${cId} 0 obj\n<< /Length ${streamContent.length} >>\nstream\n${streamContent}\nendstream\nendobj\n`;
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+      compress: true,
+    });
+
+    const pageWidthMm = 210;
+    const pageHeightMm = 297;
+    const topMarginMm = 6;
+    const bottomMarginMm = 12;
+    const printableHeightMm = pageHeightMm - topMarginMm - bottomMarginMm;
+
+    const pxPerMm = canvas.width / pageWidthMm;
+    const sliceHeightPx = Math.max(1, Math.floor(printableHeightMm * pxPerMm));
+
+    let yOffsetPx = 0;
+    let pageIdx = 0;
+
+    while (yOffsetPx < canvas.height) {
+      const currentSlicePx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = currentSlicePx;
+
+      const ctx = sliceCanvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        ctx.drawImage(
+          canvas,
+          0,
+          yOffsetPx,
+          canvas.width,
+          currentSlicePx,
+          0,
+          0,
+          canvas.width,
+          currentSlicePx
+        );
+      }
+
+      if (pageIdx > 0) {
+        pdf.addPage();
+      }
+
+      const sliceHeightMm = currentSlicePx / pxPerMm;
+      const sliceDataUrl = sliceCanvas.toDataURL('image/png');
+      pdf.addImage(sliceDataUrl, 'PNG', 0, topMarginMm, pageWidthMm, sliceHeightMm, undefined, 'FAST');
+
+      yOffsetPx += currentSlicePx;
+      pageIdx += 1;
+    }
+
+    const totalPages = pdf.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      pdf.setPage(p);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(
+        `VetLife Laboratório Veterinário • Protocolo ${order.protocol_code}`,
+        10,
+        pageHeightMm - 6
+      );
+      pdf.text(`Página ${p} de ${totalPages}`, pageWidthMm - 10, pageHeightMm - 6, {
+        align: 'right',
+      });
+    }
+
+    const blob = pdf.output('blob');
+    const dataUri = pdf.output('datauristring');
+    const commaIdx = dataUri.indexOf(',');
+    const base64 = commaIdx >= 0 ? dataUri.slice(commaIdx + 1) : dataUri;
+    const safePatient = (order.patient?.name || 'Paciente')
+      .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'Paciente';
+    const filename = `Laudo-${order.protocol_code}-${safePatient}.pdf`;
+
+    return { blob, base64, filename };
+  } finally {
+    if (container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
   }
-
-  let pdf = '%PDF-1.4\n';
-  const offsets: number[] = [0];
-  for (let id = 1; id < nextObjId; id++) {
-    offsets[id] = pdf.length;
-    pdf += objects[id];
-  }
-
-  const xrefStart = pdf.length;
-  pdf += `xref\n0 ${nextObjId}\n0000000000 65535 f \n`;
-  for (let id = 1; id < nextObjId; id++) {
-    pdf += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${nextObjId} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
-
-  const blob = new Blob([pdf], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Laudo-${order.protocol_code}-${(order.patient?.name || 'Paciente').replace(/\s+/g, '_')}.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
 /**
- * Opens a formatted print preview window for either the official report or tube barcode labels.
+ * Generates and downloads a full-color A4 PDF matching the active HTML report template 1:1.
  */
-export function printFormattedReportWindow(order: Order, template?: ReportTemplate): void {
-  const tpl = template || order.template || DEFAULT_FALLBACK_TEMPLATE;
-  const renderedHtml = renderReportHtmlWithDynamicTags(tpl, order);
+export async function downloadOrderPdf(
+  order: Order,
+  customTemplate?: ReportTemplate
+): Promise<void> {
+  try {
+    const { blob, filename } = await generateOrderPdfBlob(order, customTemplate);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  } catch (err) {
+    console.error('[VetLife PDF] Falha ao gerar PDF via html2canvas/jsPDF, abrindo impressão:', err);
+    printFormattedReportWindow(order, customTemplate);
+  }
+}
+
+/**
+ * Opens a formatted A4 print preview window rendering ONLY the active HTML template (1:1 parity).
+ */
+export function printFormattedReportWindow(order: Order, customTemplate?: ReportTemplate): void {
+  const resolvedTemplate = customTemplate || order.template || DEFAULT_FALLBACK_TEMPLATE;
+  const renderedHtml = renderReportHtmlWithDynamicTags(resolvedTemplate, order);
   const win = window.open('', '_blank', 'width=940,height=780');
   if (!win) {
-    downloadOrderPdf(order, tpl);
+    void downloadOrderPdf(order, resolvedTemplate);
     return;
   }
   win.document.write(`
@@ -266,33 +224,63 @@ export function printFormattedReportWindow(order: Order, template?: ReportTempla
         <meta charset="utf-8" />
         <title>Laudo Oficial ${order.protocol_code} — VetLife Lab</title>
         <style>
-          body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 32px; line-height: 1.5; background: #fff; }
-          .header { border-bottom: 2px solid #0d9488; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-          .brand-wrap { display: flex; align-items: center; gap: 12px; }
-          .brand-logo { height: 48px; width: auto; object-fit: contain; border-radius: 8px; }
-          .brand { font-size: 20px; font-weight: 800; color: #0b2240; }
-          .protocol-box { background: #f0fdfa; border: 1px solid #0d9488; padding: 8px 14px; border-radius: 8px; font-family: monospace; font-weight: bold; color: #0f766e; }
-          .report-body { font-size: 13px; }
-          .sig { margin-top: 28px; text-align: right; font-size: 12px; color: #334155; border-top: 1px dashed #cbd5e1; padding-top: 12px; }
+          @page { size: A4 portrait; margin: 10mm; }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #0f172a;
+            margin: 0;
+            padding: 16px;
+            background: #ffffff;
+            line-height: 1.45;
+          }
+          .a4-shell {
+            position: relative;
+            max-width: 794px;
+            margin: 0 auto;
+            background: #ffffff;
+          }
+          .watermark {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 0;
+            opacity: 0.045;
+          }
+          .watermark img {
+            width: 340px;
+            height: auto;
+            object-fit: contain;
+          }
+          .report-content {
+            position: relative;
+            z-index: 1;
+          }
+          @media print {
+            body { padding: 0; }
+            .a4-shell { max-width: none; }
+          }
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="brand-wrap">
-            <img src="/images/vetlife-logo.jpg" alt="VetLife" class="brand-logo" />
-            <div>
-              <div class="brand">VetLife Diagnósticos Veterinários</div>
-              <div style="font-size:12px;color:#475569;">https://vetlifelab.com.br — Central Diagnóstica Veterinária</div>
-            </div>
+        <div class="a4-shell">
+          <div class="watermark">
+            <img src="/images/vetlife-logo.jpg" alt="" />
           </div>
-          <div class="protocol-box">Protocolo: ${order.protocol_code}</div>
+          <div class="report-content">${renderedHtml}</div>
         </div>
-        <div class="report-body">${renderedHtml}</div>
-        <div class="sig">
-          <strong>Assinado Digitalmente:</strong> Dra. Maysa Barbosa de Almeida (RT) &amp; Dra. Kerollyn Passos Silva<br/>
-          Verificação pública sem senha em <strong>vetlifelab.com.br/consulta</strong> informando o código <strong>${order.protocol_code}</strong>
-        </div>
-        <script>setTimeout(() => { window.print(); }, 350);</script>
+        <script>
+          window.addEventListener('load', () => {
+            setTimeout(() => { window.print(); }, 350);
+          });
+        </script>
       </body>
     </html>
   `);

@@ -224,6 +224,157 @@ export function renderReportWithDynamicTags(
   return content;
 }
 
+export const DEFAULT_MERGED_REPORT_TEMPLATE: Pick<
+  ReportTemplate,
+  'name' | 'header_html' | 'body_template' | 'footer_html'
+> = {
+  name: 'Laudo Oficial VetLife (Padrão Unificado)',
+  header_html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+    <tr>
+      <td style="vertical-align:middle;width:54%;padding-right:12px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div>{{logo}}</div>
+          <div>
+            <div style="font-size:22px;font-weight:800;color:#0b2240;letter-spacing:-0.4px;line-height:1.1;">VetLife</div>
+            <div style="font-size:9.5px;font-weight:700;color:#118a8a;letter-spacing:0.6px;margin-top:2px;">LABORATÓRIO DE ANÁLISES CLÍNICAS VETERINÁRIAS</div>
+          </div>
+        </div>
+      </td>
+      <td style="vertical-align:middle;width:46%;border-left:3px solid #118a8a;padding-left:12px;text-align:right;font-size:10px;color:#334155;line-height:1.45;">
+        <div style="font-weight:700;color:#0b2240;">R. La Salles, 424 - Mocoquinha</div>
+        <div>São Sebastião do Paraíso/MG • CEP: 37950-000</div>
+        <div>Tel / WhatsApp: <strong style="color:#118a8a;">(35) 98458-1997</strong></div>
+        <div style="font-size:9.5px;color:#475569;">CRMV-SP PJ 09842 • Controle de Qualidade PNCQ</div>
+      </td>
+    </tr>
+  </table>
+  <div style="height:3px;background:#0b2240;border-radius:2px;margin-bottom:10px;"></div>
+  <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #cbd5e1;">
+    <tr>
+      <td style="width:17%;background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Protocolo:</td>
+      <td style="width:33%;background:#f0f8f8;color:#0b2240;font-weight:800;padding:5px 8px;border:1px solid #cbd5e1;">{{protocolo}}</td>
+      <td style="width:17%;background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Data Cadastro:</td>
+      <td style="width:33%;background:#ffffff;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{data_pedido}}</td>
+    </tr>
+    <tr>
+      <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Paciente:</td>
+      <td style="background:#ffffff;color:#0b2240;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">{{paciente}}</td>
+      <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Liberação:</td>
+      <td style="background:#f8fbfb;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{data_liberacao}}</td>
+    </tr>
+    <tr>
+      <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Espécie:</td>
+      <td style="background:#f8fbfb;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{especie}}</td>
+      <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Raça:</td>
+      <td style="background:#ffffff;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{raca}}</td>
+    </tr>
+    <tr>
+      <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Sexo:</td>
+      <td style="background:#ffffff;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{sexo}}</td>
+      <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Idade:</td>
+      <td style="background:#f8fbfb;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{idade}}</td>
+    </tr>
+    <tr>
+      <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Tutor:</td>
+      <td style="background:#f8fbfb;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{tutor}}</td>
+      <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">Clínica:</td>
+      <td style="background:#ffffff;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{clinica}}</td>
+    </tr>
+    <tr>
+      <td style="background:#0b2240;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">M.V. Solicitante:</td>
+      <td style="background:#ffffff;color:#0f172a;font-weight:600;padding:5px 8px;border:1px solid #cbd5e1;">{{veterinario}}</td>
+      <td style="background:#118a8a;color:#ffffff;font-weight:700;padding:5px 8px;border:1px solid #cbd5e1;">CRMV:</td>
+      <td style="background:#f8fbfb;color:#0f172a;padding:5px 8px;border:1px solid #cbd5e1;">{{crmv}}</td>
+    </tr>
+  </table>
+</div>`,
+  body_template: `<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <div style="background:#f0f8f8;border:1px solid #118a8a;border-left:4px solid #118a8a;border-radius:6px;padding:9px 13px;margin-bottom:12px;">
+    <div style="font-size:13px;font-weight:800;color:#0b2240;">{{protocolo}} — {{exame}}</div>
+    <div style="font-size:10.5px;color:#118a8a;font-weight:600;margin-top:2px;">Seção: {{secao}} • Liberado eletronicamente em {{data_liberacao}}</div>
+  </div>
+  <div style="background:#0b2240;color:#ffffff;font-size:11.5px;font-weight:800;letter-spacing:0.6px;padding:6px 12px;border-radius:4px 4px 0 0;margin-bottom:8px;">RESULTADO(S)</div>
+  <div>{{resultados}}</div>
+  <div style="margin-top:12px;background:#f0f8f8;border:1px solid #cbd5e1;border-left:3px solid #118a8a;border-radius:4px;padding:9px 12px;">
+    <div style="font-size:10.5px;font-weight:800;color:#0b2240;letter-spacing:0.4px;margin-bottom:5px;text-transform:uppercase;">VALORES DE REFERÊNCIA / PARÂMETROS</div>
+    <div style="font-size:10.5px;color:#334155;line-height:1.5;">{{referencias}}</div>
+  </div>
+  <div style="margin-top:10px;background:#f8fbfb;border:1px solid #cbd5e1;border-radius:4px;padding:9px 12px;">
+    <div style="font-size:10.5px;font-weight:800;color:#0b2240;letter-spacing:0.4px;margin-bottom:4px;text-transform:uppercase;">NOTA / OBSERVAÇÕES TÉCNICAS</div>
+    <div style="font-size:10.5px;color:#334155;line-height:1.45;">{{observacoes}}</div>
+  </div>
+</div>`,
+  footer_html: `<div style="font-family:Arial,Helvetica,sans-serif;color:#334155;margin-top:18px;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
+    <tr>
+      <td style="width:50%;text-align:center;padding:8px 16px;vertical-align:bottom;">
+        <div style="border-top:1px solid #0b2240;width:82%;margin:20px auto 5px auto;"></div>
+        <div style="font-size:11px;font-weight:800;color:#0b2240;">Dra. Kerollyn Isabela M. P. Silva</div>
+        <div style="font-size:9.5px;color:#475569;">Biomédica Patologista Clínica • CRBM: 50555</div>
+      </td>
+      <td style="width:50%;text-align:center;padding:8px 16px;vertical-align:bottom;">
+        <div style="border-top:1px solid #0b2240;width:82%;margin:20px auto 5px auto;"></div>
+        <div style="font-size:11px;font-weight:800;color:#0b2240;">Dra. Maysa Barbosa de Almeida</div>
+        <div style="font-size:9.5px;color:#475569;">Médica Veterinária • Responsável Técnica</div>
+      </td>
+    </tr>
+  </table>
+  <div style="height:2px;background:#118a8a;margin-bottom:8px;"></div>
+  <table style="width:100%;border-collapse:collapse;background:#f0f8f8;border:1px solid #cbd5e1;font-size:9.5px;color:#334155;">
+    <tr>
+      <td style="width:36%;padding:7px 10px;border-right:1px solid #cbd5e1;vertical-align:top;">
+        <div style="font-weight:800;color:#0b2240;margin-bottom:2px;">ENDEREÇO</div>
+        <div>R. La Salles, 424 - Mocoquinha</div>
+        <div>São Sebastião do Paraíso/MG • CEP: 37950-000</div>
+      </td>
+      <td style="width:34%;padding:7px 10px;border-right:1px solid #cbd5e1;vertical-align:top;">
+        <div style="font-weight:800;color:#0b2240;margin-bottom:2px;">CONTATO</div>
+        <div>Tel / WhatsApp: (35) 98458-1997</div>
+        <div>Site: vetlifelab.com.br</div>
+      </td>
+      <td style="width:30%;padding:7px 10px;vertical-align:top;">
+        <div style="font-weight:800;color:#0b2240;margin-bottom:2px;">HORÁRIOS</div>
+        <div>Seg a Sex: 08h às 18h</div>
+        <div>Sábado: 08h às 12h</div>
+      </td>
+    </tr>
+  </table>
+  <div style="margin-top:8px;text-align:center;font-size:8.5px;color:#64748b;line-height:1.4;">
+    Este laudo tem caráter complementar e deve ser interpretado exclusivamente por Médico Veterinário em conjunto com o histórico clínico do paciente.<br/>
+    Documento assinado eletronicamente • Autenticidade verificável em <strong>vetlifelab.com.br/consulta</strong> informando o protocolo <strong>{{protocolo}}</strong>.
+  </div>
+</div>`,
+};
+
+export function formatReferenceLinesHtml(raw: string): string {
+  const str = String(raw || '').trim();
+  if (!str) return '';
+
+  const hasHtml = /<[a-z][\s\S]*>/i.test(str);
+  if (hasHtml) {
+    return str
+      .replace(/\s*\|\s*/g, '<br/>')
+      .replace(/\r?\n/g, '<br/>')
+      .replace(/(?:<br\s*\/?>\s*){2,}/gi, '<br/>')
+      .trim();
+  }
+
+  const escapeHtml = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  return str
+    .split(/\||\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(escapeHtml)
+    .join('<br/>');
+}
+
 export function renderReportHtmlWithDynamicTags(
   template: ReportTemplate,
   order: Order
@@ -231,6 +382,9 @@ export function renderReportHtmlWithDynamicTags(
   const patient = order.patient;
   const vet = order.vet;
   const ageLabel = formatAgeLabel(patient?.age_days, patient?.birth_date);
+  const orderDate = order.created_at
+    ? new Date(order.created_at).toLocaleString('pt-BR')
+    : new Date().toLocaleString('pt-BR');
   const releaseDate = order.released_at
     ? new Date(order.released_at).toLocaleString('pt-BR')
     : new Date().toLocaleString('pt-BR');
@@ -251,32 +405,35 @@ export function renderReportHtmlWithDynamicTags(
         'Referência padrão da espécie.';
       const rows =
         entries.length === 0
-          ? '<tr><td colspan="3" style="padding:8px 10px;color:#64748b;font-style:italic;">Parâmetros aguardando lançamento técnico</td></tr>'
+          ? '<tr><td colspan="3" style="padding:8px 10px;color:#64748b;font-style:italic;border:1px solid #cbd5e1;">Parâmetros aguardando lançamento técnico</td></tr>'
           : entries
-              .map(([k, v]) => {
+              .map(([k, v], idx) => {
                 const fieldMeta = fields.find((f) => f.field_name === k);
                 const rawLabel = fieldMeta?.field_label || k;
                 const label = escapeHtml(rawLabel);
                 const unit = fieldMeta?.unit ? ` ${escapeHtml(fieldMeta.unit)}` : '';
-                const sideRef = escapeHtml(resolveSideBySideReference(k, rawLabel, refText));
-                return `<tr style="border-bottom:1px solid #f1f5f9;">
-                  <td style="padding:7px 10px;font-weight:600;color:#0f172a;">${label}</td>
-                  <td style="padding:7px 10px;font-weight:700;color:#0f766e;font-family:monospace;">${escapeHtml(String(v))}${unit}</td>
-                  <td style="padding:7px 10px;color:#475569;font-size:11.5px;">${sideRef}</td>
+                const sideRefHtml = formatReferenceLinesHtml(
+                  resolveSideBySideReference(k, rawLabel, refText)
+                );
+                const rowBg = idx % 2 === 1 ? '#f8fbfb' : '#ffffff';
+                return `<tr style="background:${rowBg};">
+                  <td style="padding:7px 10px;font-weight:600;color:#0f172a;border:1px solid #cbd5e1;vertical-align:top;">${label}</td>
+                  <td style="padding:7px 10px;font-weight:800;color:#0b2240;border:1px solid #cbd5e1;vertical-align:top;">${escapeHtml(String(v))}${unit}</td>
+                  <td style="padding:7px 10px;color:#334155;font-size:11px;line-height:1.45;border:1px solid #cbd5e1;vertical-align:top;">${sideRefHtml}</td>
                 </tr>`;
               })
               .join('');
-      return `<div style="margin-bottom:14px;background:#ffffff;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;">
-        <div style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:700;color:#0b2240;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;">
+      return `<div style="margin-bottom:12px;background:#ffffff;border-radius:6px;border:1px solid #cbd5e1;overflow:hidden;">
+        <div style="padding:7px 12px;background:#f0f8f8;border-bottom:1px solid #118a8a;font-weight:700;color:#0b2240;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
           <span>[${escapeHtml(res.exam_code || res.exam?.code || 'EXAME')}] ${escapeHtml(res.exam_name || res.exam?.name || '')}</span>
-          <span style="font-weight:500;color:#64748b;font-size:11px;">${escapeHtml(res.section || res.exam?.section || 'Geral')}</span>
+          <span style="font-weight:600;color:#118a8a;font-size:10.5px;">${escapeHtml(res.section || res.exam?.section || 'Geral')}</span>
         </div>
-        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
           <thead>
-            <tr style="background:#fcfcfd;text-align:left;color:#64748b;font-size:10.5px;text-transform:uppercase;border-bottom:1px solid #e2e8f0;">
-              <th style="padding:6px 10px;width:36%;">Parâmetro Analisado</th>
-              <th style="padding:6px 10px;width:28%;">Resultado Obtido</th>
-              <th style="padding:6px 10px;width:36%;">Valores de Referência (${escapeHtml(patient?.species || 'Espécie')})</th>
+            <tr style="background:#118a8a;text-align:left;color:#ffffff;font-size:10.5px;text-transform:uppercase;">
+              <th style="padding:6px 10px;width:36%;font-weight:700;border:1px solid #118a8a;">Parâmetro / Analito</th>
+              <th style="padding:6px 10px;width:26%;font-weight:700;border:1px solid #118a8a;">Resultado</th>
+              <th style="padding:6px 10px;width:38%;font-weight:700;border:1px solid #118a8a;">Valores de Referência</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -291,20 +448,39 @@ export function renderReportHtmlWithDynamicTags(
         res.reference_snapshot ||
         res.matched_reference?.reference_text_content ||
         'Referência padrão da espécie conforme literatura clínica.';
-      const isHtmlRef = /<[a-z][\s\S]*>/i.test(rawRef);
-      const formattedRef = isHtmlRef ? rawRef : escapeHtml(rawRef);
-      return `<div style="margin-bottom:6px;"><div>• <strong>${escapeHtml(
+      const formattedRef = formatReferenceLinesHtml(rawRef);
+      return `<div style="margin-bottom:6px;"><div style="color:#0b2240;">• <strong>${escapeHtml(
         res.exam_name || res.exam?.name || 'Exame'
-      )}:</strong></div><div style="margin-left:12px;">${formattedRef}</div></div>`;
+      )}:</strong></div><div style="margin-left:12px;color:#334155;">${formattedRef}</div></div>`;
     })
     .join('');
+
+  const collectedNotes: string[] = [];
+  if (order.notes && order.notes.trim()) {
+    collectedNotes.push(order.notes.trim());
+  }
+  (order.results || []).forEach((res) => {
+    if (res.notes && res.notes.trim()) {
+      const examTitle = res.exam_name || res.exam?.name || 'Exame';
+      const noteLine = `${examTitle}: ${res.notes.trim()}`;
+      if (!collectedNotes.includes(noteLine) && !collectedNotes.includes(res.notes.trim())) {
+        collectedNotes.push(noteLine);
+      }
+    }
+  });
+  const observationsHtml =
+    collectedNotes.length > 0
+      ? collectedNotes.map((n) => formatReferenceLinesHtml(n)).join('<br/>')
+      : 'Sem observações técnicas adicionais registradas para este laudo.';
 
   const firstExamName =
     order.results?.[0]?.exam_name || order.results?.[0]?.exam?.name || 'Exame Laboratorial';
   const firstExamSection =
     order.results?.[0]?.section || order.results?.[0]?.exam?.section || 'Geral';
-  const logoHtml = `<img src="/images/vetlife-logo.jpg" alt="VetLife" style="height:42px;width:auto;object-fit:contain;border-radius:8px;vertical-align:middle;" />`;
-  const hasLogoInHeader = (template.header_html || '').includes('{{logo}}') || (template.header_html || '').includes('<img');
+  const logoHtml = `<img src="/images/vetlife-logo.jpg" alt="VetLife" style="height:46px;width:auto;object-fit:contain;border-radius:8px;vertical-align:middle;" />`;
+  const hasLogoInHeader =
+    (template.header_html || '').includes('{{logo}}') ||
+    (template.header_html || '').includes('<img');
   const cleanHeaderHtml = hasLogoInHeader
     ? template.header_html || ''
     : `<div style="display:flex;align-items:center;gap:12px;">${logoHtml}<div style="flex:1;">${template.header_html || ''}</div></div>`;
@@ -312,9 +488,7 @@ export function renderReportHtmlWithDynamicTags(
   const replacements: Record<string, string> = {
     '{{logo}}': logoHtml,
     '{{paciente}}': escapeHtml(patient?.name || 'N/D'),
-    '{{especie}}': escapeHtml(
-      `${patient?.species || 'N/D'} (${patient?.breed || 'SRD'}, ${patient?.gender || 'M'})`
-    ),
+    '{{especie}}': escapeHtml(patient?.species || 'N/D'),
     '{{raca}}': escapeHtml(patient?.breed || 'SRD'),
     '{{sexo}}': escapeHtml(
       patient?.gender === 'F' ? 'Fêmea' : patient?.gender === 'M' ? 'Macho' : patient?.gender || 'N/D'
@@ -325,16 +499,18 @@ export function renderReportHtmlWithDynamicTags(
     '{{crmv}}': escapeHtml(vet?.crmv || 'N/D'),
     '{{clinica}}': escapeHtml(vet?.clinic_name || 'Particular / Atendimento Direto'),
     '{{protocolo}}': escapeHtml(order.protocol_code),
+    '{{data_pedido}}': escapeHtml(orderDate),
     '{{data_liberacao}}': escapeHtml(releaseDate),
     '{{exame}}': escapeHtml(firstExamName),
     '{{secao}}': escapeHtml(firstExamSection),
     '{{resultados}}': resultsHtml,
     '{{referencias}}': referencesHtml,
+    '{{observacoes}}': observationsHtml,
   };
 
-  let html = `<div style="font-family:Inter,system-ui,sans-serif;color:#0f172a;line-height:1.5;">
+  let html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.45;">
     <div>${cleanHeaderHtml}</div>
-    <div style="margin:14px 0;">${template.body_template || ''}</div>
+    <div style="margin:12px 0;">${template.body_template || ''}</div>
     <div>${template.footer_html || ''}</div>
   </div>`;
 
@@ -1367,14 +1543,26 @@ export const api = {
     });
   },
 
-  async releaseOrderReport(orderId: string, templateId?: string, resultId?: string): Promise<Order> {
+  async releaseOrderReport(
+    orderId: string,
+    templateId?: string,
+    resultId?: string,
+    pdfBase64?: string
+  ): Promise<Order> {
     return request<Order>(`/orders/${orderId}/release`, {
       method: 'POST',
-      body: JSON.stringify({ template_id: templateId, result_id: resultId }),
+      body: JSON.stringify({
+        template_id: templateId,
+        result_id: resultId,
+        ...(pdfBase64 ? { pdf_base64: pdfBase64 } : {}),
+      }),
     });
   },
 
-  async publishOrderPdf(order: Order): Promise<{
+  async publishOrderPdf(
+    order: Order,
+    pdfBase64?: string
+  ): Promise<{
     pdf_url: string;
     exam_pdfs: Array<{ result_id: string; pdf_url: string }>;
   }> {
@@ -1383,7 +1571,10 @@ export const api = {
       exam_pdfs: Array<{ result_id: string; pdf_url: string }>;
     }>(`/orders/${order.id}/publish-pdf`, {
       method: 'POST',
-      body: JSON.stringify({ order_snapshot: order }),
+      body: JSON.stringify({
+        order_snapshot: order,
+        ...(pdfBase64 ? { pdf_base64: pdfBase64 } : {}),
+      }),
     });
   },
 

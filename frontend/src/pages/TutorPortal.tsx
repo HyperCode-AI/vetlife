@@ -10,7 +10,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { Exam, Order } from '../types';
-import { api, formatAgeLabel, resolveSideBySideReference } from '../services/api';
+import { api, formatAgeLabel, formatReferenceLinesHtml, resolveSideBySideReference } from '../services/api';
 import { downloadOrderPdf, printFormattedReportWindow } from '../utils/pdfGenerator';
 
 interface TutorPortalProps {
@@ -76,7 +76,7 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
       window.open(ord.pdf_url, '_blank', 'noopener,noreferrer');
       return;
     }
-    downloadOrderPdf(ord);
+    void downloadOrderPdf(ord, ord.template);
   };
 
   const handleDownloadSingleExamPdf = (ord: Order, res: NonNullable<Order['results']>[number]) => {
@@ -84,7 +84,7 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
       window.open(res.pdf_url, '_blank', 'noopener,noreferrer');
       return;
     }
-    downloadOrderPdf({ ...ord, results: [res] });
+    void downloadOrderPdf({ ...ord, results: [res] }, ord.template);
   };
 
   const resolveExamMeta = (res: NonNullable<Order['results']>[number]) => {
@@ -218,7 +218,7 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
                 </button>
                 <button
                   type="button"
-                  onClick={() => printFormattedReportWindow(order)}
+                  onClick={() => printFormattedReportWindow(order, order.template)}
                   className="flex-1 sm:flex-initial justify-center h-9 px-4 rounded-full border border-[#1d1d1f] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#1d1d1f] hover:text-white transition cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5 shrink-0" />
@@ -408,9 +408,12 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
                                         <td className="py-2 px-3 font-mono font-bold text-[#0f766e]">
                                           {String(val)}{unit}
                                         </td>
-                                        <td className="py-2 pl-3 text-[11.5px] text-[#5b6675]">
-                                          {sideRef}
-                                        </td>
+                                        <td
+                                          className="py-2 pl-3 text-[11.5px] text-[#5b6675] leading-snug"
+                                          dangerouslySetInnerHTML={{
+                                            __html: formatReferenceLinesHtml(sideRef),
+                                          }}
+                                        />
                                       </tr>
                                     );
                                   })}
@@ -426,11 +429,16 @@ export const TutorPortal: React.FC<TutorPortalProps> = ({ initialProtocol }) => 
                               {order.patient?.gender},{' '}
                               {formatAgeLabel(order.patient?.age_days, order.patient?.birth_date)}):
                             </div>
-                            <div className="text-[#707070] leading-snug">
-                              {res.reference_snapshot ||
-                                res.matched_reference?.reference_text_content ||
-                                'Valores de referência compatíveis com a espécie e faixa etária.'}
-                            </div>
+                            <div
+                              className="text-[#707070] leading-snug"
+                              dangerouslySetInnerHTML={{
+                                __html: formatReferenceLinesHtml(
+                                  res.reference_snapshot ||
+                                    res.matched_reference?.reference_text_content ||
+                                    'Valores de referência compatíveis com a espécie e faixa etária.'
+                                ),
+                              }}
+                            />
                           </div>
 
                           {/* Anexos Complementares */}

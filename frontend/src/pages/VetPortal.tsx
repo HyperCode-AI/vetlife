@@ -21,7 +21,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { CollectionRequest, Exam, Invoice, Order, Patient, Vet } from '../types';
-import { api, formatAgeLabel, resolveSideBySideReference } from '../services/api';
+import { api, formatAgeLabel, formatReferenceLinesHtml, resolveSideBySideReference } from '../services/api';
 import { downloadOrderPdf, printFormattedReportWindow } from '../utils/pdfGenerator';
 import {
   BillingReportStatusFilter,
@@ -127,6 +127,14 @@ export const VetPortal: React.FC<VetPortalProps> = ({
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleDownloadOrderPdf = async (ord: Order) => {
+    try {
+      await downloadOrderPdf(ord, ord.template);
+    } catch {
+      showToast('Não foi possível gerar o PDF do laudo no momento.');
+    }
   };
 
   const loadAllVetData = async () => {
@@ -599,7 +607,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              downloadOrderPdf(ord);
+                              void handleDownloadOrderPdf(ord);
                             }}
                             className="px-3 py-1.5 rounded-full bg-[#0071e3] text-white text-[11.5px] font-semibold inline-flex items-center gap-1 hover:opacity-95 transition cursor-pointer"
                           >
@@ -657,7 +665,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({
                     <div className="flex gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => downloadOrderPdf(selectedOrder)}
+                        onClick={() => void handleDownloadOrderPdf(selectedOrder)}
                         className="px-3.5 py-1.5 rounded-full bg-[#0071e3] text-white text-[11.5px] font-semibold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <FileDown className="w-3.5 h-3.5" />
@@ -665,7 +673,7 @@ export const VetPortal: React.FC<VetPortalProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => printFormattedReportWindow(selectedOrder)}
+                        onClick={() => printFormattedReportWindow(selectedOrder, selectedOrder.template)}
                         className="p-2 rounded-full bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] cursor-pointer"
                         title="Imprimir Laudo"
                       >
@@ -723,9 +731,12 @@ export const VetPortal: React.FC<VetPortalProps> = ({
                                         <td className="py-1.5 px-2 font-mono font-bold text-[#0f766e]">
                                           {String(v)}{unit}
                                         </td>
-                                        <td className="py-1.5 pl-2 text-[11px] text-[#5b6675]">
-                                          {sideRef}
-                                        </td>
+                                        <td
+                                          className="py-1.5 pl-2 text-[11px] text-[#5b6675] leading-snug"
+                                          dangerouslySetInnerHTML={{
+                                            __html: formatReferenceLinesHtml(sideRef),
+                                          }}
+                                        />
                                       </tr>
                                     );
                                   })}

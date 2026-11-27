@@ -477,20 +477,58 @@ export class OrderAndRoutineUseCases {
     return this.getOrderById(order.id);
   }
 
+  private decodeValidatedPdfBase64(raw?: unknown): Buffer | null {
+    if (typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const clean = trimmed.replace(/^data:application\/pdf[^,]*,/i, '').trim();
+    if (!clean) return null;
+    try {
+      const buf = Buffer.from(clean, 'base64');
+      if (buf.length >= 5 && buf.subarray(0, 5).toString('ascii') === '%PDF-') {
+        return buf;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   public async releaseOrderReport(
     orderId: string,
     releasedByUserId?: string,
     notes?: string,
     resultId?: string,
-    fallbackOrigin = 'https://vetlifelab.com.br'
+    fallbackOrigin = 'https://vetlifelab.com.br',
+    options?: {
+      template_id?: string;
+      pdf_base64?: string;
+      exam_pdfs_base64?: Record<string, string>;
+    }
   ): Promise<Order> {
     const order = await this.getOrderById(orderId);
+    if (options?.template_id) {
+      try {
+        const selectedTpl = await this.repo.findReportTemplateById(options.template_id);
+        if (selectedTpl) {
+          order.template = selectedTpl;
+        }
+      } catch {
+        // mantém o template já hidratado no pedido
+      }
+    }
+
     const nowIso = new Date().toISOString();
+    const examPdfsMap =
+      options?.exam_pdfs_base64 && typeof options.exam_pdfs_base64 === 'object'
+        ? options.exam_pdfs_base64
+        : undefined;
 
     for (const res of order.results || []) {
       if (resultId && res.id !== resultId) continue;
       const examCode = (res.exam?.code || 'EXM').replace(/[^a-zA-Z0-9_-]/g, '');
-      const examPdfBuffer = buildOrderPdfBuffer(order, res.id);
+      const customExamBuf = this.decodeValidatedPdfBase64(examPdfsMap?.[res.id]);
+      const examPdfBuffer = customExamBuf || buildOrderPdfBuffer(order, res.id);
       const uploadedExam = await uploadPdfToVercelBlob(
         `laudos/${order.protocol_code}/exame-${examCode}-${res.id}.pdf`,
         examPdfBuffer,
@@ -504,12 +542,16 @@ export class OrderAndRoutineUseCases {
     }
 
     const refreshed = await this.getOrderById(order.id);
+    if (order.template) {
+      refreshed.template = order.template;
+    }
     const allReleased =
       (refreshed.results || []).length > 0 &&
       (refreshed.results || []).every((r) => Boolean(r.released_at));
 
     if (allReleased) {
-      const fullPdfBuffer = buildOrderPdfBuffer(refreshed);
+      const customFullBuf = this.decodeValidatedPdfBase64(options?.pdf_base64);
+      const fullPdfBuffer = customFullBuf || buildOrderPdfBuffer(refreshed);
       const uploadedFull = await uploadPdfToVercelBlob(
         `laudos/${refreshed.protocol_code}/laudo-completo-${refreshed.protocol_code}.pdf`,
         fullPdfBuffer,
@@ -524,7 +566,11 @@ export class OrderAndRoutineUseCases {
   public async publishOrderPdf(
     orderId: string,
     fallbackOrigin: string,
-    orderSnapshot?: Order
+    orderSnapshot?: Order,
+    options?: {
+      pdf_base64?: string;
+      exam_pdfs_base64?: Record<string, string>;
+    }
   ): Promise<{
     pdf_url: string;
     exam_pdfs: Array<{ result_id: string; pdf_url: string }>;
@@ -541,13 +587,19 @@ export class OrderAndRoutineUseCases {
       throw new NotFoundError(`Atendimento '${orderId}' não encontrado.`);
     }
 
+    const examPdfsMap =
+      options?.exam_pdfs_base64 && typeof options.exam_pdfs_base64 === 'object'
+        ? options.exam_pdfs_base64
+        : undefined;
+
     const examPdfs: Array<{ result_id: string; pdf_url: string }> = [];
     for (const res of order.results || []) {
       const examCode = (res.exam?.code || (res as any).exam_code || 'EXM').replace(
         /[^a-zA-Z0-9_-]/g,
         ''
       );
-      const examPdfBuffer = buildOrderPdfBuffer(order, res.id);
+      const customExamBuf = this.decodeValidatedPdfBase64(examPdfsMap?.[res.id]);
+      const examPdfBuffer = customExamBuf || buildOrderPdfBuffer(order, res.id);
       const uploadedExam = await uploadPdfToVercelBlob(
         `laudos/${order.protocol_code}/exame-${examCode}-${res.id}.pdf`,
         examPdfBuffer,
@@ -564,7 +616,8 @@ export class OrderAndRoutineUseCases {
       }
     }
 
-    const fullPdfBuffer = buildOrderPdfBuffer(order);
+    const customFullBuf = this.decodeValidatedPdfBase64(options?.pdf_base64);
+    const fullPdfBuffer = customFullBuf || buildOrderPdfBuffer(order);
     const uploadedFull = await uploadPdfToVercelBlob(
       `laudos/${order.protocol_code}/laudo-completo-${order.protocol_code}.pdf`,
       fullPdfBuffer,

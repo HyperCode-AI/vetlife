@@ -59,7 +59,9 @@ import {
 import {
   api,
   calculatePatientAgeDays,
+  DEFAULT_MERGED_REPORT_TEMPLATE,
   formatAgeLabel,
+  formatReferenceLinesHtml,
   parseTubeTypeToLabelTemplates,
   renderReportHtmlWithDynamicTags,
   resolveReferenceForPatient,
@@ -68,6 +70,7 @@ import { RichHtmlEditor } from '../components/RichHtmlEditor';
 import {
   downloadOrderPdf,
   downloadThermalLabelsPdf,
+  generateOrderPdfBlob,
   printCollectionLabelsWindow,
 } from '../utils/pdfGenerator';
 
@@ -689,8 +692,32 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     return `Olá, Dr(a). ${name}!`;
   };
 
+  const getActiveReportTemplate = (ord?: Order): ReportTemplate | undefined => {
+    if (ord?.template) return ord.template;
+    const selected = templates.find((t) => t.id === selectedTemplateId);
+    if (selected) return selected;
+    if (editingTemplate) return editingTemplate;
+    return templates.find((t) => t.is_default) || templates[0];
+  };
+
+  const handleDownloadOrderPdf = async (ord: Order, overrideTemplate?: ReportTemplate) => {
+    try {
+      await downloadOrderPdf(ord, overrideTemplate || getActiveReportTemplate(ord));
+    } catch {
+      showToast('Não foi possível gerar o PDF do laudo no momento.');
+    }
+  };
+
   const publishOrderForSharing = async (ord: Order) => {
-    const published = await api.publishOrderPdf(ord);
+    let pdfBase64: string | undefined;
+    try {
+      const { base64 } = await generateOrderPdfBlob(ord, getActiveReportTemplate(ord));
+      pdfBase64 = base64;
+    } catch {
+      pdfBase64 = undefined;
+    }
+
+    const published = await api.publishOrderPdf(ord, pdfBase64);
     const pdfLink = published.pdf_url;
 
     setOrders((prev) =>
@@ -1050,7 +1077,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
         <div className="inline-flex items-center justify-end gap-1.5 flex-nowrap whitespace-nowrap">
           <button
             type="button"
-            onClick={() => downloadOrderPdf(ord)}
+            onClick={() => void handleDownloadOrderPdf(ord)}
             title="Baixar PDF completo"
             className={`${pad} rounded-[980px] border border-[#1d1d1f] text-[#1d1d1f] hover:bg-[#1d1d1f] hover:text-white transition inline-flex items-center gap-1 font-semibold whitespace-nowrap cursor-pointer`}
           >
@@ -1115,8 +1142,14 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
     setOrders(ordList);
     setOpStats(opData);
     setFinStats(finData);
-    if (!editingTemplate && tplList.length > 0) {
-      setEditingTemplate(tplList[0]);
+    if (tplList.length > 0) {
+      const defaultTpl = tplList.find((t) => t.is_default) || tplList[0];
+      if (!editingTemplate) {
+        setEditingTemplate(defaultTpl);
+      }
+      setSelectedTemplateId((prev) =>
+        tplList.some((t) => t.id === prev) ? prev : defaultTpl.id
+      );
     }
     if (user?.role === 'admin') {
       try {
@@ -1453,19 +1486,52 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
   const handleReleaseReport = async (options?: { advanceToNext?: boolean }) => {
     if (!currentOrder) return;
     const currentId = currentResultItem?.id;
+    const resolvedRefSnapshot =
+      matchedRefForCurrentResult?.reference_text_content ||
+      currentResultItem?.reference_snapshot;
+
     if (currentResultItem) {
       await api.saveExamResult(currentOrder.id, currentResultItem.id, {
         dynamic_content: dynamicValues,
         attachments,
-        reference_snapshot:
-          matchedRefForCurrentResult?.reference_text_content ||
-          currentResultItem.reference_snapshot,
+        reference_snapshot: resolvedRefSnapshot,
       });
     }
+
+    const activeTemplate =
+      templates.find((t) => t.id === selectedTemplateId) ||
+      getActiveReportTemplate(currentOrder);
+
+    const orderSnapshotForPdf: Order = {
+      ...currentOrder,
+      released_at: currentOrder.released_at || new Date().toISOString(),
+      template: activeTemplate || currentOrder.template,
+      results: (currentOrder.results || []).map((r) =>
+        r.id === currentId
+          ? {
+            ...r,
+            dynamic_content: dynamicValues,
+            attachments,
+            reference_snapshot: resolvedRefSnapshot,
+            released_at: r.released_at || new Date().toISOString(),
+          }
+          : r
+      ),
+    };
+
+    let pdfBase64: string | undefined;
+    try {
+      const { base64 } = await generateOrderPdfBlob(orderSnapshotForPdf, activeTemplate);
+      pdfBase64 = base64;
+    } catch {
+      pdfBase64 = undefined;
+    }
+
     const released = await api.releaseOrderReport(
       currentOrder.id,
-      selectedTemplateId,
-      currentId
+      activeTemplate?.id || selectedTemplateId,
+      currentId,
+      pdfBase64
     );
     await loadAllData();
 
@@ -4857,7 +4923,7 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                                   <>
                                     <button
                                       type="button"
-                                      onClick={() => downloadOrderPdf(ord)}
+                                      onClick={() => void handleDownloadOrderPdf(ord)}
                                       title="Baixar PDF Completo"
                                       className="px-2 py-1 rounded-full border border-[#1d1d1f]/25 text-[#1d1d1f] hover:bg-[#1d1d1f] hover:text-white text-[10.5px] font-semibold inline-flex items-center gap-1 transition cursor-pointer shrink-0"
                                     >
@@ -5143,11 +5209,16 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                   {formatAgeLabel(currentOrder.patient?.age_days, currentOrder.patient?.birth_date)}):
                 </span>
               </div>
-              <div className="text-[#707070] leading-snug break-words">
-                {matchedRefForCurrentResult?.reference_text_content ||
-                  currentResultItem?.reference_snapshot ||
-                  'Referência clínica padrão para a espécie e faixa etária.'}
-              </div>
+              <div
+                className="text-[#707070] leading-snug break-words"
+                dangerouslySetInnerHTML={{
+                  __html: formatReferenceLinesHtml(
+                    matchedRefForCurrentResult?.reference_text_content ||
+                      currentResultItem?.reference_snapshot ||
+                      'Referência clínica padrão para a espécie e faixa etária.'
+                  ),
+                }}
+              />
             </div>
 
             <div className="space-y-2.5">
@@ -5364,7 +5435,13 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                     <>
                       <button
                         type="button"
-                        onClick={() => downloadOrderPdf(currentOrder)}
+                        onClick={() =>
+                          void handleDownloadOrderPdf(
+                            currentOrder,
+                            templates.find((t) => t.id === selectedTemplateId) ||
+                              getActiveReportTemplate(currentOrder)
+                          )
+                        }
                         className="flex-1 sm:flex-initial justify-center px-4 py-2.5 sm:py-2 rounded-[980px] bg-[#f5f5f7] hover:bg-[#e8e8ed] text-[#1d1d1f] text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                       >
                         <FileDown className="w-3.5 h-3.5 shrink-0" />
@@ -6629,7 +6706,12 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                             dangerouslySetInnerHTML={{ __html: r.reference_text_content }}
                           />
                         ) : (
-                          <div className="text-[#707070]">{r.reference_text_content}</div>
+                          <div
+                            className="text-[#707070] leading-snug"
+                            dangerouslySetInnerHTML={{
+                              __html: formatReferenceLinesHtml(r.reference_text_content || ''),
+                            }}
+                          />
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -6715,15 +6797,20 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                     '{{logo}}',
                     '{{paciente}}',
                     '{{especie}}',
+                    '{{raca}}',
+                    '{{sexo}}',
                     '{{idade}}',
                     '{{tutor}}',
                     '{{veterinario}}',
                     '{{crmv}}',
+                    '{{clinica}}',
                     '{{protocolo}}',
+                    '{{data_pedido}}',
                     '{{data_liberacao}}',
                     '{{exame}}',
                     '{{resultados}}',
                     '{{referencias}}',
+                    '{{observacoes}}',
                   ].map((tag) => (
                     <button
                       key={tag}
@@ -6819,51 +6906,92 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                         __html: templatePreviewWithSample
                           ? renderReportHtmlWithDynamicTags(
                             editingTemplate,
-                            orders[0] || {
-                              id: 'sample-order',
-                              protocol_code: 'VET-2026-0001',
-                              patient_id: 'pat-sample',
-                              vet_id: 'vet-sample',
-                              total_amount: 120,
-                              status: 'concluido',
-                              created_at: new Date().toISOString(),
-                              released_at: new Date().toISOString(),
-                              patient: {
-                                id: 'pat-sample',
-                                name: 'Thor',
-                                species: 'Canino',
-                                breed: 'Golden Retriever',
-                                gender: 'M',
-                                age_days: 1095,
-                                tutor_name: 'Mariana Costa',
-                              },
-                              vet: {
-                                id: 'vet-sample',
-                                name: 'Dr. Carlos Mendes',
-                                crmv: 'CRMV-SP 45821',
-                                clinic_name: 'Clínica PetCare',
-                                email: 'carlos@petcare.com.br',
-                                phone: '(11) 99999-0000',
-                              },
-                              results: [
-                                {
-                                  id: 'res-sample',
-                                  order_id: 'sample-order',
-                                  exam_id: 'exam-sample',
-                                  exam_code: 'HEMO-01',
-                                  exam_name: 'Hemograma Completo Veterinário',
-                                  section: 'Hematologia',
-                                  applied_price: 68,
-                                  dynamic_content: {
-                                    Eritrócitos: '6,8 milhões/mm³',
-                                    Hemoglobina: '15,2 g/dL',
-                                    Leucócitos: '9.400 /mm³',
-                                  },
-                                  reference_snapshot:
-                                    'Eritrócitos: 5,5 a 8,5 milhões/mm³ | Hemoglobina: 12 a 18 g/dL',
+                            orders[0]
+                              ? {
+                                ...orders[0],
+                                created_at: orders[0].created_at || new Date().toISOString(),
+                                notes:
+                                  orders[0].notes ||
+                                  'Amostra sem hemólise ou lipemia. Coleta realizada em jejum alimentar de 8 horas.',
+                                results:
+                                  orders[0].results && orders[0].results.length > 0
+                                    ? orders[0].results.map((r) => ({
+                                      ...r,
+                                      reference_snapshot:
+                                        r.reference_snapshot ||
+                                        'Eritrócitos: 5,5 a 8,5 milhões/mm³ | Hemoglobina: 12,0 a 18,0 g/dL | Hematócrito: 37 a 55% | Leucócitos: 6.000 a 17.000 /mm³',
+                                    }))
+                                    : [
+                                      {
+                                        id: 'res-sample',
+                                        order_id: orders[0].id,
+                                        exam_id: 'exam-sample',
+                                        exam_code: 'HEMO-01',
+                                        exam_name: 'Hemograma Completo Veterinário',
+                                        section: 'Hematologia',
+                                        applied_price: 68,
+                                        dynamic_content: {
+                                          Eritrócitos: '6,8 milhões/mm³',
+                                          Hemoglobina: '15,2 g/dL',
+                                          Hematócrito: '45%',
+                                          Leucócitos: '9.400 /mm³',
+                                        },
+                                        reference_snapshot:
+                                          'Eritrócitos: 5,5 a 8,5 milhões/mm³ | Hemoglobina: 12,0 a 18,0 g/dL | Hematócrito: 37 a 55% | Leucócitos: 6.000 a 17.000 /mm³',
+                                      },
+                                    ],
+                              }
+                              : {
+                                id: 'sample-order',
+                                protocol_code: 'VET-2026-0001',
+                                patient_id: 'pat-sample',
+                                vet_id: 'vet-sample',
+                                total_amount: 120,
+                                status: 'concluido',
+                                created_at: new Date().toISOString(),
+                                released_at: new Date().toISOString(),
+                                notes:
+                                  'Amostra sem hemólise ou lipemia. Coleta realizada em jejum alimentar de 8 horas.',
+                                patient: {
+                                  id: 'pat-sample',
+                                  name: 'Thor',
+                                  species: 'Canino',
+                                  breed: 'Golden Retriever',
+                                  gender: 'M',
+                                  birth_date: '',
+                                  age_days: 1095,
+                                  tutor_name: 'Mariana Costa',
+                                  tutor_phone: '(11) 98888-7777',
+                                  tutor_email: 'mariana@exemplo.com',
                                 },
-                              ],
-                            }
+                                vet: {
+                                  id: 'vet-sample',
+                                  name: 'Dr. Carlos Mendes',
+                                  crmv: 'CRMV-SP 45821',
+                                  clinic_name: 'Clínica PetCare',
+                                  email: 'carlos@petcare.com.br',
+                                  phone: '(11) 99999-0000',
+                                },
+                                results: [
+                                  {
+                                    id: 'res-sample',
+                                    order_id: 'sample-order',
+                                    exam_id: 'exam-sample',
+                                    exam_code: 'HEMO-01',
+                                    exam_name: 'Hemograma Completo Veterinário',
+                                    section: 'Hematologia',
+                                    applied_price: 68,
+                                    dynamic_content: {
+                                      Eritrócitos: '6,8 milhões/mm³',
+                                      Hemoglobina: '15,2 g/dL',
+                                      Hematócrito: '45%',
+                                      Leucócitos: '9.400 /mm³',
+                                    },
+                                    reference_snapshot:
+                                      'Eritrócitos: 5,5 a 8,5 milhões/mm³ | Hemoglobina: 12,0 a 18,0 g/dL | Hematócrito: 37 a 55% | Leucócitos: 6.000 a 17.000 /mm³',
+                                  },
+                                ],
+                              }
                           )
                           : `<div style="font-family:Inter,system-ui,sans-serif;color:#0f172a;line-height:1.5;"><div>${editingTemplate.header_html || ''}</div><div style="margin:14px 0;">${editingTemplate.body_template || ''}</div><div>${editingTemplate.footer_html || ''}</div></div>`,
                       }}
@@ -6872,12 +7000,31 @@ export const InternalPanel: React.FC<InternalPanelProps> = ({
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="px-6 py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition"
-              >
-                Salvar Modelo de Laudo
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-[980px] bg-[#0071e3] text-white text-[13px] font-semibold hover:opacity-95 transition cursor-pointer"
+                >
+                  Salvar Modelo de Laudo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTemplate({
+                      ...editingTemplate,
+                      header_html: DEFAULT_MERGED_REPORT_TEMPLATE.header_html,
+                      body_template: DEFAULT_MERGED_REPORT_TEMPLATE.body_template,
+                      footer_html: DEFAULT_MERGED_REPORT_TEMPLATE.footer_html,
+                    });
+                    showToast(
+                      'Layout Padrão (VetLife + Analabvet) aplicado! Clique em "Salvar Modelo de Laudo" para gravar.'
+                    );
+                  }}
+                  className="px-5 py-2.5 rounded-[980px] bg-[#f5f5f7] hover:bg-[#e8e8ed] border border-slate-200 text-[#0b2240] text-[13px] font-semibold transition cursor-pointer"
+                >
+                  Aplicar Layout Padrão (VetLife + Analabvet)
+                </button>
+              </div>
             </form>
           )}
 

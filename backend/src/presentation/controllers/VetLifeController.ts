@@ -1061,7 +1061,12 @@ export class VetLifeController {
         req.authUser?.sub,
         req.body?.notes,
         req.body?.result_id,
-        origin
+        origin,
+        {
+          template_id: req.body?.template_id,
+          pdf_base64: req.body?.pdf_base64,
+          exam_pdfs_base64: req.body?.exam_pdfs_base64,
+        }
       );
       res.json({ success: true, data: releasedOrder });
     } catch (err) {
@@ -1079,7 +1084,11 @@ export class VetLifeController {
       const payload = await this.orderUseCases.publishOrderPdf(
         req.params.orderId,
         origin,
-        req.body?.order_snapshot
+        req.body?.order_snapshot,
+        {
+          pdf_base64: req.body?.pdf_base64,
+          exam_pdfs_base64: req.body?.exam_pdfs_base64,
+        }
       );
       res.json({ success: true, data: payload });
     } catch (err) {
