@@ -816,6 +816,8 @@ export async function uploadPdfToVercelBlob(
         'x-api-version': '7',
         'x-content-type': 'application/pdf',
         'x-add-random-suffix': '0',
+        'x-allow-overwrite': '1',
+        'x-cache-control-max-age': '0',
       },
       body: new Uint8Array(pdfBuffer),
     });

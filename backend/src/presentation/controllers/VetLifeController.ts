@@ -1133,6 +1133,7 @@ export class VetLifeController {
     }
     const fileName = rawPath.split('/').pop() || 'laudo-vetlife.pdf';
     res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
     res.setHeader(
       'Content-Disposition',
       `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${fileName}"`
@@ -1474,19 +1475,7 @@ export class VetLifeController {
       let boletoUrl: string | null = b.boleto_pdf_url ? String(b.boleto_pdf_url) : null;
       const boletoFilename = b.boleto_filename ? String(b.boleto_filename) : '';
 
-      if (b.boleto_pdf_base64 && typeof b.boleto_pdf_base64 === 'string') {
-        const cleanBase64 = b.boleto_pdf_base64.includes(',')
-          ? b.boleto_pdf_base64.split(',').pop() || ''
-          : b.boleto_pdf_base64;
-        const buffer = Buffer.from(cleanBase64, 'base64');
-        const safeName = (boletoFilename || `boleto-${Date.now()}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
-        const origin = `${req.protocol}://${req.get('host') || 'vetlifelab.com.br'}`;
-        const { uploadPdfToVercelBlob } = await import('../../utils/pdfStorage');
-        const uploaded = await uploadPdfToVercelBlob(`boletos/${Date.now()}-${safeName}`, buffer, origin);
-        boletoUrl = uploaded.url;
-      }
-
-      const created = await this.repo.createInvoice({
+      let created = await this.repo.createInvoice({
         vet_id: String(b.vet_id),
         order_ids: orderIds,
         reference_month: b.reference_month ? String(b.reference_month) : undefined,
@@ -1497,6 +1486,24 @@ export class VetLifeController {
         boleto_pdf_url: boletoUrl,
         notes: b.notes ? String(b.notes) : '',
       });
+
+      if (b.boleto_pdf_base64 && typeof b.boleto_pdf_base64 === 'string') {
+        const cleanBase64 = b.boleto_pdf_base64.includes(',')
+          ? b.boleto_pdf_base64.split(',').pop() || ''
+          : b.boleto_pdf_base64;
+        const buffer = Buffer.from(cleanBase64, 'base64');
+        const safeInvoiceId = String(created.id).replace(/[^a-zA-Z0-9._-]/g, '_');
+        const origin = `${req.protocol}://${req.get('host') || 'vetlifelab.com.br'}`;
+        const { uploadPdfToVercelBlob } = await import('../../utils/pdfStorage');
+        const uploaded = await uploadPdfToVercelBlob(`boletos/fatura-${safeInvoiceId}.pdf`, buffer, origin);
+        boletoUrl = uploaded.url;
+        created = await this.repo.updateInvoiceBoleto(
+          created.id,
+          boletoFilename || `boleto-${created.invoice_number || safeInvoiceId}.pdf`,
+          boletoUrl
+        );
+      }
+
       res.status(201).json({ success: true, data: created });
     } catch (err) {
       next(err);
@@ -1518,10 +1525,10 @@ export class VetLifeController {
           ? b.boleto_pdf_base64.split(',').pop() || ''
           : b.boleto_pdf_base64;
         const buffer = Buffer.from(cleanBase64, 'base64');
-        const safeName = boletoFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const safeInvoiceId = String(req.params.id).replace(/[^a-zA-Z0-9._-]/g, '_');
         const origin = `${req.protocol}://${req.get('host') || 'vetlifelab.com.br'}`;
         const { uploadPdfToVercelBlob } = await import('../../utils/pdfStorage');
-        const uploaded = await uploadPdfToVercelBlob(`boletos/${Date.now()}-${safeName}`, buffer, origin);
+        const uploaded = await uploadPdfToVercelBlob(`boletos/fatura-${safeInvoiceId}.pdf`, buffer, origin);
         boletoUrl = uploaded.url;
       }
 
